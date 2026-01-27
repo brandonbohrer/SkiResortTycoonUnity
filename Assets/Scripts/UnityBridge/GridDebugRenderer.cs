@@ -15,16 +15,25 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private int _gridHeight = 64;
         [SerializeField] private int _seed = 12345;
         
+        [Header("Terrain Generation")]
+        [SerializeField] private bool _generateTerrain = true;
+        [SerializeField] private MountainArchetype _archetype = MountainArchetype.SinglePeak;
+        
         [Header("Visual Settings")]
         [SerializeField] private float _tileSize = 1f;
         [SerializeField] private float _heightScale = 0.1f; // Visual offset per height unit
-        [SerializeField] private bool _showGrid = true;
-        [SerializeField] private Color _gridColor = new Color(1f, 1f, 1f, 0.2f);
+        [SerializeField] private bool _showGridLines = false;
+        [SerializeField] private Color _gridColor = new Color(1f, 1f, 1f, 0.1f);
+        [SerializeField] private bool _showHeightColors = true;
+        [SerializeField] private bool _showSlopeShading = true;
+        [SerializeField] private float _slopeShadingStrength = 0.3f;
+        [SerializeField] private bool _highlightBaseArea = false;
         
-        [Header("Height Colors")]
-        [SerializeField] private Color _colorLow = new Color(0.2f, 0.4f, 0.8f); // Blue (low)
-        [SerializeField] private Color _colorMid = new Color(0.9f, 0.9f, 0.9f); // White (mid)
-        [SerializeField] private Color _colorHigh = new Color(0.6f, 0.3f, 0.1f); // Brown (high)
+        [Header("Height Colors (Smooth Gradient)")]
+        [SerializeField] private Color _colorLow = new Color(0.35f, 0.55f, 0.35f); // Green (low/base)
+        [SerializeField] private Color _colorMid = new Color(0.75f, 0.85f, 0.95f); // Light blue (mid)
+        [SerializeField] private Color _colorHigh = new Color(0.98f, 0.98f, 1f); // White (high/peak)
+        [SerializeField] private int _maxHeight = 20; // Should match terrain generation
         
         private Core.TerrainData _terrainData;
         private GameObject _tilesContainer;
@@ -42,7 +51,7 @@ namespace SkiResortTycoon.UnityBridge
         public void GenerateGrid()
         {
             // Create terrain data
-            _terrainData = new Core.TerrainData(_gridWidth, _gridHeight, _seed);
+            _terrainData = new Core.TerrainData(_gridWidth, _gridHeight, _seed, _generateTerrain, _archetype);
             
             // Clean up old tiles
             if (_tilesContainer != null)
@@ -83,10 +92,10 @@ namespace SkiResortTycoon.UnityBridge
             // Add sprite renderer
             SpriteRenderer sr = tileObj.AddComponent<SpriteRenderer>();
             sr.sprite = CreateSquareSprite();
-            sr.color = GetHeightColor(tile.Height);
+            sr.color = GetTileColor(x, y, tile.Height);
             
-            // Scale to tile size
-            tileObj.transform.localScale = new Vector3(_tileSize * 0.95f, _tileSize * 0.95f, 1f);
+            // Scale to tile size (no gaps for smooth appearance)
+            tileObj.transform.localScale = new Vector3(_tileSize, _tileSize, 1f);
             
             // Sorting order based on Y position
             sr.sortingOrder = -(y * 1000 + x);
@@ -94,17 +103,106 @@ namespace SkiResortTycoon.UnityBridge
         
         private Color GetHeightColor(int height)
         {
-            // For now, all heights are 0, so we'll just return mid color
-            // Later when we have varied heights, this will interpolate
-            if (height <= 0)
-                return _colorLow;
-            else if (height >= 10)
-                return _colorHigh;
+            if (!_showHeightColors)
+            {
+                return Color.white;
+            }
+            
+            // Smooth gradient interpolation
+            float t = Mathf.Clamp01(height / (float)_maxHeight);
+            
+            Color baseColor;
+            if (t < 0.3f)
+            {
+                // Low to mid (base area to lower slopes)
+                float localT = t / 0.3f;
+                baseColor = Color.Lerp(_colorLow, _colorMid, SmoothStep(localT));
+            }
+            else if (t < 0.7f)
+            {
+                // Mid to high (slopes to peaks)
+                float localT = (t - 0.3f) / 0.4f;
+                baseColor = Color.Lerp(_colorMid, _colorHigh, SmoothStep(localT));
+            }
             else
             {
-                float t = height / 10f;
-                return Color.Lerp(_colorMid, _colorHigh, t);
+                // High peaks with subtle variation
+                float localT = (t - 0.7f) / 0.3f;
+                baseColor = Color.Lerp(_colorHigh, Color.white, SmoothStep(localT) * 0.5f);
             }
+            
+            return baseColor;
+        }
+        
+        private float SmoothStep(float t)
+        {
+            // Smooth interpolation curve (ease in-out)
+            return t * t * (3f - 2f * t);
+        }
+        
+        private Color GetTileColor(int x, int y, int height)
+        {
+            Color baseColor = GetHeightColor(height);
+            
+            // Apply slope shading (darker in valleys, lighter on ridges)
+            if (_showSlopeShading && _terrainData != null)
+            {
+                float slopeFactor = CalculateSlopeFactor(x, y);
+                
+                // Darken valleys, lighten ridges
+                float shadingMultiplier = 1f + (slopeFactor * _slopeShadingStrength);
+                baseColor *= shadingMultiplier;
+            }
+            
+            // Highlight base area with a slight yellow tint
+            if (_highlightBaseArea && _terrainData != null)
+            {
+                int baseAreaRows = (int)(_terrainData.Grid.Height * 0.25f);
+                if (y < baseAreaRows)
+                {
+                    // Tint base area slightly yellow
+                    baseColor = Color.Lerp(baseColor, new Color(1f, 1f, 0.7f), 0.3f);
+                }
+            }
+            
+            return baseColor;
+        }
+        
+        private float CalculateSlopeFactor(int x, int y)
+        {
+            if (_terrainData == null) return 0f;
+            
+            int centerHeight = _terrainData.GetHeight(x, y);
+            
+            // Calculate average neighbor height
+            float avgNeighborHeight = 0f;
+            int count = 0;
+            
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    if (dx == 0 && dy == 0) continue;
+                    
+                    int nx = x + dx;
+                    int ny = y + dy;
+                    
+                    if (_terrainData.Grid.InBounds(nx, ny))
+                    {
+                        avgNeighborHeight += _terrainData.GetHeight(nx, ny);
+                        count++;
+                    }
+                }
+            }
+            
+            if (count == 0) return 0f;
+            
+            avgNeighborHeight /= count;
+            
+            // Positive = ridge (lighter), negative = valley (darker)
+            float difference = (centerHeight - avgNeighborHeight) / (float)_maxHeight;
+            
+            return Mathf.Clamp(difference, -0.5f, 0.5f);
         }
         
         private Sprite CreateSquareSprite()
@@ -124,7 +222,7 @@ namespace SkiResortTycoon.UnityBridge
         
         void OnDrawGizmos()
         {
-            if (!_showGrid || _terrainData == null) return;
+            if (!_showGridLines || _terrainData == null) return;
             
             Gizmos.color = _gridColor;
             
@@ -167,7 +265,7 @@ namespace SkiResortTycoon.UnityBridge
                     SpriteRenderer sr = tileTransform.GetComponent<SpriteRenderer>();
                     if (sr != null)
                     {
-                        sr.color = GetHeightColor(tile.Height);
+                        sr.color = GetTileColor(x, y, tile.Height);
                     }
                 }
             }

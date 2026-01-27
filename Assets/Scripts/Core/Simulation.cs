@@ -11,6 +11,7 @@ namespace SkiResortTycoon.Core
         private TimeSystem _timeSystem;
         private VisitorSystem _visitorSystem;
         private EconomySystem _economySystem;
+        private TimeController _timeController;
         
         public Simulation(float timeSpeedMinutesPerSecond = 10f)
         {
@@ -18,6 +19,7 @@ namespace SkiResortTycoon.Core
             _timeSystem = new TimeSystem(timeSpeedMinutesPerSecond);
             _visitorSystem = new VisitorSystem();
             _economySystem = new EconomySystem();
+            _timeController = new TimeController();
         }
         
         // Public accessors
@@ -25,6 +27,7 @@ namespace SkiResortTycoon.Core
         public TimeSystem TimeSystem => _timeSystem;
         public VisitorSystem VisitorSystem => _visitorSystem;
         public EconomySystem EconomySystem => _economySystem;
+        public TimeController TimeController => _timeController;
         
         /// <summary>
         /// Advances the simulation by deltaTime.
@@ -32,15 +35,18 @@ namespace SkiResortTycoon.Core
         /// </summary>
         public bool Tick(float deltaTime)
         {
+            // Apply time control (pause and speed multiplier)
+            float effectiveDeltaTime = _timeController.GetEffectiveDeltaTime(deltaTime);
+            
             // Only advance time and visitors if the day is still active
             if (!_timeSystem.IsDayOver(_state))
             {
                 // Accumulate visitors during the day
-                _visitorSystem.Tick(_state, deltaTime, _timeSystem.SpeedMinutesPerSecond);
+                _visitorSystem.Tick(_state, effectiveDeltaTime, _timeSystem.SpeedMinutesPerSecond);
             }
             
             // Advance time and check if day just ended
-            return _timeSystem.Tick(_state, deltaTime);
+            return _timeSystem.Tick(_state, effectiveDeltaTime);
         }
         
         /// <summary>

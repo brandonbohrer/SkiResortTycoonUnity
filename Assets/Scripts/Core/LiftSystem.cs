@@ -12,6 +12,7 @@ namespace SkiResortTycoon.Core
         private List<LiftData> _lifts;
         private int _nextLiftId = 1;
         private TerrainData _terrain;
+        private SnapRegistry _snapRegistry;
         
         // Configurable costs and constraints
         public int BaseCost { get; set; } = 5000;           // Base cost per lift
@@ -22,9 +23,10 @@ namespace SkiResortTycoon.Core
         
         public List<LiftData> Lifts => _lifts;
         
-        public LiftSystem(TerrainData terrain)
+        public LiftSystem(TerrainData terrain, SnapRegistry snapRegistry)
         {
             _terrain = terrain;
+            _snapRegistry = snapRegistry;
             _lifts = new List<LiftData>();
         }
         
@@ -145,8 +147,47 @@ namespace SkiResortTycoon.Core
             // Add to lift list
             _lifts.Add(lift);
             
+            // Register snap points
+            RegisterSnapPoints(lift);
+            
             errorMessage = "";
             return true;
+        }
+        
+        /// <summary>
+        /// Registers snap points for a lift.
+        /// </summary>
+        private void RegisterSnapPoints(LiftData lift)
+        {
+            if (_snapRegistry == null) return;
+            
+            // Register bottom station
+            var bottomSnap = new SnapPoint(
+                SnapPointType.LiftBottom,
+                lift.BottomStation,
+                lift.LiftId,
+                lift.Name
+            );
+            _snapRegistry.Register(bottomSnap);
+            
+            // Register top station
+            var topSnap = new SnapPoint(
+                SnapPointType.LiftTop,
+                lift.TopStation,
+                lift.LiftId,
+                lift.Name
+            );
+            _snapRegistry.Register(topSnap);
+        }
+        
+        /// <summary>
+        /// Unregisters snap points for a lift.
+        /// </summary>
+        private void UnregisterSnapPoints(LiftData lift)
+        {
+            if (_snapRegistry == null) return;
+            
+            _snapRegistry.UnregisterByOwner(lift.LiftId);
         }
         
         /// <summary>
@@ -154,6 +195,9 @@ namespace SkiResortTycoon.Core
         /// </summary>
         public void RemoveLift(LiftData lift)
         {
+            // Unregister snap points
+            UnregisterSnapPoints(lift);
+            
             // Free up tiles
             var bottomTile = _terrain.Grid.GetTile(lift.BottomStation);
             var topTile = _terrain.Grid.GetTile(lift.TopStation);

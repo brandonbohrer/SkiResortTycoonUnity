@@ -20,12 +20,14 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private bool _debugMode = true;
         
         private LiftSystem _liftSystem;
+        private WorldConnectivity _connectivity;
         private bool _isBuildMode = false;
         private bool _hasBottomStation = false;
         private TileCoord _bottomStation;
         private LiftData _currentLift;
         
         public LiftSystem LiftSystem => _liftSystem;
+        public WorldConnectivity Connectivity => _connectivity;
         public bool IsBuildMode => _isBuildMode;
         
         void Start()
@@ -43,7 +45,14 @@ namespace SkiResortTycoon.UnityBridge
             // Lazy initialization - create lift system when first needed
             if (_liftSystem == null && _gridRenderer != null && _gridRenderer.TerrainData != null)
             {
-                _liftSystem = new LiftSystem(_gridRenderer.TerrainData);
+                // Create world connectivity (shared snap point registry)
+                if (_connectivity == null)
+                {
+                    _connectivity = new WorldConnectivity();
+                    Debug.Log("[LiftBuilder] WorldConnectivity created!");
+                }
+                
+                _liftSystem = new LiftSystem(_gridRenderer.TerrainData, _connectivity.Registry);
                 Debug.Log("[LiftBuilder] LiftSystem initialized successfully!");
             }
         }
@@ -160,12 +169,20 @@ namespace SkiResortTycoon.UnityBridge
                 
                 if (success)
                 {
+                    // Rebuild connections
+                    _connectivity.RebuildConnections();
+                    
+                    // Log lift info
                     Debug.Log($"=== LIFT BUILT ===");
                     Debug.Log($"Lift ID: {_currentLift.LiftId}");
                     Debug.Log($"Length: {_currentLift.Length} tiles");
                     Debug.Log($"Elevation Gain: {_currentLift.ElevationGain} units");
                     Debug.Log($"Cost: ${_currentLift.BuildCost}");
                     Debug.Log($"Money Remaining: ${_simulationRunner.Sim.State.Money}");
+                    
+                    // Log connectivity info
+                    var connectedTrails = _connectivity.Connections.GetTrailsFromLift(_currentLift.LiftId);
+                    Debug.Log($"Connected to {connectedTrails.Count} trail(s)");
                     Debug.Log($"==================");
                 }
                 else

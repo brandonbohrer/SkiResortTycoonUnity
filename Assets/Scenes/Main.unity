@@ -750,6 +750,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UnityBridge.TrailDrawer
   _gridRenderer: {fileID: 1028572656}
+  _liftBuilder: {fileID: 1504220261}
   _camera: {fileID: 1543875374}
   _tileSize: 1
   _minPointSpacing: 1
@@ -1260,6 +1261,7 @@ GameObject:
   - component: {fileID: 1504220262}
   - component: {fileID: 1504220261}
   - component: {fileID: 1504220260}
+  - component: {fileID: 1504220263}
   m_Layer: 0
   m_Name: LiftSystem
   m_TagString: Untagged
@@ -1318,6 +1320,29 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1504220263
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1504220259}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UnityBridge.SnapPointDebugVisualizer
+  _liftBuilder: {fileID: 1504220261}
+  _showSnapPoints: 1
+  _showConnections: 1
+  _tileSize: 1
+  _snapPointSize: 0.3
+  _connectionLineWidth: 0.2
+  _liftBottomColor: {r: 1, g: 0, b: 0, a: 1}
+  _liftTopColor: {r: 0, g: 1, b: 1, a: 1}
+  _trailStartColor: {r: 0, g: 1, b: 0, a: 1}
+  _trailEndColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  _connectionColor: {r: 1, g: 1, b: 0, a: 0.5}
 --- !u!1 &1543875372
 GameObject:
   m_ObjectHideFlags: 0

@@ -12,6 +12,7 @@ namespace SkiResortTycoon.UnityBridge
     {
         [Header("References")]
         [SerializeField] private GridDebugRenderer _gridRenderer;
+        [SerializeField] private LiftBuilder _liftBuilder;  // Reference to get connectivity
         [SerializeField] private Camera _camera;
         
         [Header("Drawing Settings")]
@@ -41,7 +42,14 @@ namespace SkiResortTycoon.UnityBridge
             // Lazy initialization - create trail system when first needed
             if (_trailSystem == null && _gridRenderer != null && _gridRenderer.TerrainData != null)
             {
-                _trailSystem = new TrailSystem(_gridRenderer.TerrainData);
+                // Get connectivity from LiftBuilder (shared snap registry)
+                SnapRegistry registry = null;
+                if (_liftBuilder != null && _liftBuilder.Connectivity != null)
+                {
+                    registry = _liftBuilder.Connectivity.Registry;
+                }
+                
+                _trailSystem = new TrailSystem(_gridRenderer.TerrainData, registry);
                 Debug.Log("TrailDrawer initialized successfully!");
             }
         }
@@ -158,6 +166,12 @@ namespace SkiResortTycoon.UnityBridge
                 // Calculate difficulty and get detailed stats
                 var stats = _trailSystem.CalculateDifficulty(_currentTrail);
                 
+                // Rebuild connections
+                if (_liftBuilder != null && _liftBuilder.Connectivity != null)
+                {
+                    _liftBuilder.Connectivity.RebuildConnections();
+                }
+                
                 Debug.Log($"=== TRAIL CREATED ===");
                 Debug.Log($"Trail ID: {_currentTrail.TrailId}");
                 Debug.Log($"Points: {_currentTrail.Length}");
@@ -169,6 +183,14 @@ namespace SkiResortTycoon.UnityBridge
                 Debug.Log($"MaxSegmentGrade: {stats.MaxSegmentGrade:F3} ({stats.MaxSegmentGrade * 100:F1}%) at segment {stats.MaxGradeSegment}");
                 Debug.Log($"--- Thresholds ---");
                 Debug.Log($"Green: < 12%, Blue: 12-22%, Black: 22-35%, Double Black: > 35%");
+                
+                // Log connectivity info
+                if (_liftBuilder != null && _liftBuilder.Connectivity != null)
+                {
+                    var connectedLifts = _liftBuilder.Connectivity.Connections.GetLiftsToTrail(_currentTrail.TrailId);
+                    Debug.Log($"Accessible by {connectedLifts.Count} lift(s)");
+                }
+                
                 Debug.Log($"==================");
             }
             else

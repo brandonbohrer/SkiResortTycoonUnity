@@ -12,6 +12,7 @@ namespace SkiResortTycoon.Core
         private List<TrailData> _trails;
         private int _nextTrailId = 1;
         private TerrainData _terrain;
+        private SnapRegistry _snapRegistry;
         
         // Configurable validation thresholds
         public int MinPoints { get; set; } = 3;                    // Minimum trail points
@@ -21,9 +22,10 @@ namespace SkiResortTycoon.Core
         
         public List<TrailData> Trails => _trails;
         
-        public TrailSystem(TerrainData terrain)
+        public TrailSystem(TerrainData terrain, SnapRegistry snapRegistry = null)
         {
             _terrain = terrain;
+            _snapRegistry = snapRegistry;
             _trails = new List<TrailData>();
         }
         
@@ -213,7 +215,51 @@ namespace SkiResortTycoon.Core
                 trail.Difficulty = TrailDifficulty.Green;
             }
             
+            // Register snap points now that trail is finalized
+            RegisterSnapPoints(trail);
+            
             return stats;
+        }
+        
+        /// <summary>
+        /// Registers snap points for a trail.
+        /// </summary>
+        private void RegisterSnapPoints(TrailData trail)
+        {
+            if (_snapRegistry == null) return;
+            
+            var start = trail.GetStart();
+            var end = trail.GetEnd();
+            
+            if (!start.HasValue || !end.HasValue) return;
+            
+            // Register trail start (top of trail)
+            var startSnap = new SnapPoint(
+                SnapPointType.TrailStart,
+                start.Value,
+                trail.TrailId,
+                trail.Name
+            );
+            _snapRegistry.Register(startSnap);
+            
+            // Register trail end (bottom of trail)
+            var endSnap = new SnapPoint(
+                SnapPointType.TrailEnd,
+                end.Value,
+                trail.TrailId,
+                trail.Name
+            );
+            _snapRegistry.Register(endSnap);
+        }
+        
+        /// <summary>
+        /// Unregisters snap points for a trail.
+        /// </summary>
+        private void UnregisterSnapPoints(TrailData trail)
+        {
+            if (_snapRegistry == null) return;
+            
+            _snapRegistry.UnregisterByOwner(trail.TrailId);
         }
         
         /// <summary>
@@ -231,6 +277,9 @@ namespace SkiResortTycoon.Core
         /// </summary>
         public void RemoveTrail(TrailData trail)
         {
+            // Unregister snap points
+            UnregisterSnapPoints(trail);
+            
             _trails.Remove(trail);
         }
         

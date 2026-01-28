@@ -100,14 +100,6 @@ namespace SkiResortTycoon.UnityBridge
                 lineRenderer.endColor = trailColor;
                 lineRenderer.enabled = true; // Make sure it's enabled
                 UpdateLinePositions(lineRenderer, trail.PathPoints);
-                
-                // Debug - comprehensive check
-                Debug.Log($"Trail {trail.TrailId}: " +
-                         $"Diff={trail.Difficulty}, Color={trailColor}, " +
-                         $"Positions={trail.PathPoints.Count}, " +
-                         $"LR.enabled={lineRenderer.enabled}, " +
-                         $"LR.positionCount={lineRenderer.positionCount}, " +
-                         $"GameObject.active={lineRenderer.gameObject.activeSelf}");
             }
         }
         

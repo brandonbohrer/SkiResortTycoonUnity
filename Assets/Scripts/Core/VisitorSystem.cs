@@ -13,6 +13,9 @@ namespace SkiResortTycoon.Core
         private float _visitorsPerLift = 0.2f;
         private float _visitorsPerTrail = 0.15f;
         
+        // Satisfaction multiplier (set by Simulation)
+        public float SatisfactionMultiplier { get; set; } = 1.0f;
+        
         /// <summary>
         /// Accumulates visitors based on lifts and trails.
         /// Converts fractional visitors to whole visitors.
@@ -26,6 +29,9 @@ namespace SkiResortTycoon.Core
             float visitorsPerMinute = _baseVisitorsPerMinute 
                 + (state.LiftsBuilt * _visitorsPerLift)
                 + (state.TrailsBuilt * _visitorsPerTrail);
+            
+            // Apply satisfaction multiplier
+            visitorsPerMinute *= SatisfactionMultiplier;
             
             // Accumulate fractional visitors
             _fractionalVisitors += visitorsPerMinute * minutesPassed;

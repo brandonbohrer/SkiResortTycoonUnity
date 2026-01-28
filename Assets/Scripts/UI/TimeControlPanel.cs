@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using SkiResortTycoon.Core;
+using SkiResortTycoon.UnityBridge;
 
 namespace SkiResortTycoon.UI
 {

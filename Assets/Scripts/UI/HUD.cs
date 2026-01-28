@@ -1,6 +1,7 @@
 using UnityEngine;
 using TMPro;
 using SkiResortTycoon.Core;
+using SkiResortTycoon.UnityBridge;
 
 namespace SkiResortTycoon.UI
 {
@@ -23,15 +24,36 @@ namespace SkiResortTycoon.UI
             }
             
             SimulationState state = _simulationRunner.Sim.State;
+            float satisfaction = _simulationRunner.Sim.Satisfaction.Satisfaction;
             
             // Format time as HH:MM AM/PM
             string timeFormatted = FormatTime(state.TimeMinutes);
+            
+            // Format satisfaction with color
+            string satisfactionText = GetSatisfactionText(satisfaction);
             
             // Build the HUD display with nice formatting
             _hudText.text = $"Day {state.DayIndex}\n" +
                            $"Time: {timeFormatted}\n" +
                            $"Visitors Today: {state.VisitorsToday}\n" +
-                           $"Money: ${state.Money:N0}";
+                           $"Money: ${state.Money:N0}\n" +
+                           $"Satisfaction: {satisfactionText}";
+        }
+        
+        private string GetSatisfactionText(float satisfaction)
+        {
+            string color = "white";
+            
+            if (satisfaction >= 1.1f)
+                color = "#00ff00"; // Green - very satisfied
+            else if (satisfaction >= 0.9f)
+                color = "white"; // Normal
+            else if (satisfaction >= 0.7f)
+                color = "#ffaa00"; // Orange - warning
+            else
+                color = "#ff0000"; // Red - unhappy
+            
+            return $"<color={color}>{satisfaction:F2}</color>";
         }
         
         /// <summary>

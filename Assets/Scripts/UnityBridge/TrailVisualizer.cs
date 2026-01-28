@@ -16,7 +16,7 @@ namespace SkiResortTycoon.UnityBridge
         [Header("Visual Settings")]
         [SerializeField] private float _tileSize = 1f;
         [SerializeField] private float _lineWidth = 0.3f;
-        [SerializeField] private float _lineZOffset = -0.5f;
+        [SerializeField] private float _lineZOffset = -1f; // Closer to camera than terrain
         
         [Header("Difficulty Colors")]
         [SerializeField] private Color _colorGreen = new Color(0.2f, 0.8f, 0.2f);
@@ -79,21 +79,35 @@ namespace SkiResortTycoon.UnityBridge
                     trailObj.transform.SetParent(transform);
                     LineRenderer lr = trailObj.AddComponent<LineRenderer>();
                     
-                    // Configure line renderer
+                    // Configure line renderer - simpler approach
                     lr.material = new Material(Shader.Find("Sprites/Default"));
                     lr.startWidth = _lineWidth;
                     lr.endWidth = _lineWidth;
                     lr.useWorldSpace = true;
-                    lr.sortingOrder = 100;
+                    lr.textureMode = LineTextureMode.Tile;
+                    
+                    // Use VERY HIGH sorting order to be above ALL terrain
+                    lr.sortingLayerName = "Default";
+                    lr.sortingOrder = 32767; // Maximum short value - highest possible
                     
                     _trailRenderers[trail.TrailId] = lr;
                 }
                 
-                // Update line
+                // Update line - SET COLOR BASED ON ACTUAL DIFFICULTY
                 LineRenderer lineRenderer = _trailRenderers[trail.TrailId];
-                lineRenderer.startColor = GetDifficultyColor(trail.Difficulty);
-                lineRenderer.endColor = GetDifficultyColor(trail.Difficulty);
+                Color trailColor = GetDifficultyColor(trail.Difficulty);
+                lineRenderer.startColor = trailColor;
+                lineRenderer.endColor = trailColor;
+                lineRenderer.enabled = true; // Make sure it's enabled
                 UpdateLinePositions(lineRenderer, trail.PathPoints);
+                
+                // Debug - comprehensive check
+                Debug.Log($"Trail {trail.TrailId}: " +
+                         $"Diff={trail.Difficulty}, Color={trailColor}, " +
+                         $"Positions={trail.PathPoints.Count}, " +
+                         $"LR.enabled={lineRenderer.enabled}, " +
+                         $"LR.positionCount={lineRenderer.positionCount}, " +
+                         $"GameObject.active={lineRenderer.gameObject.activeSelf}");
             }
         }
         
@@ -111,7 +125,9 @@ namespace SkiResortTycoon.UnityBridge
                     _currentTrailRenderer.startWidth = _lineWidth * 1.5f;
                     _currentTrailRenderer.endWidth = _lineWidth * 1.5f;
                     _currentTrailRenderer.useWorldSpace = true;
-                    _currentTrailRenderer.sortingOrder = 101;
+                    _currentTrailRenderer.textureMode = LineTextureMode.Tile;
+                    _currentTrailRenderer.sortingLayerName = "Default";
+                    _currentTrailRenderer.sortingOrder = 32767; // Max value
                 }
                 
                 _currentTrailRenderer.startColor = _colorDrawing;
@@ -151,7 +167,8 @@ namespace SkiResortTycoon.UnityBridge
                 worldY += height * 0.1f; // Match heightScale
             }
             
-            return new Vector3(worldX, worldY, _lineZOffset);
+            // Use Z = -5 to be in front of terrain (terrain is at z=0)
+            return new Vector3(worldX, worldY, -5f);
         }
         
         private Color GetDifficultyColor(TrailDifficulty difficulty)

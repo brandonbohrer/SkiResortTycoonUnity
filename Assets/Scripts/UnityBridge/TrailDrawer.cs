@@ -155,17 +155,25 @@ namespace SkiResortTycoon.UnityBridge
             
             if (isValid)
             {
-                // Calculate difficulty
-                _trailSystem.CalculateDifficulty(_currentTrail);
+                // Calculate difficulty and get detailed stats
+                var stats = _trailSystem.CalculateDifficulty(_currentTrail);
                 
-                Debug.Log($"Trail created! Length: {_currentTrail.Length}, " +
-                         $"Difficulty: {_currentTrail.Difficulty}, " +
-                         $"Elevation Drop: {_currentTrail.TotalElevationDrop}, " +
-                         $"Avg Slope: {_currentTrail.AverageSlope:F2}");
+                Debug.Log($"=== TRAIL CREATED ===");
+                Debug.Log($"Trail ID: {_currentTrail.TrailId}");
+                Debug.Log($"Points: {_currentTrail.Length}");
+                Debug.Log($"Difficulty: {_currentTrail.Difficulty}");
+                Debug.Log($"--- Measurements ---");
+                Debug.Log($"Drop: {stats.TotalDrop:F1} height units");
+                Debug.Log($"Run: {stats.TotalRun:F1} tiles");
+                Debug.Log($"AvgGrade: {stats.AvgGrade:F3} ({stats.AvgGrade * 100:F1}%)");
+                Debug.Log($"MaxSegmentGrade: {stats.MaxSegmentGrade:F3} ({stats.MaxSegmentGrade * 100:F1}%) at segment {stats.MaxGradeSegment}");
+                Debug.Log($"--- Thresholds ---");
+                Debug.Log($"Green: < 12%, Blue: 12-22%, Black: 22-35%, Double Black: > 35%");
+                Debug.Log($"==================");
             }
             else
             {
-                Debug.LogWarning("Trail invalid (too short or doesn't go downhill enough). Removing.");
+                Debug.LogWarning("Trail invalid (too short, doesn't go downhill enough, or too many uphill segments). Removing.");
                 _trailSystem.RemoveTrail(_currentTrail);
             }
             

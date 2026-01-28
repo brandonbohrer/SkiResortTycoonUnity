@@ -49,10 +49,9 @@ namespace SkiResortTycoon.UnityBridge
         
         void Update()
         {
-            // TODO: Re-enable input handling with new Input System
-            // HandlePanKeyboard();
-            // HandlePanMouse();
-            // HandleZoom();
+            HandlePanKeyboard();
+            HandlePanMouse();
+            HandleZoom();
             ClampPosition();
         }
         

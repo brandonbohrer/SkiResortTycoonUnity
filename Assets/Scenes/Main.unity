@@ -668,13 +668,20 @@ MonoBehaviour:
   _gridWidth: 64
   _gridHeight: 64
   _seed: 12345
+  _generateTerrain: 1
+  _archetype: 0
   _tileSize: 1
   _heightScale: 0.1
-  _showGrid: 1
+  _showGridLines: 0
   _gridColor: {r: 1, g: 1, b: 1, a: 0.2}
+  _showHeightColors: 1
+  _showSlopeShading: 1
+  _slopeShadingStrength: 0.3
+  _highlightBaseArea: 0
   _colorLow: {r: 0.2, g: 0.4, b: 0.8, a: 1}
   _colorMid: {r: 0.9, g: 0.9, b: 0.9, a: 1}
   _colorHigh: {r: 0.6, g: 0.3, b: 0.1, a: 1}
+  _maxHeight: 20
 --- !u!4 &1028572657
 Transform:
   m_ObjectHideFlags: 0
@@ -685,6 +692,79 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1091263533
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1091263536}
+  - component: {fileID: 1091263535}
+  - component: {fileID: 1091263534}
+  m_Layer: 0
+  m_Name: TrailSystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1091263534
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1091263533}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7143be1cf927c485bb4a758c02ccb226, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UnityBridge.TrailVisualizer
+  _trailDrawer: {fileID: 1091263535}
+  _gridRenderer: {fileID: 1028572656}
+  _tileSize: 1
+  _lineWidth: 0.2
+  _lineZOffset: -0.5
+  _colorGreen: {r: 0.2, g: 0.8, b: 0.2, a: 1}
+  _colorBlue: {r: 0.2, g: 0.4, b: 1, a: 1}
+  _colorBlack: {r: 0.1, g: 0.1, b: 0.1, a: 1}
+  _colorDoubleBlack: {r: 1, g: 0.009498768, b: 0, a: 1}
+  _colorDrawing: {r: 1, g: 1, b: 0.5, a: 0.8}
+--- !u!114 &1091263535
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1091263533}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 52e3a517c213e4ff18f101e4dbeb9ce1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UnityBridge.TrailDrawer
+  _gridRenderer: {fileID: 1028572656}
+  _camera: {fileID: 1543875374}
+  _tileSize: 1
+  _minPointSpacing: 1
+  _drawKey: 116
+  _debugMode: 1
+--- !u!4 &1091263536
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1091263533}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 227.7186, y: 233.51395, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1810,7 +1890,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Button
+  m_text: Pause
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -2141,3 +2221,4 @@ SceneRoots:
   - {fileID: 1673188475}
   - {fileID: 1289912293}
   - {fileID: 1028572657}
+  - {fileID: 1091263536}

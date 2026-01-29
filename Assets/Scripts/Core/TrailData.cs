@@ -76,6 +76,14 @@ namespace SkiResortTycoon.Core
                 return PathPoints[PathPoints.Count - 1];
             return null;
         }
+        
+        /// <summary>
+        /// Reverses the trail direction (used when user draws uphill).
+        /// </summary>
+        public void ReverseDirection()
+        {
+            PathPoints.Reverse();
+        }
     }
 }
 

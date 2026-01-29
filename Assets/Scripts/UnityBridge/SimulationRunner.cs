@@ -54,13 +54,20 @@ namespace SkiResortTycoon.UnityBridge
             // Check if all systems are ready
             if (_liftBuilder != null && _liftBuilder.LiftSystem != null &&
                 _liftBuilder.Connectivity != null &&
-                _trailDrawer != null && _trailDrawer.TrailSystem != null)
+                _trailDrawer != null && _trailDrawer.TrailSystem != null &&
+                _trailDrawer.GridRenderer != null && _trailDrawer.GridRenderer.TerrainData != null)
             {
                 // Wire up the simulation with the systems
                 _sim.SetSystems(
                     _liftBuilder.LiftSystem,
                     _trailDrawer.TrailSystem,
                     _liftBuilder.Connectivity.Connections
+                );
+                
+                // Wire up registry and terrain for pathfinding
+                _sim.SetRegistryAndTerrain(
+                    _liftBuilder.Connectivity.Registry,
+                    _trailDrawer.GridRenderer.TerrainData
                 );
                 
                 _systemsWired = true;
@@ -73,17 +80,18 @@ namespace SkiResortTycoon.UnityBridge
             // Store stats before ending day (visitor count is about to reset)
             int visitorsToday = _sim.State.VisitorsToday;
             
-            // End day and get revenue
+            // End day and get revenue (this also calculates stats internally)
             _lastEndOfDayRevenue = _sim.EndDay();
             
-            // Get detailed stats (if systems are wired)
+            // Get detailed stats for logging (re-simulate to get stats)
             if (_systemsWired)
             {
                 _lastDayStats = _sim.VisitorFlow.SimulateDay(
                     visitorsToday,
                     _liftBuilder.LiftSystem.Lifts,
                     _trailDrawer.TrailSystem.Trails,
-                    _liftBuilder.Connectivity.Connections
+                    _liftBuilder.Connectivity.Registry,
+                    _trailDrawer.GridRenderer.TerrainData
                 );
                 
                 LogDetailedDayStats();

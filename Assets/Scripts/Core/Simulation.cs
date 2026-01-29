@@ -86,7 +86,7 @@ namespace SkiResortTycoon.Core
         
         /// <summary>
         /// Handles end-of-day logic:
-        /// - Simulates visitor flow using connection graph
+        /// - Simulates visitor flow using individual skier pathfinding
         /// - Computes revenue based on served visitors
         /// - Updates satisfaction
         /// - Applies money
@@ -102,19 +102,32 @@ namespace SkiResortTycoon.Core
             
             if (_liftSystem != null && _trailSystem != null && _connections != null)
             {
-                // Simulate the day using visitor flow system
-                dayStats = _visitorFlow.SimulateDay(
-                    _state.VisitorsToday,
-                    _liftSystem.Lifts,
-                    _trailSystem.Trails,
-                    _connections
-                );
+                // Get registry and terrain from systems
+                var registry = GetSnapRegistry();
+                var terrain = GetTerrainData();
                 
-                // Calculate revenue from served visitors only
-                revenue = dayStats.ServedVisitors * DollarsPerVisitor;
-                
-                // Update satisfaction based on performance
-                _satisfaction.UpdateSatisfaction(dayStats);
+                if (registry != null && terrain != null)
+                {
+                    // Simulate the day using visitor flow system
+                    dayStats = _visitorFlow.SimulateDay(
+                        _state.VisitorsToday,
+                        _liftSystem.Lifts,
+                        _trailSystem.Trails,
+                        registry,
+                        terrain
+                    );
+                    
+                    // Calculate revenue from served visitors only
+                    revenue = dayStats.ServedVisitors * DollarsPerVisitor;
+                    
+                    // Update satisfaction based on performance
+                    _satisfaction.UpdateSatisfaction(dayStats);
+                }
+                else
+                {
+                    // Fallback: use old system if not fully initialized
+                    revenue = _economySystem.ComputeEndOfDayRevenue(_state);
+                }
             }
             else
             {
@@ -136,13 +149,34 @@ namespace SkiResortTycoon.Core
             return revenue;
         }
         
+        // Helper to get registry (will be set by Unity bridge)
+        private SnapRegistry _snapRegistry;
+        private TerrainData _terrainData;
+        
+        public void SetRegistryAndTerrain(SnapRegistry registry, TerrainData terrain)
+        {
+            _snapRegistry = registry;
+            _terrainData = terrain;
+        }
+        
+        private SnapRegistry GetSnapRegistry()
+        {
+            return _snapRegistry;
+        }
+        
+        private TerrainData GetTerrainData()
+        {
+            return _terrainData;
+        }
+        
         /// <summary>
         /// Gets the last day's statistics (for logging).
         /// Call after EndDay().
         /// </summary>
         public DayStats GetLastDayStats()
         {
-            if (_liftSystem != null && _trailSystem != null && _connections != null)
+            if (_liftSystem != null && _trailSystem != null && _connections != null &&
+                _snapRegistry != null && _terrainData != null)
             {
                 // Re-simulate (this is a bit inefficient, but works for now)
                 // In production, we'd cache this
@@ -150,7 +184,8 @@ namespace SkiResortTycoon.Core
                     _state.VisitorsToday,
                     _liftSystem.Lifts,
                     _trailSystem.Trails,
-                    _connections
+                    _snapRegistry,
+                    _terrainData
                 );
             }
             return null;

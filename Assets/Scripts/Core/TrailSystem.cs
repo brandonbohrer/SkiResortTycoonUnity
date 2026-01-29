@@ -62,6 +62,20 @@ namespace SkiResortTycoon.Core
             int endHeight = _terrain.GetHeight(end.Value);
             float totalDrop = startHeight - endHeight;
             
+            // ENFORCE DIRECTION: Trail must go downhill (top to bottom)
+            // If drawn uphill, auto-reverse it
+            if (totalDrop < 0)
+            {
+                trail.ReverseDirection();
+                
+                // Recalculate after reversal
+                start = trail.GetStart();
+                end = trail.GetEnd();
+                startHeight = _terrain.GetHeight(start.Value);
+                endHeight = _terrain.GetHeight(end.Value);
+                totalDrop = startHeight - endHeight;
+            }
+            
             trail.TotalElevationDrop = totalDrop;
             
             // Must go downhill overall (configurable minimum)
@@ -289,6 +303,14 @@ namespace SkiResortTycoon.Core
         public List<TrailData> GetAllTrails()
         {
             return new List<TrailData>(_trails);
+        }
+        
+        /// <summary>
+        /// Gets a trail by ID.
+        /// </summary>
+        public TrailData GetTrail(int trailId)
+        {
+            return _trails.Find(t => t.TrailId == trailId);
         }
     }
     

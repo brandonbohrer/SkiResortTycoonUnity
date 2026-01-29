@@ -214,6 +214,14 @@ namespace SkiResortTycoon.Core
         {
             return new List<LiftData>(_lifts);
         }
+        
+        /// <summary>
+        /// Gets a lift by ID.
+        /// </summary>
+        public LiftData GetLift(int liftId)
+        {
+            return _lifts.Find(l => l.LiftId == liftId);
+        }
     }
 }
 

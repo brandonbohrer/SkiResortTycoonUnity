@@ -44,35 +44,50 @@ namespace SkiResortTycoon.Core
     }
     
     /// <summary>
-    /// Manages visitor flow, trail selection, and statistics.
+    /// Manages visitor flow using individual skier pathfinding.
     /// Pure C# - no Unity types.
     /// </summary>
     public class VisitorFlowSystem
     {
         private SkierDistribution _distribution;
         private Random _random;
+        private NetworkGraph _network;
+        private SkierPathfinder _pathfinder;
         
         // Configuration
         public int RunsPerVisitor { get; set; } = 5;  // How many runs each visitor attempts
+        public int RandomSeed { get; set; } = 0;
         
         public VisitorFlowSystem(int seed = 0)
         {
             _distribution = new SkierDistribution();
+            RandomSeed = seed;
             _random = new Random(seed);
         }
         
         /// <summary>
-        /// Simulates a day of visitor flow.
+        /// Simulates a day of visitor flow using individual skier pathfinding.
         /// Returns statistics about served/unserved visitors.
         /// </summary>
         public DayStats SimulateDay(
             int visitorCount,
             List<LiftData> lifts,
             List<TrailData> trails,
-            ConnectionGraph connections)
+            SnapRegistry registry,
+            TerrainData terrain)
         {
             DayStats stats = new DayStats();
             stats.TotalVisitors = visitorCount;
+            
+            // Build network graph
+            _network = new NetworkGraph(registry, terrain);
+            _network.BuildGraph();
+            
+            // Create pathfinder
+            _pathfinder = new SkierPathfinder(_network, registry, _distribution, trails, _random);
+            
+            // Find reachable trails once (optimization)
+            List<TrailData> reachableTrails = _pathfinder.FindReachableTrails();
             
             // Generate visitors
             List<Skier> visitors = GenerateVisitors(visitorCount);
@@ -83,37 +98,10 @@ namespace SkiResortTycoon.Core
                 stats.VisitorsBySkill[visitor.Skill]++;
             }
             
-            // Get accessible trails for each lift
-            var accessibleTrailsMap = BuildAccessibleTrailsMap(lifts, trails, connections);
-            
-            // Flatten to get all unique accessible trails
-            HashSet<int> allAccessibleTrailIds = new HashSet<int>();
-            foreach (var trailList in accessibleTrailsMap.Values)
-            {
-                foreach (var trail in trailList)
-                {
-                    allAccessibleTrailIds.Add(trail.TrailId);
-                }
-            }
-            
-            List<TrailData> accessibleTrails = trails.Where(t => allAccessibleTrailIds.Contains(t.TrailId)).ToList();
-            
-            // Each visitor attempts multiple runs
+            // Simulate each visitor individually
             foreach (var visitor in visitors)
             {
-                bool served = false;
-                
-                for (int run = 0; run < RunsPerVisitor; run++)
-                {
-                    var chosenTrail = ChooseTrail(visitor, accessibleTrails);
-                    
-                    if (chosenTrail != null)
-                    {
-                        visitor.RunsCompleted++;
-                        stats.RunsByDifficulty[chosenTrail.Difficulty]++;
-                        served = true;
-                    }
-                }
+                bool served = SimulateSkier(visitor, reachableTrails, stats);
                 
                 visitor.WasServed = served;
                 
@@ -133,6 +121,53 @@ namespace SkiResortTycoon.Core
         }
         
         /// <summary>
+        /// Simulates a single skier's day.
+        /// Returns true if served (found at least one valid destination).
+        /// </summary>
+        private bool SimulateSkier(Skier skier, List<TrailData> reachableTrails, DayStats stats)
+        {
+            // Filter by skill caps
+            var allowedTrails = reachableTrails
+                .Where(t => _distribution.IsAllowed(skier.Skill, t.Difficulty))
+                .ToList();
+            
+            if (allowedTrails.Count == 0)
+            {
+                // No trails this skier can access
+                return false;
+            }
+            
+            // Skier attempts multiple runs
+            bool servedAtLeastOnce = false;
+            
+            for (int run = 0; run < RunsPerVisitor; run++)
+            {
+                // Choose destination trail (weighted random)
+                TrailData destination = _pathfinder.ChooseDestinationTrail(skier, reachableTrails);
+                
+                if (destination == null)
+                    continue;
+                
+                // Find path to destination
+                List<TrailData> pathTrails = _pathfinder.FindPathToTrail(destination);
+                
+                if (pathTrails.Count == 0)
+                    continue;
+                
+                // "Ski" all trails along the path
+                foreach (var trail in pathTrails)
+                {
+                    skier.RunsCompleted++;
+                    stats.RunsByDifficulty[trail.Difficulty]++;
+                }
+                
+                servedAtLeastOnce = true;
+            }
+            
+            return servedAtLeastOnce;
+        }
+        
+        /// <summary>
         /// Generates a list of visitors based on skill distribution.
         /// </summary>
         private List<Skier> GenerateVisitors(int count)
@@ -149,83 +184,20 @@ namespace SkiResortTycoon.Core
         }
         
         /// <summary>
-        /// Builds a map of LiftId -> accessible trails.
-        /// </summary>
-        private Dictionary<int, List<TrailData>> BuildAccessibleTrailsMap(
-            List<LiftData> lifts,
-            List<TrailData> trails,
-            ConnectionGraph connections)
-        {
-            Dictionary<int, List<TrailData>> map = new Dictionary<int, List<TrailData>>();
-            
-            foreach (var lift in lifts)
-            {
-                var connectedTrailIds = connections.GetTrailsFromLift(lift.LiftId);
-                var connectedTrails = trails.Where(t => connectedTrailIds.Contains(t.TrailId)).ToList();
-                map[lift.LiftId] = connectedTrails;
-            }
-            
-            return map;
-        }
-        
-        /// <summary>
-        /// Chooses a trail for a visitor based on skill, caps, and preferences.
-        /// Returns null if no suitable trail found.
-        /// </summary>
-        private TrailData ChooseTrail(Skier visitor, List<TrailData> accessibleTrails)
-        {
-            if (accessibleTrails == null || accessibleTrails.Count == 0)
-                return null;
-            
-            // Filter by hard caps (skill level restrictions)
-            var allowedTrails = accessibleTrails
-                .Where(t => _distribution.IsAllowed(visitor.Skill, t.Difficulty))
-                .ToList();
-            
-            if (allowedTrails.Count == 0)
-                return null;
-            
-            // Build weighted list
-            List<(TrailData trail, float weight)> weightedTrails = new List<(TrailData, float)>();
-            float totalWeight = 0f;
-            
-            foreach (var trail in allowedTrails)
-            {
-                float weight = _distribution.GetPreference(visitor.Skill, trail.Difficulty);
-                if (weight > 0)
-                {
-                    weightedTrails.Add((trail, weight));
-                    totalWeight += weight;
-                }
-            }
-            
-            if (weightedTrails.Count == 0)
-                return null;
-            
-            // Weighted random selection
-            float roll = (float)_random.NextDouble() * totalWeight;
-            float cumulative = 0f;
-            
-            foreach (var (trail, weight) in weightedTrails)
-            {
-                cumulative += weight;
-                if (roll <= cumulative)
-                {
-                    return trail;
-                }
-            }
-            
-            // Fallback (shouldn't happen, but return last trail)
-            return weightedTrails[weightedTrails.Count - 1].trail;
-        }
-        
-        /// <summary>
         /// Gets the skier distribution for customization.
         /// </summary>
         public SkierDistribution GetDistribution()
         {
             return _distribution;
         }
+        
+        /// <summary>
+        /// Sets a new random seed (for testing/determinism).
+        /// </summary>
+        public void SetSeed(int seed)
+        {
+            RandomSeed = seed;
+            _random = new Random(seed);
+        }
     }
 }
-

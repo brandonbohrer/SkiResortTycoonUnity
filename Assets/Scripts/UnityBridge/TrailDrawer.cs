@@ -230,6 +230,7 @@ namespace SkiResortTycoon.UnityBridge
         /// Gets the trail system for external access.
         /// </summary>
         public TrailSystem TrailSystem => _trailSystem;
+        public GridDebugRenderer GridRenderer => _gridRenderer;
         
         /// <summary>
         /// Gets the currently drawing trail (or null).

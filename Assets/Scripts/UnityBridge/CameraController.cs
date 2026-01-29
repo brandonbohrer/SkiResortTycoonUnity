@@ -18,9 +18,9 @@ namespace SkiResortTycoon.UnityBridge
         
         [Header("Zoom Settings")]
         [SerializeField] private float _zoomSpeed = 2f;
-        [SerializeField] private float _minZoom = 2f;
-        [SerializeField] private float _maxZoom = 20f;
-        [SerializeField] private float _defaultZoom = 10f;
+        [SerializeField] private float _minZoom = 50f;
+        [SerializeField] private float _maxZoom = 1000f;
+        [SerializeField] private float _defaultZoom = 500f;
         
         [Header("Bounds (Optional)")]
         [SerializeField] private bool _enableBounds = true;

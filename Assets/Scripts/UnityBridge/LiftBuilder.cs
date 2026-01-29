@@ -10,7 +10,7 @@ namespace SkiResortTycoon.UnityBridge
     public class LiftBuilder : MonoBehaviour
     {
         [Header("References")]
-        [SerializeField] private GridDebugRenderer _gridRenderer;
+        [SerializeField] private MountainManager _mountainManager;
         [SerializeField] private SimulationRunner _simulationRunner;
         [SerializeField] private Camera _camera;
         
@@ -41,7 +41,7 @@ namespace SkiResortTycoon.UnityBridge
         private void EnsureInitialized()
         {
             // Lazy initialization - create lift system when first needed
-            if (_liftSystem == null && _gridRenderer != null && _gridRenderer.TerrainData != null)
+            if (_liftSystem == null && _mountainManager != null && _mountainManager.TerrainData != null)
             {
                 // Create world connectivity (shared snap point registry)
                 if (_connectivity == null)
@@ -49,7 +49,7 @@ namespace SkiResortTycoon.UnityBridge
                     _connectivity = new WorldConnectivity();
                 }
                 
-                _liftSystem = new LiftSystem(_gridRenderer.TerrainData, _connectivity.Registry);
+                _liftSystem = new LiftSystem(_mountainManager.TerrainData, _connectivity.Registry);
             }
         }
         
@@ -191,9 +191,9 @@ namespace SkiResortTycoon.UnityBridge
                 
                 TileCoord coord = new TileCoord(tileX, tileY);
                 
-                if (_gridRenderer != null && 
-                    _gridRenderer.TerrainData != null && 
-                    _gridRenderer.TerrainData.Grid.InBounds(coord))
+                if (_mountainManager != null && 
+                    _mountainManager.TerrainData != null && 
+                    _mountainManager.TerrainData.Grid.InBounds(coord))
                 {
                     return coord;
                 }

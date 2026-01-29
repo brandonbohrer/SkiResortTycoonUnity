@@ -11,7 +11,7 @@ namespace SkiResortTycoon.UnityBridge
     {
         [Header("References")]
         [SerializeField] private LiftBuilder _liftBuilder;
-        [SerializeField] private GridDebugRenderer _gridRenderer;
+        [SerializeField] private MountainManager _mountainManager;
         [SerializeField] private Camera _camera;
         
         [Header("Base Lodge Prefab")]
@@ -163,9 +163,9 @@ namespace SkiResortTycoon.UnityBridge
             float y = coord.Y * _tileSize;
             
             // Add height offset if terrain data is available
-            if (_gridRenderer != null && _gridRenderer.TerrainData != null)
+            if (_mountainManager != null && _mountainManager.TerrainData != null)
             {
-                float height = _gridRenderer.TerrainData.GetHeight(coord);
+                float height = _mountainManager.TerrainData.GetHeight(coord);
                 y += height * 0.5f; // Match the 2.5D height offset
             }
             
@@ -193,9 +193,9 @@ namespace SkiResortTycoon.UnityBridge
                 TileCoord coord = new TileCoord(tileX, tileY);
                 
                 // Check if in bounds
-                if (_gridRenderer != null && 
-                    _gridRenderer.TerrainData != null && 
-                    _gridRenderer.TerrainData.Grid.InBounds(coord))
+                if (_mountainManager != null && 
+                    _mountainManager.TerrainData != null && 
+                    _mountainManager.TerrainData.Grid.InBounds(coord))
                 {
                     return coord;
                 }

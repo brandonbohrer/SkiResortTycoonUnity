@@ -11,7 +11,7 @@ namespace SkiResortTycoon.UnityBridge
     public class TrailDrawer : MonoBehaviour
     {
         [Header("References")]
-        [SerializeField] private GridDebugRenderer _gridRenderer;
+        [SerializeField] private MountainManager _mountainManager;
         [SerializeField] private LiftBuilder _liftBuilder;  // Reference to get connectivity
         [SerializeField] private Camera _camera;
         
@@ -37,7 +37,7 @@ namespace SkiResortTycoon.UnityBridge
         private void EnsureInitialized()
         {
             // Lazy initialization - create trail system when first needed
-            if (_trailSystem == null && _gridRenderer != null && _gridRenderer.TerrainData != null)
+            if (_trailSystem == null && _mountainManager != null && _mountainManager.TerrainData != null)
             {
                 // Get connectivity from LiftBuilder (shared snap registry)
                 SnapRegistry registry = null;
@@ -46,7 +46,7 @@ namespace SkiResortTycoon.UnityBridge
                     registry = _liftBuilder.Connectivity.Registry;
                 }
                 
-                _trailSystem = new TrailSystem(_gridRenderer.TerrainData, registry);
+                _trailSystem = new TrailSystem(_mountainManager.TerrainData, registry);
             }
         }
         
@@ -69,7 +69,7 @@ namespace SkiResortTycoon.UnityBridge
             
             // Draw cursor at mouse position (visible in Scene view)
             TileCoord? coord = GetTileUnderMouse();
-            if (coord.HasValue && _gridRenderer != null && _gridRenderer.TerrainData != null)
+            if (coord.HasValue && _mountainManager != null && _mountainManager.TerrainData != null)
             {
                 Vector3 worldPos = TileToWorldPos(coord.Value);
                 Gizmos.color = Color.yellow;
@@ -206,9 +206,9 @@ namespace SkiResortTycoon.UnityBridge
                 TileCoord coord = new TileCoord(tileX, tileY);
                 
                 // Check if in bounds
-                if (_gridRenderer != null && 
-                    _gridRenderer.TerrainData != null && 
-                    _gridRenderer.TerrainData.Grid.InBounds(coord))
+                if (_mountainManager != null && 
+                    _mountainManager.TerrainData != null && 
+                    _mountainManager.TerrainData.Grid.InBounds(coord))
                 {
                     return coord;
                 }
@@ -221,7 +221,7 @@ namespace SkiResortTycoon.UnityBridge
         /// Gets the trail system for external access.
         /// </summary>
         public TrailSystem TrailSystem => _trailSystem;
-        public GridDebugRenderer GridRenderer => _gridRenderer;
+        public MountainManager GridRenderer => _mountainManager;
         
         /// <summary>
         /// Gets the currently drawing trail (or null).
@@ -239,10 +239,10 @@ namespace SkiResortTycoon.UnityBridge
             float worldY = coord.Y * _tileSize;
             
             // Add height offset if terrain available
-            if (_gridRenderer != null && _gridRenderer.TerrainData != null)
+            if (_mountainManager != null && _mountainManager.TerrainData != null)
             {
-                int height = _gridRenderer.TerrainData.GetHeight(coord);
-                worldY += height * 0.1f; // Match heightScale from GridDebugRenderer
+                int height = _mountainManager.TerrainData.GetHeight(coord);
+                worldY += height * 0.1f; // Match heightScale from MountainManager
             }
             
             return new Vector3(worldX, worldY, 0f);
@@ -258,8 +258,8 @@ namespace SkiResortTycoon.UnityBridge
             if (_trailSystem == null)
             {
                 GUI.Label(new Rect(20, 120, 280, 20), "Status: Initializing...");
-                GUI.Label(new Rect(20, 140, 280, 20), $"GridRenderer: {(_gridRenderer != null ? "OK" : "NULL")}");
-                GUI.Label(new Rect(20, 160, 280, 20), $"TerrainData: {(_gridRenderer != null && _gridRenderer.TerrainData != null ? "OK" : "NULL")}");
+                GUI.Label(new Rect(20, 140, 280, 20), $"GridRenderer: {(_mountainManager != null ? "OK" : "NULL")}");
+                GUI.Label(new Rect(20, 160, 280, 20), $"TerrainData: {(_mountainManager != null && _mountainManager.TerrainData != null ? "OK" : "NULL")}");
                 return;
             }
             

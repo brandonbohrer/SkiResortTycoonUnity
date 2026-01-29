@@ -15,22 +15,15 @@ namespace SkiResortTycoon.Core
         
         /// <summary>
         /// Creates terrain data with the specified dimensions.
+        /// Heights will be determined by raycasting the handcrafted mountain mesh.
         /// </summary>
-        public TerrainData(int width, int height, int seed = 0, bool generateTerrain = false, MountainArchetype archetype = MountainArchetype.SinglePeak)
+        public TerrainData(int width, int height, int seed = 0)
         {
             _grid = new GridSystem(width, height);
             _seed = seed;
             
-            if (generateTerrain)
-            {
-                // Generate procedural terrain
-                GenerateTerrain(archetype);
-            }
-            else
-            {
-                // Initialize with default flat terrain
-                InitializeFlat();
-            }
+            // Initialize with flat terrain (heights will be set via raycasting)
+            InitializeFlat();
         }
         
         /// <summary>
@@ -111,33 +104,6 @@ namespace SkiResortTycoon.Core
             }
         }
         
-        /// <summary>
-        /// Generates procedural terrain using the terrain generator.
-        /// </summary>
-        public void GenerateTerrain(MountainArchetype archetype = MountainArchetype.SinglePeak, TerrainGenSettings settings = null)
-        {
-            if (settings == null)
-            {
-                settings = new TerrainGenSettings
-                {
-                    Width = _grid.Width,
-                    Height = _grid.Height,
-                    MaxHeight = 20,
-                    NoiseScale = 0.05f,
-                    Octaves = 3,
-                    Persistence = 0.5f,
-                    Lacunarity = 2.0f,
-                    SmoothingPasses = 2,
-                    BaseAreaDepth = 0.25f,
-                    SlopeExponent = 1.2f,
-                    DomainWarpStrength = 15f,
-                    PeakRadiusX = 0.3f,
-                    PeakRadiusY = 0.2f
-                };
-            }
-            
-            TerrainGenerator.Generate(_grid, _seed, archetype, settings);
-        }
     }
 }
 

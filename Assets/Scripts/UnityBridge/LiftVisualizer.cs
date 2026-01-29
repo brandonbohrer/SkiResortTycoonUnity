@@ -11,7 +11,7 @@ namespace SkiResortTycoon.UnityBridge
     {
         [Header("References")]
         [SerializeField] private LiftBuilder _liftBuilder;
-        [SerializeField] private GridDebugRenderer _gridRenderer;
+        [SerializeField] private MountainManager _gridRenderer;
         
         [Header("Visual Settings")]
         [SerializeField] private float _tileSize = 1f;

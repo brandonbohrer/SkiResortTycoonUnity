@@ -32,9 +32,6 @@ namespace SkiResortTycoon.UnityBridge
             {
                 _camera = Camera.main;
             }
-            
-            // Don't initialize yet - wait for terrain to be ready
-            Debug.Log("TrailDrawer: Waiting for terrain to be ready...");
         }
         
         private void EnsureInitialized()
@@ -50,7 +47,6 @@ namespace SkiResortTycoon.UnityBridge
                 }
                 
                 _trailSystem = new TrailSystem(_gridRenderer.TerrainData, registry);
-                Debug.Log("TrailDrawer initialized successfully!");
             }
         }
         
@@ -83,12 +79,6 @@ namespace SkiResortTycoon.UnityBridge
         
         private void HandleDrawingInput()
         {
-            // Debug logging
-            if (_debugMode && Input.GetKeyDown(_drawKey))
-            {
-                Debug.Log($"Draw key pressed! Key: {_drawKey}");
-            }
-            
             // Start drawing
             if (Input.GetKeyDown(_drawKey))
             {
@@ -118,12 +108,6 @@ namespace SkiResortTycoon.UnityBridge
             {
                 FinishDrawing();
             }
-            
-            // Emergency test - if T is pressed, log it
-            if (_debugMode && Input.GetKeyDown(KeyCode.T))
-            {
-                Debug.Log("T key detected directly!");
-            }
         }
         
         private void StartDrawing(TileCoord startCoord)
@@ -132,8 +116,6 @@ namespace SkiResortTycoon.UnityBridge
             _currentTrail = _trailSystem.CreateTrail();
             _currentTrail.AddPoint(startCoord);
             _lastAddedPoint = startCoord;
-            
-            Debug.Log($"Started drawing trail at {startCoord}");
         }
         
         private void ContinueDrawing(TileCoord coord)

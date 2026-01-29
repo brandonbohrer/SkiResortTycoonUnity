@@ -15,15 +15,15 @@ namespace SkiResortTycoon.UnityBridge
         
         [Header("Visual Settings")]
         [SerializeField] private float _tileSize = 1f;
-        [SerializeField] private float _lineWidth = 0.3f;
+        [SerializeField] private float _lineWidth = 0.8f; // Much wider for visibility!
         [SerializeField] private float _lineZOffset = -1f; // Closer to camera than terrain
         
         [Header("Difficulty Colors")]
-        [SerializeField] private Color _colorGreen = new Color(0.2f, 0.8f, 0.2f);
-        [SerializeField] private Color _colorBlue = new Color(0.2f, 0.4f, 1f);
-        [SerializeField] private Color _colorBlack = new Color(0.1f, 0.1f, 0.1f);
-        [SerializeField] private Color _colorDoubleBlack = new Color(0.0f, 0.0f, 0.0f);
-        [SerializeField] private Color _colorDrawing = new Color(1f, 1f, 0.2f, 1f);
+        [SerializeField] private Color _colorGreen = new Color(0.1f, 1f, 0.1f, 1f); // Bright green
+        [SerializeField] private Color _colorBlue = new Color(0.1f, 0.5f, 1f, 1f); // Bright blue
+        [SerializeField] private Color _colorBlack = new Color(0.0f, 0.0f, 0.0f, 1f); // Pure black
+        [SerializeField] private Color _colorDoubleBlack = new Color(0.5f, 0.0f, 0.0f, 1f); // Dark red for double-black
+        [SerializeField] private Color _colorDrawing = new Color(1f, 1f, 0f, 1f); // Bright yellow
         
         private Dictionary<int, LineRenderer> _trailRenderers = new Dictionary<int, LineRenderer>();
         private LineRenderer _currentTrailRenderer;

@@ -42,11 +42,8 @@ namespace SkiResortTycoon.Core
                 return new List<TrailData>();
             }
             
-            UnityEngine.Debug.Log($"[Pathfinding] Starting BFS from {basePoints.Count} base point(s)");
-            
             foreach (var basePoint in basePoints)
             {
-                UnityEngine.Debug.Log($"[Pathfinding] Base at: {basePoint.Coord}");
                 queue.Enqueue(basePoint);
                 visitedHashes.Add(GetSnapPointHash(basePoint));
             }
@@ -62,12 +59,10 @@ namespace SkiResortTycoon.Core
                 if (current.Type == SnapPointType.TrailStart)
                 {
                     reachableTrailIds.Add(current.OwnerId);
-                    UnityEngine.Debug.Log($"[Pathfinding] Found reachable trail: {current.OwnerName} (ID: {current.OwnerId})");
                 }
                 
                 // Explore neighbors
                 var neighbors = _network.GetNeighbors(current);
-                UnityEngine.Debug.Log($"[Pathfinding] Exploring {current.Type} at {current.Coord}, found {neighbors.Count} neighbors");
                 
                 foreach (var neighbor in neighbors)
                 {
@@ -79,8 +74,6 @@ namespace SkiResortTycoon.Core
                     }
                 }
             }
-            
-            UnityEngine.Debug.Log($"[Pathfinding] BFS complete. Explored {exploredCount} nodes, found {reachableTrailIds.Count} reachable trails");
             
             return _allTrails.Where(t => reachableTrailIds.Contains(t.TrailId)).ToList();
         }

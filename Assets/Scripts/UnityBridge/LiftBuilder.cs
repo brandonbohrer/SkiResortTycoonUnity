@@ -36,8 +36,6 @@ namespace SkiResortTycoon.UnityBridge
             {
                 _camera = Camera.main;
             }
-            
-            Debug.Log("[LiftBuilder] Start() called. Waiting for terrain to be ready...");
         }
         
         private void EnsureInitialized()
@@ -49,11 +47,9 @@ namespace SkiResortTycoon.UnityBridge
                 if (_connectivity == null)
                 {
                     _connectivity = new WorldConnectivity();
-                    Debug.Log("[LiftBuilder] WorldConnectivity created!");
                 }
                 
                 _liftSystem = new LiftSystem(_gridRenderer.TerrainData, _connectivity.Registry);
-                Debug.Log("[LiftBuilder] LiftSystem initialized successfully!");
             }
         }
         
@@ -82,16 +78,8 @@ namespace SkiResortTycoon.UnityBridge
             {
                 _isBuildMode = !_isBuildMode;
                 
-                Debug.Log($"[LiftBuilder] L key pressed! Build mode toggled: {_isBuildMode}");
-                
-                if (_isBuildMode)
+                if (!_isBuildMode)
                 {
-                    Debug.Log("=== LIFT BUILD MODE ACTIVATED ===");
-                    Debug.Log("Click bottom station, then top station");
-                }
-                else
-                {
-                    Debug.Log("Lift build mode deactivated");
                     CancelPlacement();
                 }
             }
@@ -102,21 +90,7 @@ namespace SkiResortTycoon.UnityBridge
             // Click to place stations
             if (Input.GetMouseButtonDown(0)) // Left click
             {
-                Debug.Log("[LiftBuilder] Left mouse button clicked in build mode!");
-                
                 TileCoord? coord = GetTileUnderMouse();
-                
-                if (_debugMode)
-                {
-                    if (coord.HasValue)
-                    {
-                        Debug.Log($"[LiftBuilder] Tile under mouse: {coord.Value}");
-                    }
-                    else
-                    {
-                        Debug.LogWarning("[LiftBuilder] No valid tile under mouse");
-                    }
-                }
                 
                 if (coord.HasValue)
                 {
@@ -146,20 +120,11 @@ namespace SkiResortTycoon.UnityBridge
             _hasBottomStation = true;
             _currentLift = _liftSystem.CreateLift();
             _currentLift.BottomStation = coord;
-            
-            int height = _gridRenderer.TerrainData.GetHeight(coord);
-            Debug.Log($"Bottom station placed at {coord}, height: {height}");
         }
         
         private void PlaceTopStation(TileCoord coord)
         {
             _currentLift.TopStation = coord;
-            
-            int bottomHeight = _gridRenderer.TerrainData.GetHeight(_bottomStation);
-            int topHeight = _gridRenderer.TerrainData.GetHeight(coord);
-            
-            Debug.Log($"Top station placed at {coord}, height: {topHeight}");
-            Debug.Log($"Elevation gain: {topHeight - bottomHeight}");
             
             // Try to build the lift
             if (_simulationRunner != null && _simulationRunner.Sim != null)
@@ -198,10 +163,6 @@ namespace SkiResortTycoon.UnityBridge
         
         private void CancelPlacement()
         {
-            if (_hasBottomStation)
-            {
-                Debug.Log("Lift placement cancelled");
-            }
             _hasBottomStation = false;
             _currentLift = null;
         }
@@ -217,11 +178,6 @@ namespace SkiResortTycoon.UnityBridge
             Vector3 mousePos = Input.mousePosition;
             Vector3 worldPos = _camera.ScreenToWorldPoint(mousePos);
             
-            if (_debugMode && Input.GetMouseButtonDown(0))
-            {
-                Debug.Log($"[LiftBuilder] Mouse screen pos: {mousePos}, World pos: {worldPos}");
-            }
-            
             int tileX = Mathf.RoundToInt(worldPos.x / _tileSize);
             int tileY = Mathf.RoundToInt(worldPos.y / _tileSize);
             
@@ -231,18 +187,7 @@ namespace SkiResortTycoon.UnityBridge
                 _gridRenderer.TerrainData != null && 
                 _gridRenderer.TerrainData.Grid.InBounds(coord))
             {
-                if (_debugMode && Input.GetMouseButtonDown(0))
-                {
-                    Debug.Log($"[LiftBuilder] Tile conversion successful: ({tileX}, {tileY})");
-                }
                 return coord;
-            }
-            
-            if (_debugMode && Input.GetMouseButtonDown(0))
-            {
-                Debug.LogWarning($"[LiftBuilder] Tile ({tileX}, {tileY}) is out of bounds or terrain not ready");
-                if (_gridRenderer == null) Debug.LogWarning("[LiftBuilder] GridRenderer is null!");
-                if (_gridRenderer != null && _gridRenderer.TerrainData == null) Debug.LogWarning("[LiftBuilder] TerrainData is null!");
             }
             
             return null;

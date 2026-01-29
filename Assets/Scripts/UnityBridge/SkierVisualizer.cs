@@ -118,8 +118,6 @@ namespace SkiResortTycoon.UnityBridge
             var startPos = TileToWorld(lift.BottomStation, terrainData.Grid);
             skierObj.transform.position = startPos;
             
-            Debug.Log($"[SkierVisualizer] Spawned skier at {startPos} (lift bottom: {lift.BottomStation})");
-            
             var skier = new VisualSkier
             {
                 GameObject = skierObj,

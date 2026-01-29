@@ -15,9 +15,9 @@ namespace SkiResortTycoon.UnityBridge
         
         [Header("Visual Settings")]
         [SerializeField] private float _tileSize = 1f;
-        [SerializeField] private float _lineWidth = 0.4f;
-        [SerializeField] private Color _liftColor = new Color(0.3f, 0.3f, 0.3f, 1f); // Dark gray
-        [SerializeField] private Color _previewColor = new Color(1f, 1f, 0f, 0.7f); // Yellow preview
+        [SerializeField] private float _lineWidth = 0.8f; // Much wider!
+        [SerializeField] private Color _liftColor = new Color(0.1f, 0.1f, 0.1f, 1f); // Very dark (almost black)
+        [SerializeField] private Color _previewColor = new Color(1f, 1f, 0f, 1f); // Bright yellow preview
         
         private Dictionary<int, LineRenderer> _liftRenderers = new Dictionary<int, LineRenderer>();
         private LineRenderer _previewRenderer;

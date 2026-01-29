@@ -46,18 +46,6 @@ namespace SkiResortTycoon.Core
         {
             _adjacencyList.Clear();
             
-            // Debug: Log all snap points
-            var allSnaps = _registry.GetAll();
-            UnityEngine.Debug.Log($"[NetworkGraph] Building graph with {allSnaps.Count} snap points");
-            
-            var basePoints = _registry.GetByType(SnapPointType.BaseSpawn);
-            var liftBottoms = _registry.GetByType(SnapPointType.LiftBottom);
-            var liftTops = _registry.GetByType(SnapPointType.LiftTop);
-            var trailStarts = _registry.GetByType(SnapPointType.TrailStart);
-            var trailEnds = _registry.GetByType(SnapPointType.TrailEnd);
-            
-            UnityEngine.Debug.Log($"[NetworkGraph] BaseSpawn: {basePoints.Count}, LiftBottom: {liftBottoms.Count}, LiftTop: {liftTops.Count}, TrailStart: {trailStarts.Count}, TrailEnd: {trailEnds.Count}");
-            
             // 1. Base → LiftBottom connections
             ConnectBaseToLifts();
             
@@ -72,8 +60,6 @@ namespace SkiResortTycoon.Core
             
             // 5. TrailEnd → TrailStart connections (trail branching)
             ConnectTrailsToTrails();
-            
-            UnityEngine.Debug.Log($"[NetworkGraph] Graph built. Total edges: {CountTotalEdges()}");
         }
         
         private int CountTotalEdges()
@@ -98,18 +84,14 @@ namespace SkiResortTycoon.Core
                 foreach (var liftBottom in liftBottoms)
                 {
                     int distance = basePoint.DistanceTo(liftBottom);
-                    UnityEngine.Debug.Log($"[NetworkGraph] Distance from Base {basePoint.Coord} to LiftBottom {liftBottom.Coord}: {distance} (max: {SnapRadius})");
                     
                     if (distance <= SnapRadius)
                     {
                         AddEdge(basePoint, liftBottom);
                         connectionsCreated++;
-                        UnityEngine.Debug.Log($"[NetworkGraph] Connected Base → LiftBottom (Lift #{liftBottom.OwnerId})");
                     }
                 }
             }
-            
-            UnityEngine.Debug.Log($"[NetworkGraph] Base→Lift connections: {connectionsCreated}");
         }
         
         private void ConnectLiftBottomsToTops()
@@ -129,18 +111,17 @@ namespace SkiResortTycoon.Core
                     {
                         AddEdge(liftBottom, liftTop);
                         connectionsCreated++;
-                        UnityEngine.Debug.Log($"[NetworkGraph] Connected LiftBottom → LiftTop (Lift #{liftBottom.OwnerId})");
                     }
                 }
             }
-            
-            UnityEngine.Debug.Log($"[NetworkGraph] Lift traversal connections: {connectionsCreated}");
         }
         
         private void ConnectLiftsToTrails()
         {
             var liftTops = _registry.GetByType(SnapPointType.LiftTop);
             var trailStarts = _registry.GetByType(SnapPointType.TrailStart);
+            
+            int connectionsCreated = 0;
             
             foreach (var liftTop in liftTops)
             {
@@ -150,6 +131,7 @@ namespace SkiResortTycoon.Core
                     if (distance <= SnapRadius)
                     {
                         AddEdge(liftTop, trailStart);
+                        connectionsCreated++;
                     }
                 }
             }
@@ -160,6 +142,8 @@ namespace SkiResortTycoon.Core
             var trailEnds = _registry.GetByType(SnapPointType.TrailEnd);
             var liftBottoms = _registry.GetByType(SnapPointType.LiftBottom);
             
+            int connectionsCreated = 0;
+            
             foreach (var trailEnd in trailEnds)
             {
                 foreach (var liftBottom in liftBottoms)
@@ -168,6 +152,7 @@ namespace SkiResortTycoon.Core
                     if (distance <= SnapRadius)
                     {
                         AddEdge(trailEnd, liftBottom);
+                        connectionsCreated++;
                     }
                 }
             }
@@ -177,6 +162,8 @@ namespace SkiResortTycoon.Core
         {
             var trailEnds = _registry.GetByType(SnapPointType.TrailEnd);
             var trailStarts = _registry.GetByType(SnapPointType.TrailStart);
+            
+            int connectionsCreated = 0;
             
             foreach (var trailEnd in trailEnds)
             {
@@ -190,6 +177,7 @@ namespace SkiResortTycoon.Core
                     if (distance <= SnapRadius)
                     {
                         AddEdge(trailEnd, trailStart);
+                        connectionsCreated++;
                     }
                 }
             }

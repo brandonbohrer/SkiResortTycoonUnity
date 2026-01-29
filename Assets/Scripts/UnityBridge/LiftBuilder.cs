@@ -175,19 +175,28 @@ namespace SkiResortTycoon.UnityBridge
                 return null;
             }
             
-            Vector3 mousePos = Input.mousePosition;
-            Vector3 worldPos = _camera.ScreenToWorldPoint(mousePos);
+            // Create a ray from the camera through the mouse position
+            Ray ray = _camera.ScreenPointToRay(Input.mousePosition);
             
-            int tileX = Mathf.RoundToInt(worldPos.x / _tileSize);
-            int tileY = Mathf.RoundToInt(worldPos.y / _tileSize);
+            // Create a plane at Z=0 (where our grid is)
+            Plane gridPlane = new Plane(Vector3.forward, Vector3.zero);
             
-            TileCoord coord = new TileCoord(tileX, tileY);
-            
-            if (_gridRenderer != null && 
-                _gridRenderer.TerrainData != null && 
-                _gridRenderer.TerrainData.Grid.InBounds(coord))
+            // Raycast against the plane
+            if (gridPlane.Raycast(ray, out float distance))
             {
-                return coord;
+                Vector3 worldPos = ray.GetPoint(distance);
+                
+                int tileX = Mathf.RoundToInt(worldPos.x / _tileSize);
+                int tileY = Mathf.RoundToInt(worldPos.y / _tileSize);
+                
+                TileCoord coord = new TileCoord(tileX, tileY);
+                
+                if (_gridRenderer != null && 
+                    _gridRenderer.TerrainData != null && 
+                    _gridRenderer.TerrainData.Grid.InBounds(coord))
+                {
+                    return coord;
+                }
             }
             
             return null;

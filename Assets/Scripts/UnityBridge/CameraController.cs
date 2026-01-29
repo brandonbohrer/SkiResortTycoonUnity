@@ -47,6 +47,12 @@ namespace SkiResortTycoon.UnityBridge
             _camera.orthographicSize = _defaultZoom;
         }
         
+        void Start()
+        {
+            // Center camera on the map at start (assuming 64x64 grid)
+            CenterOn(32f, 32f);
+        }
+        
         void Update()
         {
             HandlePanKeyboard();

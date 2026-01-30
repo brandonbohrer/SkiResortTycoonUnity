@@ -46,11 +46,19 @@ namespace SkiResortTycoon.Core
         public bool ValidateTrail(TrailData trail)
         {
             // Check minimum points
-            if (trail.PathPoints.Count < MinPoints)
+            int pointCount = trail.WorldPathPoints.Count > 0 ? trail.WorldPathPoints.Count : trail.PathPoints.Count;
+            if (pointCount < MinPoints)
             {
                 return false;
             }
             
+            // NEW: If we have WorldPathPoints, use those for validation
+            if (trail.WorldPathPoints.Count >= MinPoints)
+            {
+                return ValidateTrailWorldSpace(trail);
+            }
+            
+            // LEGACY: Use old tile-based validation
             // Check overall elevation drop
             var start = trail.GetStart();
             var end = trail.GetEnd();
@@ -113,6 +121,74 @@ namespace SkiResortTycoon.Core
             }
             
             // Check uphill percentage
+            float uphillPercent = totalSegments > 0 ? (float)uphillCount / totalSegments : 0f;
+            if (uphillPercent > MaxUphillPercent)
+            {
+                return false;
+            }
+            
+            trail.IsValid = true;
+            return true;
+        }
+        
+        /// <summary>
+        /// Validates trail using world-space positions from the mountain mesh.
+        /// </summary>
+        private bool ValidateTrailWorldSpace(TrailData trail)
+        {
+            // Calculate total drop and run using world positions
+            Vector3f start = trail.WorldPathPoints[0];
+            Vector3f end = trail.WorldPathPoints[trail.WorldPathPoints.Count - 1];
+            
+            float totalDrop = start.Y - end.Y;
+            
+            // Auto-reverse if drawn uphill
+            if (totalDrop < 0)
+            {
+                trail.ReverseWorldPathPoints();
+                start = trail.WorldPathPoints[0];
+                end = trail.WorldPathPoints[trail.WorldPathPoints.Count - 1];
+                totalDrop = start.Y - end.Y;
+            }
+            
+            trail.TotalElevationDrop = totalDrop;
+            
+            // Must go downhill overall (using relaxed threshold for now)
+            if (totalDrop < 0.5f) // Relaxed from MinDrop for world space
+            {
+                return false;
+            }
+            
+            // Calculate 3D path length
+            float totalRun = 0f;
+            int uphillCount = 0;
+            
+            for (int i = 0; i < trail.WorldPathPoints.Count - 1; i++)
+            {
+                Vector3f current = trail.WorldPathPoints[i];
+                Vector3f next = trail.WorldPathPoints[i + 1];
+                
+                // Horizontal distance (XZ plane)
+                float dx = next.X - current.X;
+                float dz = next.Z - current.Z;
+                float segmentRun = (float)Math.Sqrt(dx * dx + dz * dz);
+                totalRun += segmentRun;
+                
+                // Check if uphill
+                if (next.Y > current.Y)
+                {
+                    uphillCount++;
+                }
+            }
+            
+            // Check minimum run length (in world units, ~= meters)
+            if (totalRun < 3f) // Relaxed from MinRunLength * tileSize
+            {
+                return false;
+            }
+            
+            // Check uphill percentage
+            int totalSegments = trail.WorldPathPoints.Count - 1;
             float uphillPercent = totalSegments > 0 ? (float)uphillCount / totalSegments : 0f;
             if (uphillPercent > MaxUphillPercent)
             {

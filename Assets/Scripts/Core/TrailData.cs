@@ -95,12 +95,19 @@ namespace SkiResortTycoon.Core
         }
         
         /// <summary>
-        /// Reverses the trail direction (used when user draws uphill).
+        /// Reverses the direction of the trail (legacy tile coords).
         /// </summary>
         public void ReverseDirection()
         {
             PathPoints.Reverse();
         }
+        
+        /// <summary>
+        /// Reverses the direction of the trail (world-space points).
+        /// </summary>
+        public void ReverseWorldPathPoints()
+        {
+            WorldPathPoints.Reverse();
+        }
     }
 }
-

@@ -46,6 +46,31 @@ namespace SkiResortTycoon.Core
         {
             errorMessage = "";
             
+            // NEW: If we have world positions, use those for validation (skip grid checks)
+            bool hasWorldPositions = lift.StartPosition.X != 0 || lift.StartPosition.Y != 0 || lift.StartPosition.Z != 0;
+            
+            if (hasWorldPositions)
+            {
+                // Validate using world-space positions
+                // Elevation gain should already be calculated and validated by LiftBuilder
+                if (lift.ElevationGain <= 0)
+                {
+                    errorMessage = $"Lift must go uphill (elevation gain: {lift.ElevationGain:F1}m)";
+                    return false;
+                }
+                
+                // Check reasonable length (using world units, not tiles)
+                if (lift.Length > MaxLength * 10) // Scale up for world units (rough conversion)
+                {
+                    errorMessage = $"Lift too long ({lift.Length:F1}m)";
+                    return false;
+                }
+                
+                lift.IsValid = true;
+                return true;
+            }
+            
+            // LEGACY: Old tile-based validation (for backwards compatibility)
             // Check if coordinates are in bounds
             if (!_terrain.Grid.InBounds(lift.BottomStation) || !_terrain.Grid.InBounds(lift.TopStation))
             {

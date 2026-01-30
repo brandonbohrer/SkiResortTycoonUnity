@@ -90,19 +90,19 @@ namespace SkiResortTycoon.UnityBridge
             // Click to place stations
             if (Input.GetMouseButtonDown(0)) // Left click
             {
-                TileCoord? coord = GetTileUnderMouse();
+                Vector3? position = GetMountainPositionUnderMouse();
                 
-                if (coord.HasValue)
+                if (position.HasValue)
                 {
                     if (!_hasBottomStation)
                     {
                         // Place bottom station
-                        PlaceBottomStation(coord.Value);
+                        PlaceBottomStation(position.Value);
                     }
                     else
                     {
                         // Place top station and complete lift
-                        PlaceTopStation(coord.Value);
+                        PlaceTopStation(position.Value);
                     }
                 }
             }
@@ -114,17 +114,41 @@ namespace SkiResortTycoon.UnityBridge
             }
         }
         
-        private void PlaceBottomStation(TileCoord coord)
+        private void PlaceBottomStation(Vector3 worldPosition)
         {
-            _bottomStation = coord;
             _hasBottomStation = true;
             _currentLift = _liftSystem.CreateLift();
-            _currentLift.BottomStation = coord;
+            _currentLift.StartPosition = MountainManager.ToVector3f(worldPosition);
+            
+            // Also set legacy tile coord for backwards compatibility (optional)
+            int tileX = Mathf.RoundToInt(worldPosition.x / _tileSize);
+            int tileY = Mathf.RoundToInt(worldPosition.y / _tileSize);
+            _bottomStation = new TileCoord(tileX, tileY);
+            _currentLift.BottomStation = _bottomStation;
         }
         
-        private void PlaceTopStation(TileCoord coord)
+        private void PlaceTopStation(Vector3 worldPosition)
         {
-            _currentLift.TopStation = coord;
+            _currentLift.EndPosition = MountainManager.ToVector3f(worldPosition);
+            
+            // Set legacy tile coord
+            int tileX = Mathf.RoundToInt(worldPosition.x / _tileSize);
+            int tileY = Mathf.RoundToInt(worldPosition.y / _tileSize);
+            _currentLift.TopStation = new TileCoord(tileX, tileY);
+            
+            // Validate: lift must go uphill
+            float elevationGain = _currentLift.EndPosition.Y - _currentLift.StartPosition.Y;
+            if (elevationGain <= 0)
+            {
+                Debug.LogWarning($"Lift must go uphill! Elevation gain: {elevationGain:F1}m (negative or zero)");
+                _hasBottomStation = false;
+                _currentLift = null;
+                return;
+            }
+            
+            // Calculate 3D distance and elevation
+            _currentLift.Length = Vector3f.Distance(_currentLift.StartPosition, _currentLift.EndPosition);
+            _currentLift.ElevationGain = elevationGain;
             
             // Try to build the lift
             if (_simulationRunner != null && _simulationRunner.Sim != null)
@@ -134,14 +158,24 @@ namespace SkiResortTycoon.UnityBridge
                 
                 if (success)
                 {
+                    // Clear trees along the lift path
+                    List<Vector3> liftPath = new List<Vector3>
+                    {
+                        MountainManager.ToUnityVector3(_currentLift.StartPosition),
+                        MountainManager.ToUnityVector3(_currentLift.EndPosition)
+                    };
+                    TreeClearer.ClearTreesAlongPath(liftPath, corridorWidth: 5f);
+                    
                     // Rebuild connections
                     _connectivity.RebuildConnections();
                     
                     // Log lift info
                     Debug.Log($"=== LIFT BUILT ===");
                     Debug.Log($"Lift ID: {_currentLift.LiftId}");
-                    Debug.Log($"Length: {_currentLift.Length} tiles");
-                    Debug.Log($"Elevation Gain: {_currentLift.ElevationGain} units");
+                    Debug.Log($"Start: {_currentLift.StartPosition}");
+                    Debug.Log($"End: {_currentLift.EndPosition}");
+                    Debug.Log($"Length: {_currentLift.Length:F1}m");
+                    Debug.Log($"Elevation Gain: {_currentLift.ElevationGain:F1}m");
                     Debug.Log($"Cost: ${_currentLift.BuildCost}");
                     Debug.Log($"Money Remaining: ${_simulationRunner.Sim.State.Money}");
                     
@@ -167,39 +201,14 @@ namespace SkiResortTycoon.UnityBridge
             _currentLift = null;
         }
         
-        private TileCoord? GetTileUnderMouse()
+        private Vector3? GetMountainPositionUnderMouse()
         {
-            if (_camera == null)
+            if (_camera == null || _mountainManager == null)
             {
-                if (_debugMode) Debug.LogWarning("[LiftBuilder] Camera is null!");
                 return null;
             }
             
-            // Create a ray from the camera through the mouse position
-            Ray ray = _camera.ScreenPointToRay(Input.mousePosition);
-            
-            // Create a plane at Z=0 (where our grid is)
-            Plane gridPlane = new Plane(Vector3.forward, Vector3.zero);
-            
-            // Raycast against the plane
-            if (gridPlane.Raycast(ray, out float distance))
-            {
-                Vector3 worldPos = ray.GetPoint(distance);
-                
-                int tileX = Mathf.RoundToInt(worldPos.x / _tileSize);
-                int tileY = Mathf.RoundToInt(worldPos.y / _tileSize);
-                
-                TileCoord coord = new TileCoord(tileX, tileY);
-                
-                if (_mountainManager != null && 
-                    _mountainManager.TerrainData != null && 
-                    _mountainManager.TerrainData.Grid.InBounds(coord))
-                {
-                    return coord;
-                }
-            }
-            
-            return null;
+            return _mountainManager.RaycastMountain(_camera, Input.mousePosition);
         }
         
         void OnGUI()
@@ -210,15 +219,15 @@ namespace SkiResortTycoon.UnityBridge
             {
                 GUI.Box(new Rect(10, 210, 300, 120), "Lift Build Mode");
                 
-                // Show current tile under cursor
-                TileCoord? cursorTile = GetTileUnderMouse();
-                if (cursorTile.HasValue)
+                // Show current position under cursor
+                Vector3? cursorPos = GetMountainPositionUnderMouse();
+                if (cursorPos.HasValue)
                 {
-                    GUI.Label(new Rect(20, 230, 280, 20), $"Cursor: {cursorTile.Value}");
+                    GUI.Label(new Rect(20, 230, 280, 20), $"Cursor: ({cursorPos.Value.x:F1}, {cursorPos.Value.y:F1}, {cursorPos.Value.z:F1})");
                 }
                 else
                 {
-                    GUI.Label(new Rect(20, 230, 280, 20), "Cursor: (out of bounds)");
+                    GUI.Label(new Rect(20, 230, 280, 20), "Cursor: (not on mountain)");
                 }
                 
                 if (_hasBottomStation)

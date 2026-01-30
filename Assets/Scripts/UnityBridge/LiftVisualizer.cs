@@ -84,11 +84,11 @@ namespace SkiResortTycoon.UnityBridge
                     _liftRenderers[lift.LiftId] = lr;
                 }
                 
-                // Update line positions
+                // Update line positions - use world-space positions
                 LineRenderer lineRenderer = _liftRenderers[lift.LiftId];
                 lineRenderer.positionCount = 2;
-                lineRenderer.SetPosition(0, TileToWorldPos(lift.BottomStation));
-                lineRenderer.SetPosition(1, TileToWorldPos(lift.TopStation));
+                lineRenderer.SetPosition(0, MountainManager.ToUnityVector3(lift.StartPosition));
+                lineRenderer.SetPosition(1, MountainManager.ToUnityVector3(lift.EndPosition));
             }
         }
         

@@ -49,15 +49,75 @@ namespace SkiResortTycoon.UnityBridge
         }
         
         /// <summary>
-        /// Gets the height at a world position by raycasting the mountain mesh.
-        /// TODO: Implement raycasting in the future.
+        /// Raycasts onto the mountain mesh from a screen position (mouse).
+        /// Returns the world position where the ray hits the mountain, or null if no hit.
         /// </summary>
-        public float GetHeightAtWorldPos(Vector3 worldPos)
+        public Vector3? RaycastMountain(Camera camera, Vector3 screenPosition)
         {
-            // For now, return 0 (flat)
-            // Later: raycast down from worldPos onto _mountainMesh
-            return 0f;
+            if (camera == null || _mountainMesh == null)
+            {
+                return null;
+            }
+            
+            Ray ray = camera.ScreenPointToRay(screenPosition);
+            
+            // Raycast against mountain - check the mountain itself or any of its children
+            RaycastHit[] hits = Physics.RaycastAll(ray, 10000f);
+            
+            foreach (RaycastHit hit in hits)
+            {
+                // Accept hits on the mountain or its children (collider might be on a child)
+                if (hit.collider.transform == _mountainMesh.transform || 
+                    hit.collider.transform.IsChildOf(_mountainMesh.transform))
+                {
+                    return hit.point;
+                }
+            }
+            
+            return null;
+        }
+        
+        /// <summary>
+        /// Raycasts down from a position to find the mountain surface below.
+        /// Returns the Y coordinate of the surface, or null if no hit.
+        /// </summary>
+        public float? GetHeightAtWorldPos(Vector3 worldPos)
+        {
+            if (_mountainMesh == null)
+            {
+                return null;
+            }
+            
+            // Raycast down from well above the position
+            Ray ray = new Ray(new Vector3(worldPos.x, worldPos.y + 1000f, worldPos.z), Vector3.down);
+            RaycastHit[] hits = Physics.RaycastAll(ray, 2000f);
+            
+            foreach (RaycastHit hit in hits)
+            {
+                if (hit.collider.transform == _mountainMesh.transform || 
+                    hit.collider.transform.IsChildOf(_mountainMesh.transform))
+                {
+                    return hit.point.y;
+                }
+            }
+            
+            return null;
+        }
+        
+        /// <summary>
+        /// Converts a Core Vector3f to Unity Vector3.
+        /// </summary>
+        public static Vector3 ToUnityVector3(Vector3f v)
+        {
+            return new Vector3(v.X, v.Y, v.Z);
+        }
+        
+        /// <summary>
+        /// Converts a Unity Vector3 to Core Vector3f.
+        /// </summary>
+        public static Vector3f ToVector3f(Vector3 v)
+        {
+            return new Vector3f(v.x, v.y, v.z);
         }
     }
 }
-

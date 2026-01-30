@@ -18,11 +18,18 @@ namespace SkiResortTycoon.Core
     {
         public int LiftId { get; set; }
         public string Name { get; set; }
+        
+        // World-space positions (authoritative for rendering and gameplay)
+        public Vector3f StartPosition { get; set; } // Bottom station position on mountain mesh
+        public Vector3f EndPosition { get; set; }   // Top station position on mountain mesh
+        
+        // Legacy grid coordinates (kept for backwards compatibility with existing systems)
         public TileCoord BottomStation { get; set; }
         public TileCoord TopStation { get; set; }
+        
         public LiftType Type { get; set; }
-        public int Length { get; set; } // Horizontal distance in tiles
-        public int ElevationGain { get; set; } // Height difference
+        public float Length { get; set; } // 3D distance between start and end
+        public float ElevationGain { get; set; } // Height difference (EndPosition.Y - StartPosition.Y)
         public int Capacity { get; set; } // Riders per hour
         public int BuildCost { get; set; }
         public bool IsValid { get; set; }

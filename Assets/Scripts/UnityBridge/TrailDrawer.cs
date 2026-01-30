@@ -24,7 +24,7 @@ namespace SkiResortTycoon.UnityBridge
         private TrailSystem _trailSystem;
         private TrailData _currentTrail;
         private bool _isDrawing = false;
-        private TileCoord _lastAddedPoint;
+        private Vector3 _lastAddedWorldPoint;
         
         void Start()
         {
@@ -68,12 +68,11 @@ namespace SkiResortTycoon.UnityBridge
             if (!_debugMode) return;
             
             // Draw cursor at mouse position (visible in Scene view)
-            TileCoord? coord = GetTileUnderMouse();
-            if (coord.HasValue && _mountainManager != null && _mountainManager.TerrainData != null)
+            Vector3? worldPos = GetMountainPositionUnderMouse();
+            if (worldPos.HasValue)
             {
-                Vector3 worldPos = TileToWorldPos(coord.Value);
                 Gizmos.color = Color.yellow;
-                Gizmos.DrawWireCube(worldPos, Vector3.one * _tileSize);
+                Gizmos.DrawWireSphere(worldPos.Value, 2f);
             }
         }
         
@@ -82,24 +81,24 @@ namespace SkiResortTycoon.UnityBridge
             // Start drawing
             if (Input.GetKeyDown(_drawKey))
             {
-                TileCoord? coord = GetTileUnderMouse();
-                if (coord.HasValue)
+                Vector3? position = GetMountainPositionUnderMouse();
+                if (position.HasValue)
                 {
-                    StartDrawing(coord.Value);
+                    StartDrawing(position.Value);
                 }
                 else if (_debugMode)
                 {
-                    Debug.LogWarning("Cannot start drawing - no valid tile under mouse");
+                    Debug.LogWarning("Cannot start drawing - not on mountain surface");
                 }
             }
             
             // Continue drawing (hold key and move mouse)
             if (Input.GetKey(_drawKey) && _isDrawing)
             {
-                TileCoord? coord = GetTileUnderMouse();
-                if (coord.HasValue)
+                Vector3? position = GetMountainPositionUnderMouse();
+                if (position.HasValue)
                 {
-                    ContinueDrawing(coord.Value);
+                    ContinueDrawing(position.Value);
                 }
             }
             
@@ -110,27 +109,37 @@ namespace SkiResortTycoon.UnityBridge
             }
         }
         
-        private void StartDrawing(TileCoord startCoord)
+        private void StartDrawing(Vector3 startPosition)
         {
             _isDrawing = true;
             _currentTrail = _trailSystem.CreateTrail();
-            _currentTrail.AddPoint(startCoord);
-            _lastAddedPoint = startCoord;
+            _currentTrail.AddWorldPoint(MountainManager.ToVector3f(startPosition));
+            
+            // Also add legacy tile coord for backwards compatibility
+            int tileX = Mathf.RoundToInt(startPosition.x / _tileSize);
+            int tileY = Mathf.RoundToInt(startPosition.y / _tileSize);
+            _currentTrail.AddPoint(new TileCoord(tileX, tileY));
+            
+            _lastAddedWorldPoint = startPosition;
         }
         
-        private void ContinueDrawing(TileCoord coord)
+        private void ContinueDrawing(Vector3 position)
         {
             if (_currentTrail == null) return;
             
-            // Check if far enough from last point
-            int dx = coord.X - _lastAddedPoint.X;
-            int dy = coord.Y - _lastAddedPoint.Y;
-            float distance = Mathf.Sqrt(dx * dx + dy * dy);
+            // Check if far enough from last point (3D distance)
+            float distance = Vector3.Distance(position, _lastAddedWorldPoint);
             
             if (distance >= _minPointSpacing)
             {
-                _currentTrail.AddPoint(coord);
-                _lastAddedPoint = coord;
+                _currentTrail.AddWorldPoint(MountainManager.ToVector3f(position));
+                
+                // Also add legacy tile coord
+                int tileX = Mathf.RoundToInt(position.x / _tileSize);
+                int tileY = Mathf.RoundToInt(position.y / _tileSize);
+                _currentTrail.AddPoint(new TileCoord(tileX, tileY));
+                
+                _lastAddedWorldPoint = position;
             }
         }
         
@@ -147,6 +156,14 @@ namespace SkiResortTycoon.UnityBridge
             {
                 // Calculate difficulty and get detailed stats
                 var stats = _trailSystem.CalculateDifficulty(_currentTrail);
+                
+                // Clear trees along the trail path
+                List<Vector3> trailPath = new List<Vector3>();
+                foreach (var point in _currentTrail.WorldPathPoints)
+                {
+                    trailPath.Add(MountainManager.ToUnityVector3(point));
+                }
+                TreeClearer.ClearTreesAlongPath(trailPath, corridorWidth: 8f); // Wider corridor for trails
                 
                 // Rebuild connections
                 if (_liftBuilder != null && _liftBuilder.Connectivity != null)
@@ -184,37 +201,14 @@ namespace SkiResortTycoon.UnityBridge
             _currentTrail = null;
         }
         
-        private TileCoord? GetTileUnderMouse()
+        private Vector3? GetMountainPositionUnderMouse()
         {
-            if (_camera == null) return null;
-            
-            // Create a ray from the camera through the mouse position
-            Ray ray = _camera.ScreenPointToRay(Input.mousePosition);
-            
-            // Create a plane at Z=0 (where our grid is)
-            Plane gridPlane = new Plane(Vector3.forward, Vector3.zero);
-            
-            // Raycast against the plane
-            if (gridPlane.Raycast(ray, out float distance))
+            if (_camera == null || _mountainManager == null)
             {
-                Vector3 worldPos = ray.GetPoint(distance);
-                
-                // Convert world position to tile coordinates
-                int tileX = Mathf.RoundToInt(worldPos.x / _tileSize);
-                int tileY = Mathf.RoundToInt(worldPos.y / _tileSize);
-                
-                TileCoord coord = new TileCoord(tileX, tileY);
-                
-                // Check if in bounds
-                if (_mountainManager != null && 
-                    _mountainManager.TerrainData != null && 
-                    _mountainManager.TerrainData.Grid.InBounds(coord))
-                {
-                    return coord;
-                }
+                return null;
             }
             
-            return null;
+            return _mountainManager.RaycastMountain(_camera, Input.mousePosition);
         }
         
         /// <summary>
@@ -266,15 +260,15 @@ namespace SkiResortTycoon.UnityBridge
             GUI.Label(new Rect(20, 120, 280, 20), $"Press and HOLD '{_drawKey}' to draw");
             GUI.Label(new Rect(20, 140, 280, 20), $"Drawing: {_isDrawing}");
             
-            TileCoord? coord = GetTileUnderMouse();
-            if (coord.HasValue)
+            Vector3? position = GetMountainPositionUnderMouse();
+            if (position.HasValue)
             {
-                GUI.Label(new Rect(20, 160, 280, 20), $"Tile: {coord.Value}");
+                GUI.Label(new Rect(20, 160, 280, 20), $"Pos: ({position.Value.x:F1}, {position.Value.y:F1}, {position.Value.z:F1})");
                 
                 // Draw a visual cursor in Game view
                 if (_camera != null)
                 {
-                    Vector3 screenPos = _camera.WorldToScreenPoint(TileToWorldPos(coord.Value));
+                    Vector3 screenPos = _camera.WorldToScreenPoint(position.Value);
                     screenPos.y = Screen.height - screenPos.y; // Flip Y for GUI coordinates
                     
                     // Draw crosshair
@@ -287,7 +281,7 @@ namespace SkiResortTycoon.UnityBridge
             }
             else
             {
-                GUI.Label(new Rect(20, 160, 280, 20), "Tile: None (hover over terrain)");
+                GUI.Label(new Rect(20, 160, 280, 20), "Pos: None (not on mountain)");
             }
             
             GUI.Label(new Rect(20, 180, 280, 20), $"Trails: {_trailSystem.Trails.Count}");
@@ -295,4 +289,3 @@ namespace SkiResortTycoon.UnityBridge
         }
     }
 }
-

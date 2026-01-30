@@ -21,7 +21,13 @@ namespace SkiResortTycoon.Core
     {
         public int TrailId { get; set; }
         public string Name { get; set; }
+        
+        // World-space positions (authoritative for rendering and gameplay)
+        public List<Vector3f> WorldPathPoints { get; private set; }
+        
+        // Legacy grid coordinates (kept for backwards compatibility)
         public List<TileCoord> PathPoints { get; private set; }
+        
         public TrailDifficulty Difficulty { get; set; }
         public int Length { get; private set; }
         public float AverageSlope { get; set; }
@@ -33,13 +39,14 @@ namespace SkiResortTycoon.Core
         {
             TrailId = trailId;
             Name = $"Trail {trailId}";
+            WorldPathPoints = new List<Vector3f>();
             PathPoints = new List<TileCoord>();
             Difficulty = TrailDifficulty.Green;
             IsValid = false;
         }
         
         /// <summary>
-        /// Adds a point to the trail path.
+        /// Adds a point to the trail path (legacy tile coordinate).
         /// </summary>
         public void AddPoint(TileCoord coord)
         {
@@ -48,10 +55,20 @@ namespace SkiResortTycoon.Core
         }
         
         /// <summary>
+        /// Adds a world-space point to the trail path.
+        /// </summary>
+        public void AddWorldPoint(Vector3f position)
+        {
+            WorldPathPoints.Add(position);
+            Length = WorldPathPoints.Count;
+        }
+        
+        /// <summary>
         /// Clears all points from the trail.
         /// </summary>
         public void Clear()
         {
+            WorldPathPoints.Clear();
             PathPoints.Clear();
             Length = 0;
             IsValid = false;

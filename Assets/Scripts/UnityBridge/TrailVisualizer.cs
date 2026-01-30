@@ -99,7 +99,7 @@ namespace SkiResortTycoon.UnityBridge
                 lineRenderer.startColor = trailColor;
                 lineRenderer.endColor = trailColor;
                 lineRenderer.enabled = true; // Make sure it's enabled
-                UpdateLinePositions(lineRenderer, trail.PathPoints);
+                UpdateLinePositions(lineRenderer, trail.WorldPathPoints);
             }
         }
         
@@ -124,7 +124,7 @@ namespace SkiResortTycoon.UnityBridge
                 
                 _currentTrailRenderer.startColor = _colorDrawing;
                 _currentTrailRenderer.endColor = _colorDrawing;
-                UpdateLinePositions(_currentTrailRenderer, _trailDrawer.CurrentTrail.PathPoints);
+                UpdateLinePositions(_currentTrailRenderer, _trailDrawer.CurrentTrail.WorldPathPoints);
                 _currentTrailRenderer.gameObject.SetActive(true);
             }
             else
@@ -144,6 +144,19 @@ namespace SkiResortTycoon.UnityBridge
             {
                 Vector3 worldPos = TileToWorldPos(points[i]);
                 lineRenderer.SetPosition(i, worldPos);
+            }
+        }
+        
+        /// <summary>
+        /// Updates line positions from world-space Vector3f points.
+        /// </summary>
+        private void UpdateLinePositions(LineRenderer lineRenderer, List<Vector3f> points)
+        {
+            lineRenderer.positionCount = points.Count;
+            
+            for (int i = 0; i < points.Count; i++)
+            {
+                lineRenderer.SetPosition(i, MountainManager.ToUnityVector3(points[i]));
             }
         }
         

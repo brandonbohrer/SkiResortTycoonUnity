@@ -163,17 +163,28 @@ namespace SkiResortTycoon.Core
             // Deduct money
             state.Money -= cost;
             
-            // Mark tiles as occupied
-            var bottomTile = _terrain.Grid.GetTile(lift.BottomStation);
-            var topTile = _terrain.Grid.GetTile(lift.TopStation);
-            bottomTile.Occupied = true;
-            topTile.Occupied = true;
+            // Mark tiles as occupied (only for tile-based lifts)
+            bool hasWorldPositions = lift.StartPosition.X != 0 || lift.StartPosition.Y != 0 || lift.StartPosition.Z != 0;
+            if (!hasWorldPositions && _terrain != null && _terrain.Grid != null)
+            {
+                // Legacy tile-based marking
+                if (_terrain.Grid.InBounds(lift.BottomStation) && _terrain.Grid.InBounds(lift.TopStation))
+                {
+                    var bottomTile = _terrain.Grid.GetTile(lift.BottomStation);
+                    var topTile = _terrain.Grid.GetTile(lift.TopStation);
+                    if (bottomTile != null) bottomTile.Occupied = true;
+                    if (topTile != null) topTile.Occupied = true;
+                }
+            }
             
             // Add to lift list
             _lifts.Add(lift);
             
-            // Register snap points
-            RegisterSnapPoints(lift);
+            // Register snap points (only for tile-based lifts)
+            if (!hasWorldPositions)
+            {
+                RegisterSnapPoints(lift);
+            }
             
             errorMessage = "";
             return true;

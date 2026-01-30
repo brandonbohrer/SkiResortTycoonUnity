@@ -107,8 +107,8 @@ namespace SkiResortTycoon.Core
         public int CalculateCost(LiftData lift)
         {
             int cost = BaseCost;
-            cost += lift.Length * CostPerTile;
-            cost += lift.ElevationGain * CostPerHeightUnit;
+            cost += (int)lift.Length * CostPerTile;
+            cost += (int)lift.ElevationGain * CostPerHeightUnit;
             
             lift.BuildCost = cost;
             return cost;

@@ -15,6 +15,7 @@ namespace SkiResortTycoon.UnityBridge
         void Awake()
         {
             _instance = this;
+            Debug.Log("[TreeClearer] Initialized and ready!");
         }
         
         /// <summary>
@@ -56,7 +57,7 @@ namespace SkiResortTycoon.UnityBridge
                 _treesContainer = GameObject.Find("Trees");
                 if (_treesContainer == null)
                 {
-                    // No trees to clear
+                    Debug.LogWarning("[TreeClearer] No 'Trees' container found in scene. Trees cannot be cleared.");
                     return;
                 }
             }

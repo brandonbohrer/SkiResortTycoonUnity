@@ -10,7 +10,7 @@ namespace SkiResortTycoon.Core
         public int DayIndex { get; set; } = 1;
         public float TimeMinutes { get; set; } = 540f; // Start at 9:00 AM
         public int VisitorsToday { get; set; } = 0;
-        public int Money { get; set; } = 15000;
+        public int Money { get; set; } = 1000000;
         
         // Infrastructure counts (updated by systems)
         public int LiftsBuilt { get; set; } = 0;

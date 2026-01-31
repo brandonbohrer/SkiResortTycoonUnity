@@ -153,8 +153,8 @@ namespace SkiResortTycoon.Core
             
             trail.TotalElevationDrop = totalDrop;
             
-            // Must go downhill overall (using relaxed threshold for now)
-            if (totalDrop < 0.5f) // Relaxed from MinDrop for world space
+            // ANY downhill is acceptable (very relaxed)
+            if (totalDrop < 0.01f) // Just needs to go down a tiny bit
             {
                 return false;
             }
@@ -181,16 +181,16 @@ namespace SkiResortTycoon.Core
                 }
             }
             
-            // Check minimum run length (in world units, ~= meters)
-            if (totalRun < 3f) // Relaxed from MinRunLength * tileSize
+            // Very short trails are ok (>1m)
+            if (totalRun < 1f)
             {
                 return false;
             }
             
-            // Check uphill percentage
+            // Allow up to 50% uphill segments (very permissive)
             int totalSegments = trail.WorldPathPoints.Count - 1;
             float uphillPercent = totalSegments > 0 ? (float)uphillCount / totalSegments : 0f;
-            if (uphillPercent > MaxUphillPercent)
+            if (uphillPercent > 0.5f) // 50% max
             {
                 return false;
             }

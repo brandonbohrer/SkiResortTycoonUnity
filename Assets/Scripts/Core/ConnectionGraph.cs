@@ -10,7 +10,7 @@ namespace SkiResortTycoon.Core
     {
         public int FromId { get; set; }
         public int ToId { get; set; }
-        public string FromType { get; set; }  // "Lift", "Trail", "Building"
+        public string FromType { get; set; }  // "Lift", "Trail", " Building"
         public string ToType { get; set; }
         public int Distance { get; set; }  // Manhattan distance between snap points
         
@@ -43,10 +43,15 @@ namespace SkiResortTycoon.Core
         private Dictionary<int, List<int>> _trailToLifts;     // TrailId -> List<LiftId> (trails can be accessed by multiple lifts)
         private Dictionary<int, List<int>> _trailToBuildings; // TrailId -> List<BuildingId>
         
+        // Base connections
+        private Dictionary<int, bool> _liftsToBase;   // LiftId -> connected to base
+        private Dictionary<int, bool> _trailsToBase;  // TrailId -> connected to base
+        
         // All connections (for queries)
         private List<Connection> _allConnections;
         
-        public int SnapRadius { get; set; } = 10;  // Max 3D distance for auto-connection (world units)
+        public int SnapRadius { get; set; } = 20;  // Max 3D distance for lift-trail connections (increased from 10)
+        public int BaseSnapRadius { get; set; } = 40;  // Larger radius for forgiving base connections
         
         public ConnectionGraph()
         {
@@ -54,6 +59,8 @@ namespace SkiResortTycoon.Core
             _liftToBuildings = new Dictionary<int, List<int>>();
             _trailToLifts = new Dictionary<int, List<int>>();
             _trailToBuildings = new Dictionary<int, List<int>>();
+            _liftsToBase = new Dictionary<int, bool>();
+            _trailsToBase = new Dictionary<int, bool>();
             _allConnections = new List<Connection>();
         }
         
@@ -64,14 +71,59 @@ namespace SkiResortTycoon.Core
         {
             Clear();
             
-            // Connect lifts to trails
+            // Connect lifts to base (bottom stations)
+            ConnectLiftsToBase(registry);
+            
+            // Connect lifts to trails (top stations)
             ConnectLiftsToTrails(registry);
             
             // Connect trails to other trails (for smooth transitions)
             ConnectTrailsToTrails(registry);
             
-            // Connect trails to base (future: buildings)
+            // Connect trails to base
             ConnectTrailsToBase(registry);
+        }
+        
+        private void ConnectLiftsToBase(SnapRegistry registry)
+        {
+            var liftBottoms = registry.GetByType(SnapPointType.LiftBottom);
+            var baseSpawns = registry.GetByType(SnapPointType.BaseSpawn);
+            
+            if (baseSpawns.Count == 0)
+            {
+                UnityEngine.Debug.LogWarning("[ConnectionGraph] No base spawn points found! Place a base lodge first.");
+                return;
+            }
+            
+            UnityEngine.Debug.Log($"[ConnectionGraph] Connecting {liftBottoms.Count} lift bottoms to {baseSpawns.Count} base spawn(s) (radius: {BaseSnapRadius})");
+            
+            int connectionsCreated = 0;
+            foreach (var liftBottom in liftBottoms)
+            {
+                int liftId = liftBottom.OwnerId;
+                
+                // Check if any base spawn is within radius
+                foreach (var baseSpawn in baseSpawns)
+                {
+                    float distance = liftBottom.Distance3D(baseSpawn);
+                    
+                    if (distance <= BaseSnapRadius)
+                    {
+                        _liftsToBase[liftId] = true;
+                        UnityEngine.Debug.Log($"[ConnectionGraph] Lift {liftId} → Base (distance: {distance:F2})");
+                        connectionsCreated++;
+                        break; // Only need to connect to one base
+                    }
+                }
+                
+                // Warn if lift not connected to base
+                if (!_liftsToBase.ContainsKey(liftId))
+                {
+                    UnityEngine.Debug.LogWarning($"[ConnectionGraph] Lift {liftId} bottom is NOT connected to base! (distance > {BaseSnapRadius})");
+                }
+            }
+            
+            UnityEngine.Debug.Log($"[ConnectionGraph] Created {connectionsCreated} lift→base connections");
         }
         
         private void ConnectLiftsToTrails(SnapRegistry registry)
@@ -81,20 +133,24 @@ namespace SkiResortTycoon.Core
             
             UnityEngine.Debug.Log($"[ConnectionGraph] Connecting {liftTops.Count} lift tops to {trailStarts.Count} trail starts (radius: {SnapRadius})");
             
+            int totalConnections = 0;
             foreach (var liftTop in liftTops)
             {
                 int liftId = liftTop.OwnerId;
+                int connectionsForThisLift = 0;
                 
                 // Find all trail starts within snap radius (3D distance)
                 foreach (var trailStart in trailStarts)
                 {
                     float distance = liftTop.Distance3D(trailStart);
                     
+                    UnityEngine.Debug.Log($"[ConnectionGraph] Checking: Lift {liftId} top @ ({liftTop.Position.X:F1},{liftTop.Position.Y:F1},{liftTop.Position.Z:F1}) vs Trail {trailStart.OwnerId} start @ ({trailStart.Position.X:F1},{trailStart.Position.Y:F1},{trailStart.Position.Z:F1}) = {distance:F2} units");
+                    
                     if (distance <= SnapRadius)
                     {
                         int trailId = trailStart.OwnerId;
                         
-                        UnityEngine.Debug.Log($"[ConnectionGraph] Lift {liftId} → Trail {trailId} (distance: {distance:F2})");
+                        UnityEngine.Debug.Log($"[ConnectionGraph] ✓ Lift {liftId} → Trail {trailId} (distance: {distance:F2})");
                         
                         // Add lift->trail connection
                         if (!_liftToTrails.ContainsKey(liftId))
@@ -104,6 +160,7 @@ namespace SkiResortTycoon.Core
                         if (!_liftToTrails[liftId].Contains(trailId))
                         {
                             _liftToTrails[liftId].Add(trailId);
+                            connectionsForThisLift++;
                         }
                         
                         // Add trail->lift connection (reverse)
@@ -119,11 +176,18 @@ namespace SkiResortTycoon.Core
                         // Store connection
                         var conn = new Connection(liftId, trailId, "Lift", "Trail", (int)distance);
                         _allConnections.Add(conn);
+                        totalConnections++;
                     }
+                }
+                
+                // CRITICAL: Warn if lift has no trail connections
+                if (connectionsForThisLift == 0)
+                {
+                    UnityEngine.Debug.LogWarning($"[ConnectionGraph] Lift {liftId} top has NO connected trails! (all trails > {SnapRadius} units away)");
                 }
             }
             
-            UnityEngine.Debug.Log($"[ConnectionGraph] Created {_allConnections.Count} lift→trail connections");
+            UnityEngine.Debug.Log($"[ConnectionGraph] Created {totalConnections} lift→trail connections");
         }
         
         private void ConnectTrailsToTrails(SnapRegistry registry)
@@ -172,11 +236,17 @@ namespace SkiResortTycoon.Core
         
         private void ConnectTrailsToBase(SnapRegistry registry)
         {
-            // Future: connect trail ends to building entrances or base spawn
-            // For now, just log that trail ends exist
             var trailEnds = registry.GetByType(SnapPointType.TrailEnd);
             var baseSpawns = registry.GetByType(SnapPointType.BaseSpawn);
             
+            if (baseSpawns.Count == 0)
+            {
+                return; // Already warned in ConnectLiftsToBase
+            }
+            
+            UnityEngine.Debug.Log($"[ConnectionGraph] Connecting {trailEnds.Count} trail ends to {baseSpawns.Count} base spawn(s) (radius: {BaseSnapRadius})");
+            
+            int connectionsCreated = 0;
             foreach (var trailEnd in trailEnds)
             {
                 int trailId = trailEnd.OwnerId;
@@ -184,15 +254,19 @@ namespace SkiResortTycoon.Core
                 // Check if trail end is near a base spawn
                 foreach (var baseSpawn in baseSpawns)
                 {
-                    int distance = trailEnd.DistanceTo(baseSpawn);
+                    float distance = trailEnd.Distance3D(baseSpawn);
                     
-                    if (distance <= SnapRadius)
+                    if (distance <= BaseSnapRadius)
                     {
-                        // Trail connects to base
-                        // (Future: store this connection)
+                        _trailsToBase[trailId] = true;
+                        UnityEngine.Debug.Log($"[ConnectionGraph] Trail {trailId} → Base (distance: {distance:F2})");
+                        connectionsCreated++;
+                        break; // Only need to connect to one base
                     }
                 }
             }
+            
+            UnityEngine.Debug.Log($"[ConnectionGraph] Created {connectionsCreated} trail→base connections");
         }
         
         /// <summary>
@@ -236,6 +310,38 @@ namespace SkiResortTycoon.Core
         }
         
         /// <summary>
+        /// Checks if a lift is connected to the base.
+        /// </summary>
+        public bool IsLiftConnectedToBase(int liftId)
+        {
+            return _liftsToBase.ContainsKey(liftId) && _liftsToBase[liftId];
+        }
+        
+        /// <summary>
+        /// Checks if a trail is connected to the base.
+        /// </summary>
+        public bool IsTrailConnectedToBase(int trailId)
+        {
+            return _trailsToBase.ContainsKey(trailId) && _trailsToBase[trailId];
+        }
+        
+        /// <summary>
+        /// Gets all lifts connected to the base.
+        /// </summary>
+        public List<int> GetLiftsConnectedToBase()
+        {
+            return _liftsToBase.Where(kvp => kvp.Value).Select(kvp => kvp.Key).ToList();
+        }
+        
+        /// <summary>
+        /// Gets all trails connected to the base.
+        /// </summary>
+        public List<int> GetTrailsConnectedToBase()
+        {
+            return _trailsToBase.Where(kvp => kvp.Value).Select(kvp => kvp.Key).ToList();
+        }
+        
+        /// <summary>
         /// Gets all connections.
         /// </summary>
         public List<Connection> GetAllConnections()
@@ -268,8 +374,9 @@ namespace SkiResortTycoon.Core
             _liftToBuildings.Clear();
             _trailToLifts.Clear();
             _trailToBuildings.Clear();
+            _liftsToBase.Clear();
+            _trailsToBase.Clear();
             _allConnections.Clear();
         }
     }
 }
-

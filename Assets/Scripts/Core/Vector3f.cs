@@ -65,6 +65,69 @@ namespace SkiResortTycoon.Core
             return dx * dx + dy * dy + dz * dz;
         }
         
+        /// <summary>
+        /// Vector subtraction.
+        /// </summary>
+        public static Vector3f operator -(Vector3f a, Vector3f b)
+        {
+            return new Vector3f(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
+        }
+        
+        /// <summary>
+        /// Vector addition.
+        /// </summary>
+        public static Vector3f operator +(Vector3f a, Vector3f b)
+        {
+            return new Vector3f(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
+        }
+        
+        /// <summary>
+        /// Scalar multiplication.
+        /// </summary>
+        public static Vector3f operator *(Vector3f v, float scalar)
+        {
+            return new Vector3f(v.X * scalar, v.Y * scalar, v.Z * scalar);
+        }
+        
+        /// <summary>
+        /// Scalar multiplication (reversed operands).
+        /// </summary>
+        public static Vector3f operator *(float scalar, Vector3f v)
+        {
+            return new Vector3f(v.X * scalar, v.Y * scalar, v.Z * scalar);
+        }
+        
+        /// <summary>
+        /// Returns the magnitude (length) of the vector.
+        /// </summary>
+        public float Magnitude()
+        {
+            return (float)System.Math.Sqrt(X * X + Y * Y + Z * Z);
+        }
+        
+        /// <summary>
+        /// Returns a normalized version of this vector (length = 1).
+        /// </summary>
+        public Vector3f Normalized()
+        {
+            float mag = Magnitude();
+            if (mag > 0.00001f)
+                return new Vector3f(X / mag, Y / mag, Z / mag);
+            return Vector3f.Zero;
+        }
+        
+        /// <summary>
+        /// Cross product of two vectors.
+        /// </summary>
+        public static Vector3f Cross(Vector3f a, Vector3f b)
+        {
+            return new Vector3f(
+                a.Y * b.Z - a.Z * b.Y,
+                a.Z * b.X - a.X * b.Z,
+                a.X * b.Y - a.Y * b.X
+            );
+        }
+        
         public static readonly Vector3f Zero = new Vector3f(0, 0, 0);
     }
 }

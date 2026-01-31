@@ -25,7 +25,15 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private Color _colorDoubleBlack = new Color(0.5f, 0.0f, 0.0f, 1f); // Dark red for double-black
         [SerializeField] private Color _colorDrawing = new Color(1f, 1f, 0f, 1f); // Bright yellow
         
+        [Header("Debug Visualization")]
+        [SerializeField] private bool _showBoundaries = true; // Toggle boundary visualization
+        [SerializeField] private Color _boundaryColor = new Color(1f, 0.5f, 0f, 0.5f); // Semi-transparent orange
+        [SerializeField] private float _boundaryLineWidth = 0.3f;
+        
+        
         private Dictionary<int, LineRenderer> _trailRenderers = new Dictionary<int, LineRenderer>();
+        private Dictionary<int, LineRenderer> _leftBoundaryRenderers = new Dictionary<int, LineRenderer>();
+        private Dictionary<int, LineRenderer> _rightBoundaryRenderers = new Dictionary<int, LineRenderer>();
         private LineRenderer _currentTrailRenderer;
         
         void LateUpdate()
@@ -65,6 +73,18 @@ namespace SkiResortTycoon.UnityBridge
             foreach (int id in toRemove)
             {
                 _trailRenderers.Remove(id);
+                
+                // Also remove boundary renderers
+                if (_leftBoundaryRenderers.ContainsKey(id))
+                {
+                    Destroy(_leftBoundaryRenderers[id].gameObject);
+                    _leftBoundaryRenderers.Remove(id);
+                }
+                if (_rightBoundaryRenderers.ContainsKey(id))
+                {
+                    Destroy(_rightBoundaryRenderers[id].gameObject);
+                    _rightBoundaryRenderers.Remove(id);
+                }
             }
             
             // Create/update renderers for all trails
@@ -100,6 +120,44 @@ namespace SkiResortTycoon.UnityBridge
                 lineRenderer.endColor = trailColor;
                 lineRenderer.enabled = true; // Make sure it's enabled
                 UpdateLinePositions(lineRenderer, trail.WorldPathPoints);
+                
+                // Update or create boundary renderers if enabled
+                if (_showBoundaries && trail.LeftBoundaryPoints.Count > 0 && trail.RightBoundaryPoints.Count > 0)
+                {
+                    // Left boundary
+                    if (!_leftBoundaryRenderers.ContainsKey(trail.TrailId))
+                    {
+                        GameObject leftObj = new GameObject($"Trail_{trail.TrailId}_LeftBoundary");
+                        leftObj.transform.SetParent(transform);
+                        LineRenderer leftLr = leftObj.AddComponent<LineRenderer>();
+                        ConfigureBoundaryRenderer(leftLr);
+                        _leftBoundaryRenderers[trail.TrailId] = leftLr;
+                    }
+                    LineRenderer leftRenderer = _leftBoundaryRenderers[trail.TrailId];
+                    leftRenderer.enabled = true;
+                    UpdateLinePositions(leftRenderer, trail.LeftBoundaryPoints);
+                    
+                    // Right boundary
+                    if (!_rightBoundaryRenderers.ContainsKey(trail.TrailId))
+                    {
+                        GameObject rightObj = new GameObject($"Trail_{trail.TrailId}_RightBoundary");
+                        rightObj.transform.SetParent(transform);
+                        LineRenderer rightLr = rightObj.AddComponent<LineRenderer>();
+                        ConfigureBoundaryRenderer(rightLr);
+                        _rightBoundaryRenderers[trail.TrailId] = rightLr;
+                    }
+                    LineRenderer rightRenderer = _rightBoundaryRenderers[trail.TrailId];
+                    rightRenderer.enabled = true;
+                    UpdateLinePositions(rightRenderer, trail.RightBoundaryPoints);
+                }
+                else
+                {
+                    // Disable boundary renderers if not showing boundaries
+                    if (_leftBoundaryRenderers.ContainsKey(trail.TrailId))
+                        _leftBoundaryRenderers[trail.TrailId].enabled = false;
+                    if (_rightBoundaryRenderers.ContainsKey(trail.TrailId))
+                        _rightBoundaryRenderers[trail.TrailId].enabled = false;
+                }
             }
         }
         
@@ -193,10 +251,42 @@ namespace SkiResortTycoon.UnityBridge
             }
         }
         
+        /// <summary>
+        /// Configures a LineRenderer for boundary visualization.
+        /// </summary>
+        private void ConfigureBoundaryRenderer(LineRenderer lr)
+        {
+            lr.material = new Material(Shader.Find("Sprites/Default"));
+            lr.startWidth = _boundaryLineWidth;
+            lr.endWidth = _boundaryLineWidth;
+            lr.useWorldSpace = true;
+            lr.textureMode = LineTextureMode.Tile;
+            lr.sortingLayerName = "Default";
+            lr.sortingOrder = 32766; // Slightly below main trail line
+            lr.startColor = _boundaryColor;
+            lr.endColor = _boundaryColor;
+        }
+        
         void OnDestroy()
         {
             // Clean up all renderers
             foreach (var kvp in _trailRenderers)
+            {
+                if (kvp.Value != null)
+                {
+                    Destroy(kvp.Value.gameObject);
+                }
+            }
+            
+            foreach (var kvp in _leftBoundaryRenderers)
+            {
+                if (kvp.Value != null)
+                {
+                    Destroy(kvp.Value.gameObject);
+                }
+            }
+            
+            foreach (var kvp in _rightBoundaryRenderers)
             {
                 if (kvp.Value != null)
                 {

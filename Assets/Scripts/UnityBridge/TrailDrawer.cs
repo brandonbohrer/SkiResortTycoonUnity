@@ -189,8 +189,13 @@ namespace SkiResortTycoon.UnityBridge
                     Debug.Log($"Snap Points Registered: {snapPointsAdded} trail points + start/end");
                 }
                 
+                
                 // Calculate difficulty and get detailed stats
                 var stats = _trailSystem.CalculateDifficulty(_currentTrail);
+                
+                // Generate trail boundaries for skier navigation
+                _currentTrail.GenerateBoundaries();
+                Debug.Log($"[TrailDrawer] Generated boundaries: Left={_currentTrail.LeftBoundaryPoints.Count}, Right={_currentTrail.RightBoundaryPoints.Count}, Width={_currentTrail.TrailWidth}f");
                 
                 // Clear trees along the trail path
                 List<Vector3> trailPath = new List<Vector3>();

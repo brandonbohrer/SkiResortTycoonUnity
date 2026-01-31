@@ -20,6 +20,10 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private float _skierSize = 1.5f; // Bigger so we can see them
         [SerializeField] private int _maxActiveSkiers = 50;
         
+        [Header("Spawn Settings")]
+        [SerializeField] private Vector2 baseSpawnPosition = new Vector2(50, 50); // Default base position
+        [SerializeField] private bool useSnapPoints = false; // Use snap point system or direct spawning
+        
         [Header("Movement Settings")]
         [SerializeField] private float _liftSpeed = 2f; // tiles per second
         [SerializeField] private float _skiSpeed = 5f; // tiles per second
@@ -28,25 +32,42 @@ namespace SkiResortTycoon.UnityBridge
         private List<VisualSkier> _activeSkiers = new List<VisualSkier>();
         private float _spawnTimer;
         private Material _skierMaterial;
+        private bool _hasLoggedUpdate = false;
         
         private void Awake()
         {
             // Create material for skier dots
             _skierMaterial = new Material(Shader.Find("Unlit/Color"));
             _skierMaterial.color = _skierColor;
+            Debug.Log("[SkierVisualizer] Awake - initialized material");
         }
         
         private void Update()
         {
+            if (!_hasLoggedUpdate)
+            {
+                Debug.Log("[SkierVisualizer] Update is being called");
+                _hasLoggedUpdate = true;
+            }
+            
             // Check if all systems are ready
             if (_simRunner == null || _liftBuilder == null || _trailDrawer == null)
+            {
+                Debug.LogWarning("[SkierVisualizer] Missing references: SimRunner, LiftBuilder, or TrailDrawer");
                 return;
+            }
             
             if (_liftBuilder.LiftSystem == null || _trailDrawer.TrailSystem == null)
+            {
+                Debug.LogWarning("[SkierVisualizer] LiftSystem or TrailSystem not initialized");
                 return;
+            }
             
             if (_trailDrawer.GridRenderer == null || _trailDrawer.GridRenderer.TerrainData == null)
+            {
+                Debug.LogWarning("[SkierVisualizer] GridRenderer or TerrainData not initialized");
                 return;
+            }
             
             // Spawn new skiers periodically
             _spawnTimer += Time.deltaTime;
@@ -73,113 +94,238 @@ namespace SkiResortTycoon.UnityBridge
         
         private void TrySpawnSkier()
         {
-            var snapRegistry = _liftBuilder.Connectivity.Registry;
             var terrainData = _trailDrawer.GridRenderer.TerrainData;
-            
-            // Get base spawn point
-            var basePoints = snapRegistry.GetByType(SnapPointType.BaseSpawn);
-            if (basePoints.Count == 0)
+            if (terrainData == null || terrainData.Grid == null)
                 return;
             
-            var basePoint = basePoints[0];
+            var grid = terrainData.Grid;
             
-            // Find a lift near base
-            var lifts = _liftBuilder.LiftSystem.Lifts;
-            if (lifts.Count == 0)
+            // Get all lifts and trails directly from systems
+            var allLifts = _liftBuilder.LiftSystem.GetAllLifts();
+            var allTrails = _trailDrawer.TrailSystem.GetAllTrails();
+            
+            if (allLifts.Count == 0 || allTrails.Count == 0)
                 return;
             
-            // Pick a random lift
-            var lift = lifts[Random.Range(0, lifts.Count)];
+            // Pick a random lift and trail
+            var lift = allLifts[Random.Range(0, allLifts.Count)];
+            var trail = allTrails[Random.Range(0, allTrails.Count)];
             
-            // Find trails connected to this lift's top station
-            var trailsFromLift = _liftBuilder.Connectivity.Connections.GetTrailsFromLift(lift.LiftId);
-            if (trailsFromLift.Count == 0)
-                return;
+            // Create skier with random skill level
+            var distribution = new SkierDistribution();
+            var skillLevel = distribution.GetRandomSkillLevel(new System.Random());
+            var skier = new Skier(_activeSkiers.Count, skillLevel);
             
-            // Pick a random trail
-            int trailId = trailsFromLift[Random.Range(0, trailsFromLift.Count)];
-            var trail = _trailDrawer.TrailSystem.GetTrail(trailId);
-            if (trail == null)
-                return;
-            
-            // Create visual skier
+            // Create visual skier GameObject
             var skierObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            skierObj.name = "VisualSkier";
+            skierObj.name = $"Skier_{skier.SkierId}";
             skierObj.transform.localScale = Vector3.one * _skierSize;
             
             // Set material
             var renderer = skierObj.GetComponent<Renderer>();
             renderer.material = _skierMaterial;
             
-            // Remove collider (we don't need physics)
+            // Remove collider
             Destroy(skierObj.GetComponent<Collider>());
             
-            // Set initial position at lift bottom
-            var startPos = TileToWorld(lift.BottomStation, terrainData.Grid);
+            // Set initial position at base (use X/Z for horizontal, Y for height)
+            // baseSpawnPosition.x and .y are actually X and Z in 3D space
+            var baseCoord = new TileCoord((int)baseSpawnPosition.x, (int)baseSpawnPosition.y);
+            var tile = grid.GetTile(baseCoord);
+            float baseHeight = tile != null ? tile.Height : -35f; // Default to Base Lodge height
+            
+            // Unity coordinates: X and Z horizontal, Y vertical
+            var startPos = new Vector3(baseSpawnPosition.x, baseHeight, baseSpawnPosition.y);
             skierObj.transform.position = startPos;
             
-            var skier = new VisualSkier
+            Debug.Log($"[Skier {skier.SkierId}] Spawned at {startPos}, will ride Lift {lift.LiftId} ({lift.StartPosition.X}, {lift.StartPosition.Y}, {lift.StartPosition.Z}) to ({lift.EndPosition.X}, {lift.EndPosition.Y}, {lift.EndPosition.Z})");
+            
+            // Create visual skier data
+            var visualSkier = new VisualSkier
             {
                 GameObject = skierObj,
+                Skier = skier,
                 CurrentLift = lift,
                 CurrentTrail = trail,
-                Phase = SkierPhase.RidingLift,
-                PhaseProgress = 0f
+                PlannedTrails = new List<TrailData> { trail },
+                CurrentTrailIndex = 0,
+                Phase = SkierPhase.WalkingToLift,
+                PhaseProgress = 0f,
+                Pathfinder = null,
+                ReachableTrails = allTrails
             };
             
-            _activeSkiers.Add(skier);
+            _activeSkiers.Add(visualSkier);
         }
         
-        private void UpdateSkier(VisualSkier skier, float deltaTime)
+        private void UpdateSkier(VisualSkier vs, float deltaTime)
         {
             var grid = _trailDrawer.GridRenderer.TerrainData.Grid;
+            var snapRegistry = _liftBuilder.Connectivity.Registry;
             
-            switch (skier.Phase)
+            switch (vs.Phase)
             {
+                case SkierPhase.WalkingToLift:
+                {
+                    // Transition to riding the current lift
+                    if (vs.CurrentLift == null)
+                    {
+                        vs.IsFinished = true;
+                        return;
+                    }
+                    
+                    // Transition to riding this lift
+                    vs.Phase = SkierPhase.RidingLift;
+                    vs.PhaseProgress = 0f;
+                    
+                    // Set position to lift bottom using StartPosition (X, Y, Z)
+                    var liftBottom = new Vector3(
+                        vs.CurrentLift.StartPosition.X, 
+                        vs.CurrentLift.StartPosition.Y, 
+                        vs.CurrentLift.StartPosition.Z
+                    );
+                    vs.GameObject.transform.position = liftBottom;
+                    
+                    Debug.Log($"[Skier {vs.Skier.SkierId}] At lift bottom {liftBottom}, riding to ({vs.CurrentLift.EndPosition.X}, {vs.CurrentLift.EndPosition.Y}, {vs.CurrentLift.EndPosition.Z})");
+                    break;
+                }
+                
                 case SkierPhase.RidingLift:
                 {
                     // Move up the lift
-                    float liftLength = skier.CurrentLift.Length;
+                    float liftLength = vs.CurrentLift.Length;
                     if (liftLength <= 0) liftLength = 1f;
                     
-                    skier.PhaseProgress += (_liftSpeed / liftLength) * deltaTime;
+                    float oldProgress = vs.PhaseProgress;
+                    vs.PhaseProgress += (_liftSpeed / liftLength) * deltaTime;
                     
-                    if (skier.PhaseProgress >= 1f)
+                    // Log position every ~25% progress
+                    if ((int)(oldProgress * 4) != (int)(vs.PhaseProgress * 4))
                     {
-                        // Transition to skiing
-                        skier.Phase = SkierPhase.SkiingTrail;
-                        skier.PhaseProgress = 0f;
+                        Debug.Log($"[Skier {vs.Skier.SkierId}] Riding lift {(vs.PhaseProgress * 100):F0}% - pos {vs.GameObject.transform.position}");
                     }
                     
-                    // Update position
-                    var start = skier.CurrentLift.BottomStation;
-                    var end = skier.CurrentLift.TopStation;
-                    var startWorld = TileToWorld(start, grid);
-                    var endWorld = TileToWorld(end, grid);
-                    skier.GameObject.transform.position = Vector3.Lerp(startWorld, endWorld, skier.PhaseProgress);
+                    if (vs.PhaseProgress >= 1f)
+                    {
+                        // Reached top - transition to skiing
+                        if (vs.CurrentTrailIndex < vs.PlannedTrails.Count)
+                        {
+                            vs.CurrentTrail = vs.PlannedTrails[vs.CurrentTrailIndex];
+                            vs.Phase = SkierPhase.SkiingTrail;
+                            vs.PhaseProgress = 0f;
+                            vs.Skier.RunsCompleted++;
+                            Debug.Log($"[Skier {vs.Skier.SkierId}] Reached top! Starting to ski trail {vs.CurrentTrail.TrailId}");
+                        }
+                        else
+                        {
+                            // No more trails - choose new destination
+                            ChooseNewDestination(vs);
+                        }
+                        return;
+                    }
+                    
+                    // Update position using proper 3D coordinates from LiftData
+                    var startWorld = new Vector3(
+                        vs.CurrentLift.StartPosition.X,
+                        vs.CurrentLift.StartPosition.Y, 
+                        vs.CurrentLift.StartPosition.Z
+                    );
+                    var endWorld = new Vector3(
+                        vs.CurrentLift.EndPosition.X,
+                        vs.CurrentLift.EndPosition.Y,
+                        vs.CurrentLift.EndPosition.Z
+                    );
+                    vs.GameObject.transform.position = Vector3.Lerp(startWorld, endWorld, vs.PhaseProgress);
                     break;
                 }
                 
                 case SkierPhase.SkiingTrail:
                 {
                     // Move down the trail
-                    float trailLength = CalculateTrailDistance(skier.CurrentTrail);
+                    float trailLength = CalculateTrailDistance(vs.CurrentTrail);
                     if (trailLength <= 0) trailLength = 1f;
                     
-                    skier.PhaseProgress += (_skiSpeed / trailLength) * deltaTime;
+                    vs.PhaseProgress += (_skiSpeed / trailLength) * deltaTime;
                     
-                    if (skier.PhaseProgress >= 1f)
+                    if (vs.PhaseProgress >= 1f)
                     {
-                        // Finished run
-                        skier.IsFinished = true;
+                        // Finished this trail - move to next
+                        vs.CurrentTrailIndex++;
+                        
+                        if (vs.CurrentTrailIndex < vs.PlannedTrails.Count)
+                        {
+                            // More trails in plan - continue
+                            vs.Phase = SkierPhase.WalkingToLift;
+                            vs.PhaseProgress = 0f;
+                        }
+                        else
+                        {
+                            // Finished all trails - choose new destination
+                            ChooseNewDestination(vs);
+                        }
                         return;
                     }
                     
                     // Update position along trail
-                    UpdateSkierOnTrail(skier, grid);
+                    UpdateSkierOnTrail(vs, grid);
                     break;
                 }
             }
+        }
+        
+        private void ChooseNewDestination(VisualSkier vs)
+        {
+            // Simplified mode: just pick random lift and trail
+            if (vs.Pathfinder == null && vs.ReachableTrails != null && vs.ReachableTrails.Count > 0)
+            {
+                var allLifts = _liftBuilder.LiftSystem.GetAllLifts();
+                if (allLifts.Count == 0)
+                {
+                    vs.IsFinished = true;
+                    return;
+                }
+                
+                // Pick random lift and trail
+                vs.CurrentLift = allLifts[Random.Range(0, allLifts.Count)];
+                var randomTrail = vs.ReachableTrails[Random.Range(0, vs.ReachableTrails.Count)];
+                
+                vs.PlannedTrails = new List<TrailData> { randomTrail };
+                vs.CurrentTrailIndex = 0;
+                vs.Phase = SkierPhase.WalkingToLift;
+                vs.PhaseProgress = 0f;
+                Debug.Log($"[SkierVisualizer] Skier {vs.Skier.SkierId} chose new destination (simplified)");
+                return;
+            }
+            
+            // Pathfinder mode (original)
+            if (vs.Pathfinder == null)
+            {
+                vs.IsFinished = true;
+                return;
+            }
+            
+            // Choose a new destination and plan route
+            var destinationTrail = vs.Pathfinder.ChooseDestinationTrail(vs.Skier, vs.ReachableTrails);
+            if (destinationTrail == null)
+            {
+                // No valid destination - remove skier
+                vs.IsFinished = true;
+                return;
+            }
+            
+            var pathTrails = vs.Pathfinder.FindPathToTrail(destinationTrail);
+            if (pathTrails.Count == 0)
+            {
+                // No path found - remove skier
+                vs.IsFinished = true;
+                return;
+            }
+            
+            // Update plan
+            vs.PlannedTrails = pathTrails;
+            vs.CurrentTrailIndex = 0;
+            vs.Phase = SkierPhase.WalkingToLift;
+            vs.PhaseProgress = 0f;
         }
         
         private void UpdateSkierOnTrail(VisualSkier skier, GridSystem grid)
@@ -229,15 +375,30 @@ namespace SkiResortTycoon.UnityBridge
         
         private Vector3 TileToWorld(TileCoord coord, GridSystem grid)
         {
-            float height = grid.GetTile(coord).Height;
-            // Match the same conversion used by visualizers
-            float x = coord.X;
-            float y = coord.Y + height * 0.5f; // Height offset for 2.5D
-            return new Vector3(x, y, -5f); // Z negative to be in front of terrain
+            if (grid == null)
+            {
+                Debug.LogError("[SkierVisualizer] Grid is null in TileToWorld!");
+                return Vector3.zero;
+            }
+            
+            var tile = grid.GetTile(coord);
+            if (tile == null)
+            {
+                // Don't spam - tile might be out of bounds
+                float x = coord.X;
+                float y = coord.Y;
+                return new Vector3(x, y, -5f);
+            }
+            
+            float height = tile.Height;
+            float xPos = coord.X;
+            float yPos = coord.Y + height * 0.5f;
+            return new Vector3(xPos, yPos, -5f);
         }
         
         private enum SkierPhase
         {
+            WalkingToLift,
             RidingLift,
             SkiingTrail
         }
@@ -245,11 +406,18 @@ namespace SkiResortTycoon.UnityBridge
         private class VisualSkier
         {
             public GameObject GameObject;
+            public Skier Skier; // Core skier data
             public LiftData CurrentLift;
             public TrailData CurrentTrail;
+            public List<TrailData> PlannedTrails; // Trails in current route
+            public int CurrentTrailIndex; // Current position in plan
             public SkierPhase Phase;
-            public float PhaseProgress; // 0 to 1
+            public float PhaseProgress; // 0 to 1 along current segment
             public bool IsFinished;
+            
+            // Pathfinding references (for replanning)
+            public SkierPathfinder Pathfinder;
+            public List<TrailData> ReachableTrails;
         }
     }
 }

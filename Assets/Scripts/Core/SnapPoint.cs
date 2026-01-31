@@ -9,8 +9,9 @@ namespace SkiResortTycoon.Core
         LiftTop = 1,
         TrailStart = 2,
         TrailEnd = 3,
-        BuildingEntrance = 4,
-        BaseSpawn = 5  // Special: where visitors spawn at start of day
+        TrailPoint = 4,  // Any point along a trail (user requirement: every point is valid)
+        BuildingEntrance = 5,
+        BaseSpawn = 6  // Special: where visitors spawn at start of day
     }
     
     /// <summary>
@@ -21,13 +22,25 @@ namespace SkiResortTycoon.Core
     {
         public SnapPointType Type { get; set; }
         public TileCoord Coord { get; set; }
+        public Vector3f Position { get; set; }  // 3D world position (authoritative)
         public int OwnerId { get; set; }  // ID of the lift/trail/building that owns this
         public string OwnerName { get; set; }  // Human-readable name for debugging
         
-        public SnapPoint(SnapPointType type, TileCoord coord, int ownerId, string ownerName = "")
+        public SnapPoint(SnapPointType type, TileCoord coord, int ownerId = 0, string ownerName = "")
         {
             Type = type;
             Coord = coord;
+            Position = new Vector3f(coord.X, 0, coord.Y); // Legacy: convert tile to 3D
+            OwnerId = ownerId;
+            OwnerName = ownerName;
+        }
+        
+        // 3D constructor (preferred for new code)
+        public SnapPoint(SnapPointType type, Vector3f position, int ownerId = 0, string ownerName = "")
+        {
+            Type = type;
+            Position = position;
+            Coord = new TileCoord((int)position.X, (int)position.Z); // Convert 3D to legacy tile coord
             OwnerId = ownerId;
             OwnerName = ownerName;
         }

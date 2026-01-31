@@ -20,8 +20,14 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private int _minPointSpacing = 1; // Min tiles between points
         [SerializeField] private KeyCode _drawKey = KeyCode.T; // Press T to draw
         [SerializeField] private bool _debugMode = true;
+        [SerializeField] private float _snapRadius = 5f; // Magnetic cursor snap radius
+        
+        [Header("Visual Feedback")]
+        [SerializeField] private Color _snapColor = Color.green;
+        [SerializeField] private Color _defaultColor = Color.yellow;
         
         private TrailSystem _trailSystem;
+        private MagneticCursor _magneticCursor;
         private TrailData _currentTrail;
         private bool _isDrawing = false;
         private Vector3 _lastAddedWorldPoint;
@@ -44,6 +50,8 @@ namespace SkiResortTycoon.UnityBridge
                 if (_liftBuilder != null && _liftBuilder.Connectivity != null)
                 {
                     registry = _liftBuilder.Connectivity.Registry;
+                    // Create magnetic cursor
+                    _magneticCursor = new MagneticCursor(registry, _snapRadius);
                 }
                 
                 _trailSystem = new TrailSystem(_mountainManager.TerrainData, registry);
@@ -111,6 +119,8 @@ namespace SkiResortTycoon.UnityBridge
         
         private void StartDrawing(Vector3 startPosition)
         {
+            // TODO: Re-enable magnetic cursor after fixing trail building
+            // For now, use raw position to ensure trails work
             _isDrawing = true;
             _currentTrail = _trailSystem.CreateTrail();
             _currentTrail.AddWorldPoint(MountainManager.ToVector3f(startPosition));
@@ -154,6 +164,31 @@ namespace SkiResortTycoon.UnityBridge
             
             if (isValid)
             {
+                // Register snap points for EVERY point in the trail (user requirement)
+                if (_liftBuilder != null && _liftBuilder.Connectivity != null)
+                {
+                    int snapPointsAdded = 0;
+                    foreach (var point in _currentTrail.WorldPathPoints)
+                    {
+                        // Each trail point is a valid snap point
+                        var snapPoint = new SnapPoint(SnapPointType.TrailPoint, point, _currentTrail.TrailId, $"Trail{_currentTrail.TrailId}_Point{snapPointsAdded}");
+                        _liftBuilder.Connectivity.Registry.Register(snapPoint);
+                        snapPointsAdded++;
+                    }
+                    
+                    // Also register start/end as special types for connection logic
+                    if (_currentTrail.WorldPathPoints.Count >= 2)
+                    {
+                        var startSnap = new SnapPoint(SnapPointType.TrailStart, _currentTrail.WorldPathPoints[0], _currentTrail.TrailId, $"Trail{_currentTrail.TrailId}_Start");
+                        var endSnap = new SnapPoint(SnapPointType.TrailEnd, _currentTrail.WorldPathPoints[_currentTrail.WorldPathPoints.Count - 1], _currentTrail.TrailId, $"Trail{_currentTrail.TrailId}_End");
+                        
+                        _liftBuilder.Connectivity.Registry.Register(startSnap);
+                        _liftBuilder.Connectivity.Registry.Register(endSnap);
+                    }
+                    
+                    Debug.Log($"Snap Points Registered: {snapPointsAdded} trail points + start/end");
+                }
+                
                 // Calculate difficulty and get detailed stats
                 var stats = _trailSystem.CalculateDifficulty(_currentTrail);
                 
@@ -165,7 +200,7 @@ namespace SkiResortTycoon.UnityBridge
                 }
                 TreeClearer.ClearTreesAlongPath(trailPath, corridorWidth: 8f); // Wider corridor for trails
                 
-                // Rebuild connections
+                // Rebuild connections (automatically connects lifts to trails based on proximity)
                 if (_liftBuilder != null && _liftBuilder.Connectivity != null)
                 {
                     _liftBuilder.Connectivity.RebuildConnections();
@@ -273,7 +308,7 @@ namespace SkiResortTycoon.UnityBridge
                     
                     // Draw crosshair
                     float size = 10f;
-                    GUI.color = Color.yellow;
+                    GUI.color = _defaultColor;
                     GUI.DrawTexture(new Rect(screenPos.x - size/2, screenPos.y - 1, size, 2), Texture2D.whiteTexture);
                     GUI.DrawTexture(new Rect(screenPos.x - 1, screenPos.y - size/2, 2, size), Texture2D.whiteTexture);
                     GUI.color = Color.white;

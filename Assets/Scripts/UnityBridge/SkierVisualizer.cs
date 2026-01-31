@@ -107,9 +107,25 @@ namespace SkiResortTycoon.UnityBridge
             if (allLifts.Count == 0 || allTrails.Count == 0)
                 return;
             
-            // Pick a random lift and trail
+            // Pick a random lift
             var lift = allLifts[Random.Range(0, allLifts.Count)];
-            var trail = allTrails[Random.Range(0, allTrails.Count)];
+            
+            // Get trails connected to this lift's top station
+            var connectedTrailIds = _liftBuilder.Connectivity.Connections.GetTrailsFromLift(lift.LiftId);
+            if (connectedTrailIds.Count == 0)
+            {
+                Debug.LogWarning($"[SkierVisualizer] Lift {lift.LiftId} has no connected trails!");
+                return;
+            }
+            
+            // Pick a random trail from the connected trails
+            int trailId = connectedTrailIds[Random.Range(0, connectedTrailIds.Count)];
+            var trail = _trailDrawer.TrailSystem.GetTrail(trailId);
+            if (trail == null)
+            {
+                Debug.LogWarning($"[SkierVisualizer] Trail {trailId} not found!");
+                return;
+            }
             
             // Create skier with random skill level
             var distribution = new SkierDistribution();
@@ -129,7 +145,6 @@ namespace SkiResortTycoon.UnityBridge
             Destroy(skierObj.GetComponent<Collider>());
             
             // Set initial position at base (use X/Z for horizontal, Y for height)
-            // baseSpawnPosition.x and .y are actually X and Z in 3D space
             var baseCoord = new TileCoord((int)baseSpawnPosition.x, (int)baseSpawnPosition.y);
             var tile = grid.GetTile(baseCoord);
             float baseHeight = tile != null ? tile.Height : -35f; // Default to Base Lodge height
@@ -138,7 +153,7 @@ namespace SkiResortTycoon.UnityBridge
             var startPos = new Vector3(baseSpawnPosition.x, baseHeight, baseSpawnPosition.y);
             skierObj.transform.position = startPos;
             
-            Debug.Log($"[Skier {skier.SkierId}] Spawned at {startPos}, will ride Lift {lift.LiftId} ({lift.StartPosition.X}, {lift.StartPosition.Y}, {lift.StartPosition.Z}) to ({lift.EndPosition.X}, {lift.EndPosition.Y}, {lift.EndPosition.Z})");
+            Debug.Log($"[Skier {skier.SkierId}] Spawned at {startPos}, will ride Lift {lift.LiftId} → Trail {trail.TrailId} ({trail.Difficulty})");
             
             // Create visual skier data
             var visualSkier = new VisualSkier
@@ -245,22 +260,31 @@ namespace SkiResortTycoon.UnityBridge
                     float trailLength = CalculateTrailDistance(vs.CurrentTrail);
                     if (trailLength <= 0) trailLength = 1f;
                     
+                    float oldProgress = vs.PhaseProgress;
                     vs.PhaseProgress += (_skiSpeed / trailLength) * deltaTime;
+                    
+                    // Log position every ~25% progress
+                    if ((int)(oldProgress * 4) != (int)(vs.PhaseProgress * 4))
+                    {
+                        Debug.Log($"[Skier {vs.Skier.SkierId}] Skiing trail {(vs.PhaseProgress * 100):F0}% - pos {vs.GameObject.transform.position}");
+                    }
                     
                     if (vs.PhaseProgress >= 1f)
                     {
-                        // Finished this trail - move to next
+                        // Finished this trail
                         vs.CurrentTrailIndex++;
+                        Debug.Log($"[Skier {vs.Skier.SkierId}] Finished trail {vs.CurrentTrail.TrailId}. Runs completed: {vs.Skier.RunsCompleted + 1}");
                         
                         if (vs.CurrentTrailIndex < vs.PlannedTrails.Count)
                         {
-                            // More trails in plan - continue
+                            // More trails in plan - get next lift
                             vs.Phase = SkierPhase.WalkingToLift;
                             vs.PhaseProgress = 0f;
                         }
                         else
                         {
-                            // Finished all trails - choose new destination
+                            // Finished all trails - loop back (choose new destination)
+                            Debug.Log($"[Skier {vs.Skier.SkierId}] Completed run! Choosing new destination...");
                             ChooseNewDestination(vs);
                         }
                         return;
@@ -275,102 +299,144 @@ namespace SkiResortTycoon.UnityBridge
         
         private void ChooseNewDestination(VisualSkier vs)
         {
-            // Simplified mode: just pick random lift and trail
-            if (vs.Pathfinder == null && vs.ReachableTrails != null && vs.ReachableTrails.Count > 0)
-            {
-                var allLifts = _liftBuilder.LiftSystem.GetAllLifts();
-                if (allLifts.Count == 0)
-                {
-                    vs.IsFinished = true;
-                    return;
-                }
-                
-                // Pick random lift and trail
-                vs.CurrentLift = allLifts[Random.Range(0, allLifts.Count)];
-                var randomTrail = vs.ReachableTrails[Random.Range(0, vs.ReachableTrails.Count)];
-                
-                vs.PlannedTrails = new List<TrailData> { randomTrail };
-                vs.CurrentTrailIndex = 0;
-                vs.Phase = SkierPhase.WalkingToLift;
-                vs.PhaseProgress = 0f;
-                Debug.Log($"[SkierVisualizer] Skier {vs.Skier.SkierId} chose new destination (simplified)");
-                return;
-            }
-            
-            // Pathfinder mode (original)
-            if (vs.Pathfinder == null)
+            // Pick random lift and connected trail
+            var allLifts = _liftBuilder.LiftSystem.GetAllLifts();
+            if (allLifts.Count == 0)
             {
                 vs.IsFinished = true;
                 return;
             }
             
-            // Choose a new destination and plan route
-            var destinationTrail = vs.Pathfinder.ChooseDestinationTrail(vs.Skier, vs.ReachableTrails);
-            if (destinationTrail == null)
+            // Pick random lift
+            vs.CurrentLift = allLifts[Random.Range(0, allLifts.Count)];
+            
+            // Get trails connected to this lift
+            var connectedTrailIds = _liftBuilder.Connectivity.Connections.GetTrailsFromLift(vs.CurrentLift.LiftId);
+            if (connectedTrailIds.Count == 0)
             {
-                // No valid destination - remove skier
+                Debug.LogWarning($"[Skier {vs.Skier.SkierId}] Lift {vs.CurrentLift.LiftId} has no connected trails!");
                 vs.IsFinished = true;
                 return;
             }
             
-            var pathTrails = vs.Pathfinder.FindPathToTrail(destinationTrail);
-            if (pathTrails.Count == 0)
+            // Pick random connected trail
+            int trailId = connectedTrailIds[Random.Range(0, connectedTrailIds.Count)];
+            var randomTrail = _trailDrawer.TrailSystem.GetTrail(trailId);
+            if (randomTrail == null)
             {
-                // No path found - remove skier
+                Debug.LogWarning($"[Skier {vs.Skier.SkierId}] Trail {trailId} not found!");
                 vs.IsFinished = true;
                 return;
             }
             
-            // Update plan
-            vs.PlannedTrails = pathTrails;
+            vs.PlannedTrails = new List<TrailData> { randomTrail };
             vs.CurrentTrailIndex = 0;
             vs.Phase = SkierPhase.WalkingToLift;
             vs.PhaseProgress = 0f;
+            Debug.Log($"[Skier {vs.Skier.SkierId}] Chose new destination: Lift {vs.CurrentLift.LiftId} → Trail {randomTrail.TrailId} ({randomTrail.Difficulty})");
         }
         
         private void UpdateSkierOnTrail(VisualSkier skier, GridSystem grid)
         {
             var trail = skier.CurrentTrail;
-            if (trail.PathPoints.Count < 2)
-                return;
             
-            float totalLength = CalculateTrailDistance(trail);
-            float targetDistance = totalLength * skier.PhaseProgress;
-            
-            float currentDistance = 0f;
-            for (int i = 0; i < trail.PathPoints.Count - 1; i++)
+            // Use 3D WorldPathPoints if available, otherwise fall back to legacy
+            if (trail.WorldPathPoints != null && trail.WorldPathPoints.Count >= 2)
             {
-                var p1 = trail.PathPoints[i];
-                var p2 = trail.PathPoints[i + 1];
-                float segmentDist = Vector2.Distance(new Vector2(p1.X, p1.Y), new Vector2(p2.X, p2.Y));
+                float totalLength = CalculateTrailDistance(trail);
+                float targetDistance = totalLength * skier.PhaseProgress;
                 
-                if (currentDistance + segmentDist >= targetDistance)
+                float currentDistance = 0f;
+                for (int i = 0; i < trail.WorldPathPoints.Count - 1; i++)
                 {
-                    // Interpolate between p1 and p2
-                    float localProgress = segmentDist > 0 ? (targetDistance - currentDistance) / segmentDist : 0f;
-                    var w1 = TileToWorld(p1, grid);
-                    var w2 = TileToWorld(p2, grid);
-                    skier.GameObject.transform.position = Vector3.Lerp(w1, w2, localProgress);
-                    return;
+                    var p1 = trail.WorldPathPoints[i];
+                    var p2 = trail.WorldPathPoints[i + 1];
+                    
+                    // Calculate 3D distance
+                    float segmentDist = Vector3.Distance(
+                        new Vector3(p1.X, p1.Y, p1.Z),
+                        new Vector3(p2.X, p2.Y, p2.Z)
+                    );
+                    
+                    if (currentDistance + segmentDist >= targetDistance)
+                    {
+                        // Interpolate between p1 and p2 in 3D
+                        float localProgress = segmentDist > 0 ? (targetDistance - currentDistance) / segmentDist : 0f;
+                        var w1 = new Vector3(p1.X, p1.Y, p1.Z);
+                        var w2 = new Vector3(p2.X, p2.Y, p2.Z);
+                        skier.GameObject.transform.position = Vector3.Lerp(w1, w2, localProgress);
+                        return;
+                    }
+                    
+                    currentDistance += segmentDist;
                 }
                 
-                currentDistance += segmentDist;
+                // Fallback to end
+                var endPoint = trail.WorldPathPoints[trail.WorldPathPoints.Count - 1];
+                skier.GameObject.transform.position = new Vector3(endPoint.X, endPoint.Y, endPoint.Z);
             }
-            
-            // Fallback to end
-            skier.GameObject.transform.position = TileToWorld(trail.PathPoints[trail.PathPoints.Count - 1], grid);
+            else if (trail.PathPoints != null && trail.PathPoints.Count >= 2)
+            {
+                // Legacy fallback (use 2D tile coords)
+                float totalLength = CalculateTrailDistance(trail);
+                float targetDistance = totalLength * skier.PhaseProgress;
+                
+                float currentDistance = 0f;
+                for (int i = 0; i < trail.PathPoints.Count - 1; i++)
+                {
+                    var p1 = trail.PathPoints[i];
+                    var p2 = trail.PathPoints[i + 1];
+                    float segmentDist = Vector2.Distance(new Vector2(p1.X, p1.Y), new Vector2(p2.X, p2.Y));
+                    
+                    if (currentDistance + segmentDist >= targetDistance)
+                    {
+                        float localProgress = segmentDist > 0 ? (targetDistance - currentDistance) / segmentDist : 0f;
+                        var w1 = TileToWorld(p1, grid);
+                        var w2 = TileToWorld(p2, grid);
+                        skier.GameObject.transform.position = Vector3.Lerp(w1, w2, localProgress);
+                        return;
+                    }
+                    
+                    currentDistance += segmentDist;
+                }
+                
+                // Fallback to end
+                skier.GameObject.transform.position = TileToWorld(trail.PathPoints[trail.PathPoints.Count - 1], grid);
+            }
         }
         
         private float CalculateTrailDistance(TrailData trail)
         {
-            float totalDistance = 0f;
-            for (int i = 0; i < trail.PathPoints.Count - 1; i++)
+            // Use 3D WorldPathPoints if available
+            if (trail.WorldPathPoints != null && trail.WorldPathPoints.Count >= 2)
             {
-                var p1 = trail.PathPoints[i];
-                var p2 = trail.PathPoints[i + 1];
-                totalDistance += Vector2.Distance(new Vector2(p1.X, p1.Y), new Vector2(p2.X, p2.Y));
+                float totalDistance = 0f;
+                for (int i = 0; i < trail.WorldPathPoints.Count - 1; i++)
+                {
+                    var p1 = trail.WorldPathPoints[i];
+                    var p2 = trail.WorldPathPoints[i + 1];
+                    totalDistance += Vector3.Distance(
+                        new Vector3(p1.X, p1.Y, p1.Z),
+                        new Vector3(p2.X, p2.Y, p2.Z)
+                    );
+                }
+                return totalDistance > 0 ? totalDistance : 1f;
             }
-            return totalDistance > 0 ? totalDistance : 1f;
+            
+            // Legacy fallback (2D tile coords)
+            if (trail.PathPoints != null && trail.PathPoints.Count >= 2)
+            {
+                float totalDistance = 0f;
+                for (int i = 0; i < trail.PathPoints.Count - 1; i++)
+                {
+                    var p1 = trail.PathPoints[i];
+                    var p2 = trail.PathPoints[i + 1];
+                    totalDistance += Vector2.Distance(new Vector2(p1.X, p1.Y), new Vector2(p2.X, p2.Y));
+                }
+                return totalDistance > 0 ? totalDistance : 1f;
+            }
+            
+            return 1f;
         }
         
         private Vector3 TileToWorld(TileCoord coord, GridSystem grid)

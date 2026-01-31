@@ -19,13 +19,20 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private float _tileSize = 1f;
         [SerializeField] private KeyCode _buildModeKey = KeyCode.L; // Press L for Lift mode
         [SerializeField] private bool _debugMode = true;
+        [SerializeField] private float _snapRadius = 5f; // Magnetic cursor snap radius
+        
+        [Header("Visual Feedback")]
+        [SerializeField] private Color _snapColor = Color.green;
+        [SerializeField] private Color _defaultColor = Color.white;
         
         private LiftSystem _liftSystem;
         private WorldConnectivity _connectivity;
+        private MagneticCursor _magneticCursor;
         private bool _isBuildMode = false;
         private bool _hasBottomStation = false;
         private TileCoord _bottomStation;
         private LiftData _currentLift;
+        private GameObject _cursorVisual;
         
         public LiftSystem LiftSystem => _liftSystem;
         public WorldConnectivity Connectivity => _connectivity;
@@ -51,6 +58,19 @@ namespace SkiResortTycoon.UnityBridge
                 }
                 
                 _liftSystem = new LiftSystem(_mountainManager.TerrainData, _connectivity.Registry);
+                
+                // Create magnetic cursor
+                _magneticCursor = new MagneticCursor(_connectivity.Registry, _snapRadius);
+                
+                // Create cursor visual (small sphere)
+                _cursorVisual = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                _cursorVisual.name = "LiftCursor";
+                _cursorVisual.transform.localScale = Vector3.one * 0.5f; // Small sphere
+                var renderer = _cursorVisual.GetComponent<Renderer>();
+                renderer.material = new Material(Shader.Find("Standard"));
+                renderer.material.color = _defaultColor;
+                Destroy(_cursorVisual.GetComponent<Collider>()); // Remove collider
+                _cursorVisual.SetActive(false); // Hidden until build mode
             }
         }
         
@@ -82,28 +102,65 @@ namespace SkiResortTycoon.UnityBridge
                 if (!_isBuildMode)
                 {
                     CancelPlacement();
+                    if (_cursorVisual != null)
+                    {
+                        _cursorVisual.SetActive(false);
+                    }
+                }
+                else
+                {
+                    if (_cursorVisual != null)
+                    {
+                        _cursorVisual.SetActive(true);
+                    }
                 }
             }
         }
         
         private void HandlePlacement()
         {
+            // Update magnetic cursor
+            Vector3? rawPosition = GetMountainPositionUnderMouse();
+            
+            if (rawPosition.HasValue && _magneticCursor != null)
+            {
+                // Update magnetic cursor (snap to lift tops/bottoms or trail ends when placing bottom, no snap for top)
+                SnapPointType[] validTypes = null;
+                if (!_hasBottomStation)
+                {
+                    // When placing bottom station, snap to lift tops, trail ends, or base
+                    validTypes = new SnapPointType[] { SnapPointType.LiftTop, SnapPointType.TrailEnd, SnapPointType.BaseSpawn };
+                }
+                // When placing top station, don't snap (validTypes = null allows free placement)
+                
+                _magneticCursor.Update(rawPosition.Value, validTypes);
+                
+                // Update cursor visual
+                if (_cursorVisual != null)
+                {
+                    _cursorVisual.transform.position = _magneticCursor.SnappedPosition;
+                    var renderer = _cursorVisual.GetComponent<Renderer>();
+                    renderer.material.color = _magneticCursor.IsSnapped ? _snapColor : _defaultColor;
+                }
+            }
+            
             // Click to place stations
             if (Input.GetMouseButtonDown(0)) // Left click
             {
-                Vector3? position = GetMountainPositionUnderMouse();
-                
-                if (position.HasValue)
+                if (rawPosition.HasValue)
                 {
+                    // Use snapped position from magnetic cursor
+                    Vector3 placementPosition = _magneticCursor != null ? _magneticCursor.SnappedPosition : rawPosition.Value;
+                    
                     if (!_hasBottomStation)
                     {
                         // Place bottom station
-                        PlaceBottomStation(position.Value);
+                        PlaceBottomStation(placementPosition);
                     }
                     else
                     {
                         // Place top station and complete lift
-                        PlaceTopStation(position.Value);
+                        PlaceTopStation(placementPosition);
                     }
                 }
             }
@@ -159,6 +216,13 @@ namespace SkiResortTycoon.UnityBridge
                 
                 if (success)
                 {
+                    // Register snap points for this lift (top and bottom only)
+                    var bottomSnap = new SnapPoint(SnapPointType.LiftBottom, _currentLift.StartPosition, _currentLift.LiftId, $"Lift{_currentLift.LiftId}_Bottom");
+                    var topSnap = new SnapPoint(SnapPointType.LiftTop, _currentLift.EndPosition, _currentLift.LiftId, $"Lift{_currentLift.LiftId}_Top");
+                    
+                    _connectivity.Registry.Register(bottomSnap);
+                    _connectivity.Registry.Register(topSnap);
+                    
                     // Clear trees along the lift path
                     List<Vector3> liftPath = new List<Vector3>
                     {
@@ -167,7 +231,7 @@ namespace SkiResortTycoon.UnityBridge
                     };
                     TreeClearer.ClearTreesAlongPath(liftPath, corridorWidth: 5f);
                     
-                    // Rebuild connections
+                    // Rebuild connections (this will automatically connect lift tops to nearby trail starts)
                     _connectivity.RebuildConnections();
                     
                     // Log lift info
@@ -179,6 +243,7 @@ namespace SkiResortTycoon.UnityBridge
                     Debug.Log($"Elevation Gain: {_currentLift.ElevationGain:F1}m");
                     Debug.Log($"Cost: ${_currentLift.BuildCost}");
                     Debug.Log($"Money Remaining: ${_simulationRunner.Sim.State.Money}");
+                    Debug.Log($"Snap Points Registered: Bottom + Top");
                     
                     // Log connectivity info
                     var connectedTrails = _connectivity.Connections.GetTrailsFromLift(_currentLift.LiftId);

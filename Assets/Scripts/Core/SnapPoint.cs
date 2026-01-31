@@ -46,11 +46,22 @@ namespace SkiResortTycoon.Core
         }
         
         /// <summary>
-        /// Manhattan distance to another snap point.
+        /// Manhattan distance to another snap point (legacy 2D).
         /// </summary>
         public int DistanceTo(SnapPoint other)
         {
             return System.Math.Abs(Coord.X - other.Coord.X) + System.Math.Abs(Coord.Y - other.Coord.Y);
+        }
+        
+        /// <summary>
+        /// 3D Euclidean distance to another snap point.
+        /// </summary>
+        public float Distance3D(SnapPoint other)
+        {
+            float dx = Position.X - other.Position.X;
+            float dy = Position.Y - other.Position.Y;
+            float dz = Position.Z - other.Position.Z;
+            return (float)System.Math.Sqrt(dx * dx + dy * dy + dz * dz);
         }
         
         /// <summary>

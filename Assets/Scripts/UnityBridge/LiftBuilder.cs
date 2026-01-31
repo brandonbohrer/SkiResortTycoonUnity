@@ -62,10 +62,10 @@ namespace SkiResortTycoon.UnityBridge
                 // Create magnetic cursor
                 _magneticCursor = new MagneticCursor(_connectivity.Registry, _snapRadius);
                 
-                // Create cursor visual (small sphere)
+                // Create cursor visual (larger sphere for visibility)
                 _cursorVisual = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 _cursorVisual.name = "LiftCursor";
-                _cursorVisual.transform.localScale = Vector3.one * 0.5f; // Small sphere
+                _cursorVisual.transform.localScale = Vector3.one * 2.0f; // Bigger sphere for visibility
                 var renderer = _cursorVisual.GetComponent<Renderer>();
                 renderer.material = new Material(Shader.Find("Standard"));
                 renderer.material.color = _defaultColor;

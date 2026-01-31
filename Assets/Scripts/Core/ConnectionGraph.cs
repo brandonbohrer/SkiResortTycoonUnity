@@ -46,7 +46,7 @@ namespace SkiResortTycoon.Core
         // All connections (for queries)
         private List<Connection> _allConnections;
         
-        public int SnapRadius { get; set; } = 2;  // Max Manhattan distance for auto-connection
+        public int SnapRadius { get; set; } = 10;  // Max 3D distance for auto-connection (world units)
         
         public ConnectionGraph()
         {
@@ -67,6 +67,9 @@ namespace SkiResortTycoon.Core
             // Connect lifts to trails
             ConnectLiftsToTrails(registry);
             
+            // Connect trails to other trails (for smooth transitions)
+            ConnectTrailsToTrails(registry);
+            
             // Connect trails to base (future: buildings)
             ConnectTrailsToBase(registry);
         }
@@ -76,18 +79,22 @@ namespace SkiResortTycoon.Core
             var liftTops = registry.GetByType(SnapPointType.LiftTop);
             var trailStarts = registry.GetByType(SnapPointType.TrailStart);
             
+            UnityEngine.Debug.Log($"[ConnectionGraph] Connecting {liftTops.Count} lift tops to {trailStarts.Count} trail starts (radius: {SnapRadius})");
+            
             foreach (var liftTop in liftTops)
             {
                 int liftId = liftTop.OwnerId;
                 
-                // Find all trail starts within snap radius
+                // Find all trail starts within snap radius (3D distance)
                 foreach (var trailStart in trailStarts)
                 {
-                    int distance = liftTop.DistanceTo(trailStart);
+                    float distance = liftTop.Distance3D(trailStart);
                     
                     if (distance <= SnapRadius)
                     {
                         int trailId = trailStart.OwnerId;
+                        
+                        UnityEngine.Debug.Log($"[ConnectionGraph] Lift {liftId} → Trail {trailId} (distance: {distance:F2})");
                         
                         // Add lift->trail connection
                         if (!_liftToTrails.ContainsKey(liftId))
@@ -110,11 +117,57 @@ namespace SkiResortTycoon.Core
                         }
                         
                         // Store connection
-                        var conn = new Connection(liftId, trailId, "Lift", "Trail", distance);
+                        var conn = new Connection(liftId, trailId, "Lift", "Trail", (int)distance);
                         _allConnections.Add(conn);
                     }
                 }
             }
+            
+            UnityEngine.Debug.Log($"[ConnectionGraph] Created {_allConnections.Count} lift→trail connections");
+        }
+        
+        private void ConnectTrailsToTrails(SnapRegistry registry)
+        {
+            // Connect trail ends to other trail starts AND trail points (user requirement: every point is valid)
+            var trailEnds = registry.GetByType(SnapPointType.TrailEnd);
+            var trailStarts = registry.GetByType(SnapPointType.TrailStart);
+            var trailPoints = registry.GetByType(SnapPointType.TrailPoint);
+            
+            // Combine trail starts and trail points into one list of valid connection points
+            var validConnectionPoints = new List<SnapPoint>();
+            validConnectionPoints.AddRange(trailStarts);
+            validConnectionPoints.AddRange(trailPoints);
+            
+            UnityEngine.Debug.Log($"[ConnectionGraph] Connecting {trailEnds.Count} trail ends to {validConnectionPoints.Count} trail connection points");
+            
+            int trailConnections = 0;
+            foreach (var trailEnd in trailEnds)
+            {
+                int fromTrailId = trailEnd.OwnerId;
+                
+                // Find nearby trail starts or points
+                foreach (var connectionPoint in validConnectionPoints)
+                {
+                    int toTrailId = connectionPoint.OwnerId;
+                    
+                    // Don't connect trail to itself
+                    if (fromTrailId == toTrailId) continue;
+                    
+                    float distance = trailEnd.Distance3D(connectionPoint);
+                    
+                    if (distance <= SnapRadius)
+                    {
+                        UnityEngine.Debug.Log($"[ConnectionGraph] Trail {fromTrailId} → Trail {toTrailId} (distance: {distance:F2})");
+                        
+                        // Add connection (trails are bidirectional for now)
+                        var conn = new Connection(fromTrailId, toTrailId, "Trail", "Trail", (int)distance);
+                        _allConnections.Add(conn);
+                        trailConnections++;
+                    }
+                }
+            }
+            
+            UnityEngine.Debug.Log($"[ConnectionGraph] Created {trailConnections} trail→trail connections");
         }
         
         private void ConnectTrailsToBase(SnapRegistry registry)

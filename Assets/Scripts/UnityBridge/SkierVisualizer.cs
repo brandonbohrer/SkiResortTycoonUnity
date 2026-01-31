@@ -107,14 +107,34 @@ namespace SkiResortTycoon.UnityBridge
             if (allLifts.Count == 0 || allTrails.Count == 0)
                 return;
             
-            // Pick a random lift
-            var lift = allLifts[Random.Range(0, allLifts.Count)];
+            // CRITICAL FIX: Start from BASE, not random lift!
+            // Find a lift whose bottom is near the base
+            LiftData startLift = null;
+            float closestDist = float.MaxValue;
+            
+            foreach (var lift in allLifts)
+            {
+                // Convert Vector2 baseSpawnPosition to Vector3f for distance calculation
+                Vector3f basePos3D = new Vector3f(baseSpawnPosition.x, 0, baseSpawnPosition.y);
+                float dist = Vector3f.Distance(basePos3D, lift.StartPosition);
+                if (dist < closestDist)
+                {
+                    closestDist = dist;
+                    startLift = lift;
+                }
+            }
+            
+            if (startLift == null)
+            {
+                Debug.LogWarning("[SkierVisualizer] No lift found near base!");
+                return;
+            }
             
             // Get trails connected to this lift's top station
-            var connectedTrailIds = _liftBuilder.Connectivity.Connections.GetTrailsFromLift(lift.LiftId);
+            var connectedTrailIds = _liftBuilder.Connectivity.Connections.GetTrailsFromLift(startLift.LiftId);
             if (connectedTrailIds.Count == 0)
             {
-                Debug.LogWarning($"[SkierVisualizer] Lift {lift.LiftId} has no connected trails!");
+                Debug.LogWarning($"[SkierVisualizer] Lift {startLift.LiftId} (nearest to base) has no connected trails!");
                 return;
             }
             
@@ -153,14 +173,14 @@ namespace SkiResortTycoon.UnityBridge
             var startPos = new Vector3(baseSpawnPosition.x, baseHeight, baseSpawnPosition.y);
             skierObj.transform.position = startPos;
             
-            Debug.Log($"[Skier {skier.SkierId}] Spawned at {startPos}, will ride Lift {lift.LiftId} → Trail {trail.TrailId} ({trail.Difficulty})");
+            Debug.Log($"[Skier {skier.SkierId}] Spawned at {startPos}, will ride Lift {startLift.LiftId} → Trail {trail.TrailId} ({trail.Difficulty})");
             
             // Create visual skier data
             var visualSkier = new VisualSkier
             {
                 GameObject = skierObj,
                 Skier = skier,
-                CurrentLift = lift,
+                CurrentLift = startLift,
                 CurrentTrail = trail,
                 PlannedTrails = new List<TrailData> { trail },
                 CurrentTrailIndex = 0,
@@ -272,21 +292,41 @@ namespace SkiResortTycoon.UnityBridge
                     if (vs.PhaseProgress >= 1f)
                     {
                         // Finished this trail
-                        vs.CurrentTrailIndex++;
                         Debug.Log($"[Skier {vs.Skier.SkierId}] Finished trail {vs.CurrentTrail.TrailId}. Runs completed: {vs.Skier.RunsCompleted + 1}");
                         
-                        if (vs.CurrentTrailIndex < vs.PlannedTrails.Count)
+                        // CRITICAL FIX: Check for trail-to-trail connections!
+                        // Find trails connected to the current trail's end
+                        var allConnections = _liftBuilder.Connectivity.Connections.GetAllConnections();
+                        var nextTrailIds = new List<int>();
+                        
+                        foreach (var conn in allConnections)
                         {
-                            // More trails in plan - get next lift
-                            vs.Phase = SkierPhase.WalkingToLift;
-                            vs.PhaseProgress = 0f;
+                            if (conn.FromType == "Trail" && conn.FromId == vs.CurrentTrail.TrailId && conn.ToType == "Trail")
+                            {
+                                nextTrailIds.Add(conn.ToId);
+                            }
                         }
-                        else
+                        
+                        if (nextTrailIds.Count > 0)
                         {
-                            // Finished all trails - loop back (choose new destination)
-                            Debug.Log($"[Skier {vs.Skier.SkierId}] Completed run! Choosing new destination...");
-                            ChooseNewDestination(vs);
+                            // Transition to connected trail!
+                            int nextTrailId = nextTrailIds[Random.Range(0, nextTrailIds.Count)];
+                            var nextTrail = _trailDrawer.TrailSystem.GetTrail(nextTrailId);
+                            
+                            if (nextTrail != null)
+                            {
+                                Debug.Log($"[Skier {vs.Skier.SkierId}] Trail junction! Transitioning from trail {vs.CurrentTrail.TrailId} → trail {nextTrailId}");
+                                vs.CurrentTrail = nextTrail;
+                                vs.PhaseProgress = 0f;
+                                // Stay in SkiingTrail phase, seamless transition!
+                                return;
+                            }
                         }
+                        
+                        // No connected trail, finished run - go back to base (choose new lift)
+                        vs.Skier.RunsCompleted++;
+                        Debug.Log($"[Skier {vs.Skier.SkierId}] Completed run! Choosing new destination...");
+                        ChooseNewDestination(vs);
                         return;
                     }
                     
@@ -299,7 +339,7 @@ namespace SkiResortTycoon.UnityBridge
         
         private void ChooseNewDestination(VisualSkier vs)
         {
-            // Pick random lift and connected trail
+            // Always start from base! Find lift nearest to base
             var allLifts = _liftBuilder.LiftSystem.GetAllLifts();
             if (allLifts.Count == 0)
             {
@@ -307,14 +347,37 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
             
-            // Pick random lift
-            vs.CurrentLift = allLifts[Random.Range(0, allLifts.Count)];
+            // Get base position (from first skier's spawn location or use default)
+            var baseSpawn = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
+            Vector3f basePos = baseSpawn.Count > 0 ? baseSpawn[0].Position : new Vector3f(224f, -35f, 205f);
+            
+            // Find lift nearest to base
+            LiftData baseLift = null;
+            float closestDist = float.MaxValue;
+            
+            foreach (var lift in allLifts)
+            {
+                float dist = Vector3f.Distance(basePos, lift.StartPosition);
+                if (dist < closestDist)
+                {
+                    closestDist = dist;
+                    baseLift = lift;
+                }
+            }
+            
+            if (baseLift == null)
+            {
+                vs.IsFinished = true;
+                return;
+            }
+            
+            vs.CurrentLift = baseLift;
             
             // Get trails connected to this lift
             var connectedTrailIds = _liftBuilder.Connectivity.Connections.GetTrailsFromLift(vs.CurrentLift.LiftId);
             if (connectedTrailIds.Count == 0)
             {
-                Debug.LogWarning($"[Skier {vs.Skier.SkierId}] Lift {vs.CurrentLift.LiftId} has no connected trails!");
+                Debug.LogWarning($"[Skier {vs.Skier.SkierId}] Lift {vs.CurrentLift.LiftId} (base lift) has no connected trails!");
                 vs.IsFinished = true;
                 return;
             }
@@ -333,7 +396,7 @@ namespace SkiResortTycoon.UnityBridge
             vs.CurrentTrailIndex = 0;
             vs.Phase = SkierPhase.WalkingToLift;
             vs.PhaseProgress = 0f;
-            Debug.Log($"[Skier {vs.Skier.SkierId}] Chose new destination: Lift {vs.CurrentLift.LiftId} → Trail {randomTrail.TrailId} ({randomTrail.Difficulty})");
+            Debug.Log($"[Skier {vs.Skier.SkierId}] Chose new destination from BASE: Lift {vs.CurrentLift.LiftId} → Trail {randomTrail.TrailId} ({randomTrail.Difficulty})");
         }
         
         private void UpdateSkierOnTrail(VisualSkier skier, GridSystem grid)

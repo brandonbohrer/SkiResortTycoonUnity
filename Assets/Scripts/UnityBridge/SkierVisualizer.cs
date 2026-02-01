@@ -130,22 +130,44 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
             
-            // Get trails connected to this lift's top station
-            var connectedTrailIds = _liftBuilder.Connectivity.Connections.GetTrailsFromLift(startLift.LiftId);
-            if (connectedTrailIds.Count == 0)
+            
+        // Get trails connected to this lift's top station
+        var connectedTrailIds = _liftBuilder.Connectivity.Connections.GetTrailsFromLift(startLift.LiftId);
+        TrailData trail = null;
+        
+        if (connectedTrailIds.Count == 0)
+        {
+            // SPATIAL AWARENESS: No exact connections? Find trails NEAR lift top!
+            Vector3 liftTopPos = new Vector3(
+                startLift.EndPosition.X,
+                startLift.EndPosition.Y,
+                startLift.EndPosition.Z
+            );
+            
+            var nearbyTrails = FindNearbyTrails(liftTopPos, 25f);
+            if (nearbyTrails.Count > 0)
             {
-                Debug.LogWarning($"[SkierVisualizer] Lift {startLift.LiftId} (nearest to base) has no connected trails!");
+                trail = nearbyTrails[Random.Range(0, nearbyTrails.Count)];
+                Debug.Log($"[SkierVisualizer] Lift {startLift.LiftId} has {nearbyTrails.Count} nearby trails (SPATIAL), chose trail {trail.TrailId}");
+            }
+            else
+            {
+                Debug.LogWarning($"[SkierVisualizer] Lift {startLift.LiftId} (nearest to base) has no trails within 25 units!");
                 return;
             }
-            
+        }
+        else
+        {
             // Pick a random trail from the connected trails
             int trailId = connectedTrailIds[Random.Range(0, connectedTrailIds.Count)];
-            var trail = _trailDrawer.TrailSystem.GetTrail(trailId);
-            if (trail == null)
-            {
-                Debug.LogWarning($"[SkierVisualizer] Trail {trailId} not found!");
-                return;
-            }
+            trail = _trailDrawer.TrailSystem.GetTrail(trailId);
+        }
+        
+        if (trail == null)
+        {
+            Debug.LogWarning($"[SkierVisualizer] Could not find valid trail for lift {startLift.LiftId}!");
+            return;
+        }
             
             // Create skier with random skill level
             var distribution = new SkierDistribution();
@@ -186,6 +208,7 @@ namespace SkiResortTycoon.UnityBridge
                 CurrentTrailIndex = 0,
                 Phase = SkierPhase.WalkingToLift,
                 PhaseProgress = 0f,
+                LateralOffset = Random.Range(-0.8f, 0.8f), // Random position across trail (-1 to 1, stay away from edges)
                 Pathfinder = null,
                 ReachableTrails = allTrails
             };
@@ -242,18 +265,58 @@ namespace SkiResortTycoon.UnityBridge
                     
                     if (vs.PhaseProgress >= 1f)
                     {
-                        // Reached top - transition to skiing
-                        if (vs.CurrentTrailIndex < vs.PlannedTrails.Count)
+                        // Reached top of lift - find trails to ski!
+                        Vector3 liftTopPos = new Vector3(
+                            vs.CurrentLift.EndPosition.X,
+                            vs.CurrentLift.EndPosition.Y,
+                            vs.CurrentLift.EndPosition.Z
+                        );
+                        
+                        // SPATIAL AWARENESS: Find trails near lift top (flexible, no exact connection needed!)
+                        var nearbyTrails = FindNearbyTrails(liftTopPos, 25f); // 25 unit radius
+                        
+                        TrailData chosenTrail = null;
+                        
+                        if (nearbyTrails.Count > 0)
                         {
-                            vs.CurrentTrail = vs.PlannedTrails[vs.CurrentTrailIndex];
+                            // Pick random nearby trail - this is the new flexible approach!
+                            chosenTrail = nearbyTrails[Random.Range(0, nearbyTrails.Count)];
+                            Debug.Log($"[Skier {vs.Skier.SkierId}] Found {nearbyTrails.Count} trails near lift top, chose trail {chosenTrail.TrailId} (spatial)");
+                        }
+                        else
+                        {
+                            // Fallback: use planned trails if available
+                            if (vs.CurrentTrailIndex < vs.PlannedTrails.Count)
+                            {
+                                chosenTrail = vs.PlannedTrails[vs.CurrentTrailIndex];
+                                Debug.Log($"[Skier {vs.Skier.SkierId}] No nearby trails, using planned trail {chosenTrail.TrailId}");
+                            }
+                            else
+                            {
+                                // Try connection graph as last resort
+                                var connectedTrailIds = _liftBuilder.Connectivity.Connections.GetTrailsFromLift(vs.CurrentLift.LiftId);
+                                if (connectedTrailIds.Count > 0)
+                                {
+                                    int trailId = connectedTrailIds[Random.Range(0, connectedTrailIds.Count)];
+                                    chosenTrail = _trailDrawer.TrailSystem.GetTrail(trailId);
+                                    Debug.Log($"[Skier {vs.Skier.SkierId}] Using connection graph, chose trail {trailId}");
+                                }
+                            }
+                        }
+                        
+                        if (chosenTrail != null)
+                        {
+                            vs.CurrentTrail = chosenTrail;
                             vs.Phase = SkierPhase.SkiingTrail;
                             vs.PhaseProgress = 0f;
+                            vs.LateralOffset = Random.Range(-0.8f, 0.8f); // New random position for this trail
                             vs.Skier.RunsCompleted++;
                             Debug.Log($"[Skier {vs.Skier.SkierId}] Reached top! Starting to ski trail {vs.CurrentTrail.TrailId}");
                         }
                         else
                         {
-                            // No more trails - choose new destination
+                            // No trails found - choose new destination
+                            Debug.LogWarning($"[Skier {vs.Skier.SkierId}] No trails accessible from lift {vs.CurrentLift.LiftId} top!");
                             ChooseNewDestination(vs);
                         }
                         return;
@@ -291,11 +354,23 @@ namespace SkiResortTycoon.UnityBridge
                     
                     if (vs.PhaseProgress >= 1f)
                     {
-                        // Finished this trail
-                        Debug.Log($"[Skier {vs.Skier.SkierId}] Finished trail {vs.CurrentTrail.TrailId}. Runs completed: {vs.Skier.RunsCompleted + 1}");
+                        // Finished this trail - figure out what to do next!
+                        Vector3 trailEndPos = vs.GameObject.transform.position;
+                        Debug.Log($"[Skier {vs.Skier.SkierId}] Finished trail {vs.CurrentTrail.TrailId} at position {trailEndPos}");
                         
-                        // CRITICAL FIX: Check for trail-to-trail connections!
-                        // Find trails connected to the current trail's end
+                        // PRIORITY 1: Check for nearby lifts to board (mid-mountain lifts!)
+                        var nearbyLifts = FindNearbyLifts(trailEndPos, 20f);
+                        if (nearbyLifts.Count > 0)
+                        {
+                            // Board a nearby lift!
+                            vs.CurrentLift = nearbyLifts[Random.Range(0, nearbyLifts.Count)];
+                            vs.Phase = SkierPhase.WalkingToLift;
+                            vs.PhaseProgress = 0f;
+                            Debug.Log($"[Skier {vs.Skier.SkierId}] Found {nearbyLifts.Count} nearby lifts, boarding lift {vs.CurrentLift.LiftId} (SPATIAL)");
+                            return;
+                        }
+                        
+                        // PRIORITY 2: Check for trail-to-trail connections (junctions)
                         var allConnections = _liftBuilder.Connectivity.Connections.GetAllConnections();
                         var nextTrailIds = new List<int>();
                         
@@ -318,14 +393,47 @@ namespace SkiResortTycoon.UnityBridge
                                 Debug.Log($"[Skier {vs.Skier.SkierId}] Trail junction! Transitioning from trail {vs.CurrentTrail.TrailId} → trail {nextTrailId}");
                                 vs.CurrentTrail = nextTrail;
                                 vs.PhaseProgress = 0f;
+                                vs.LateralOffset = Random.Range(-0.8f, 0.8f); // New random position
                                 // Stay in SkiingTrail phase, seamless transition!
                                 return;
                             }
                         }
                         
-                        // No connected trail, finished run - go back to base (choose new lift)
+                        // PRIORITY 3: Check for nearby trails spatially (not just connections)
+                        var nearbyTrails = FindNearbyTrails(trailEndPos, 25f);
+                        if (nearbyTrails.Count > 0)
+                        {
+                            // Filter out the trail we just skied
+                            var validTrails = nearbyTrails.FindAll(t => t.TrailId != vs.CurrentTrail.TrailId);
+                            if (validTrails.Count > 0)
+                            {
+                                vs.CurrentTrail = validTrails[Random.Range(0, validTrails.Count)];
+                                vs.PhaseProgress = 0f;
+                                vs.LateralOffset = Random.Range(-0.8f, 0.8f);
+                                Debug.Log($"[Skier {vs.Skier.SkierId}] Found {validTrails.Count} nearby trails, continuing to trail {vs.CurrentTrail.TrailId} (SPATIAL)");
+                                return;
+                            }
+                        }
+                        
+                        // PRIORITY 4: Check if we're near base - if so, complete the run
+                        var baseSpawns = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
+                        if (baseSpawns.Count > 0)
+                        {
+                            Vector3 basePos = new Vector3(baseSpawns[0].Position.X, baseSpawns[0].Position.Y, baseSpawns[0].Position.Z);
+                            float distanceToBase = Vector3.Distance(trailEndPos, basePos);
+                            
+                            if (distanceToBase <= 50f) // Within 50 units of base
+                            {
+                                vs.Skier.RunsCompleted++;
+                                Debug.Log($"[Skier {vs.Skier.SkierId}] Reached base! Completed run #{vs.Skier.RunsCompleted}. Choosing new destination...");
+                                ChooseNewDestination(vs);
+                                return;
+                            }
+                        }
+                        
+                        // LAST RESORT: No lifts, trails, or base nearby - teleport back (shouldn't happen often now!)
                         vs.Skier.RunsCompleted++;
-                        Debug.Log($"[Skier {vs.Skier.SkierId}] Completed run! Choosing new destination...");
+                        Debug.LogWarning($"[Skier {vs.Skier.SkierId}] Stranded at {trailEndPos}! No lifts or trails nearby. Teleporting to base...");
                         ChooseNewDestination(vs);
                         return;
                     }
@@ -427,7 +535,31 @@ namespace SkiResortTycoon.UnityBridge
                         float localProgress = segmentDist > 0 ? (targetDistance - currentDistance) / segmentDist : 0f;
                         var w1 = new Vector3(p1.X, p1.Y, p1.Z);
                         var w2 = new Vector3(p2.X, p2.Y, p2.Z);
-                        skier.GameObject.transform.position = Vector3.Lerp(w1, w2, localProgress);
+                        Vector3 centerlinePos = Vector3.Lerp(w1, w2, localProgress);
+                        
+                        // BOUNDARY-AWARE: Add lateral offset perpendicular to trail direction
+                        Vector3 trailDirection = (w2 - w1).normalized;
+                        // Perpendicular vector in XZ plane (rotate 90° around Y axis)
+                        Vector3 perpendicular = new Vector3(-trailDirection.z, 0, trailDirection.x).normalized;
+                        
+                        // Get trail width at this point (use average of boundaries if available)
+                        float trailWidth = 5f; // Default width
+                        if (trail.LeftBoundaryPoints != null && trail.RightBoundaryPoints != null && 
+                            trail.LeftBoundaryPoints.Count > 0 && trail.RightBoundaryPoints.Count > 0)
+                        {
+                            // Sample boundaries at similar progress point
+                            int boundaryIndex = Mathf.Clamp((int)(localProgress * trail.LeftBoundaryPoints.Count), 0, trail.LeftBoundaryPoints.Count - 1);
+                            var leftPt = trail.LeftBoundaryPoints[boundaryIndex];
+                            var rightPt = trail.RightBoundaryPoints[boundaryIndex];
+                            trailWidth = Vector3.Distance(
+                                new Vector3(leftPt.X, leftPt.Y, leftPt.Z),
+                                new Vector3(rightPt.X, rightPt.Y, rightPt.Z)
+                            );
+                        }
+                        
+                        // Apply lateral offset (-1 to 1) * (half width)
+                        Vector3 finalPos = centerlinePos + perpendicular * (skier.LateralOffset * trailWidth * 0.5f);
+                        skier.GameObject.transform.position = finalPos;
                         return;
                     }
                     
@@ -525,6 +657,68 @@ namespace SkiResortTycoon.UnityBridge
             return new Vector3(xPos, yPos, -5f);
         }
         
+        /// <summary>
+        /// Find lifts within a specified radius of a position (for flexible boarding).
+        /// </summary>
+        private List<LiftData> FindNearbyLifts(Vector3 position, float radius)
+        {
+            var nearbyLifts = new List<LiftData>();
+            var allLifts = _liftBuilder.LiftSystem.GetAllLifts();
+            
+            foreach (var lift in allLifts)
+            {
+                // Check distance to lift bottom (boarding point)
+                Vector3 liftBottom = new Vector3(lift.StartPosition.X, lift.StartPosition.Y, lift.StartPosition.Z);
+                float distance = Vector3.Distance(position, liftBottom);
+                
+                if (distance <= radius)
+                {
+                    nearbyLifts.Add(lift);
+                }
+            }
+            
+            return nearbyLifts;
+        }
+        
+        /// <summary>
+        /// Find trails within a specified radius of a position (for skiing off lifts or junctions).
+        /// </summary>
+        private List<TrailData> FindNearbyTrails(Vector3 position, float radius)
+        {
+            var nearbyTrails = new List<TrailData>();
+            var allTrails = _trailDrawer.TrailSystem.GetAllTrails();
+            
+            foreach (var trail in allTrails)
+            {
+                if (trail.WorldPathPoints == null || trail.WorldPathPoints.Count == 0)
+                    continue;
+                
+                // Check distance to trail start
+                var trailStart = trail.WorldPathPoints[0];
+                Vector3 startPos = new Vector3(trailStart.X, trailStart.Y, trailStart.Z);
+                float distanceToStart = Vector3.Distance(position, startPos);
+                
+                if (distanceToStart <= radius)
+                {
+                    nearbyTrails.Add(trail);
+                    continue;
+                }
+                
+                // Also check any point along the trail for more flexibility
+                foreach (var point in trail.WorldPathPoints)
+                {
+                    Vector3 pointPos = new Vector3(point.X, point.Y, point.Z);
+                    if (Vector3.Distance(position, pointPos) <= radius)
+                    {
+                        nearbyTrails.Add(trail);
+                        break;
+                    }
+                }
+            }
+            
+            return nearbyTrails;
+        }
+        
         private enum SkierPhase
         {
             WalkingToLift,
@@ -543,6 +737,9 @@ namespace SkiResortTycoon.UnityBridge
             public SkierPhase Phase;
             public float PhaseProgress; // 0 to 1 along current segment
             public bool IsFinished;
+            
+            // Boundary-aware movement
+            public float LateralOffset; // -1 to 1, position across trail width
             
             // Pathfinding references (for replanning)
             public SkierPathfinder Pathfinder;

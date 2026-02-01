@@ -340,31 +340,68 @@ namespace SkiResortTycoon.UnityBridge
                         var nearbyTrails = FindNearbyTrails(liftTopPos, 25f); // 25 unit radius
                         
                         TrailData chosenTrail = null;
+                        bool explored = false;
                         
-                        if (nearbyTrails.Count > 0)
+                        // EXPLORATION CHANCE: 20% chance to ditch goal and explore a preferred trail
+                        if (Random.value < 0.20f && nearbyTrails.Count > 0)
                         {
-                            // Pick random nearby trail - this is the new flexible approach!
-                            chosenTrail = nearbyTrails[Random.Range(0, nearbyTrails.Count)];
-                            if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Found {nearbyTrails.Count} trails near lift top, chose trail {chosenTrail.TrailId} (spatial)");
-                        }
-                        else
-                        {
-                            // Fallback: use planned trails if available
-                            if (vs.CurrentTrailIndex < vs.PlannedTrails.Count)
+                            // Filter to trails within their skill preference
+                            var preferredTrails = nearbyTrails.FindAll(t => 
+                                _distribution.GetPreference(vs.Skier.Skill, t.Difficulty) >= 0.2f);
+                            
+                            if (preferredTrails.Count > 0)
                             {
-                                chosenTrail = vs.PlannedTrails[vs.CurrentTrailIndex];
-                                if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] No nearby trails, using planned trail {chosenTrail.TrailId}");
+                                chosenTrail = ChooseTrailByPreference(vs.Skier, preferredTrails);
+                                explored = true;
+                                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] EXPLORING! Ditched goal for {chosenTrail.Difficulty} trail {chosenTrail.TrailId}");
                             }
-                            else
+                        }
+                        
+                        // GOAL PATH FOLLOWING: If not exploring, follow PlannedPath
+                        if (chosenTrail == null && vs.Skier.CurrentGoal != null)
+                        {
+                            var currentStep = vs.Skier.CurrentGoal.GetCurrentStep();
+                            
+                            if (currentStep != null && currentStep.StepType == PathStepType.SkiTrail)
                             {
-                                // Try connection graph as last resort
-                                var connectedTrailIds = _liftBuilder.Connectivity.Connections.GetTrailsFromLift(vs.CurrentLift.LiftId);
-                                if (connectedTrailIds.Count > 0)
+                                var plannedTrail = _trailDrawer.TrailSystem.GetTrail(currentStep.EntityId);
+                                
+                                if (plannedTrail != null && nearbyTrails.Contains(plannedTrail))
                                 {
-                                    int trailId = connectedTrailIds[Random.Range(0, connectedTrailIds.Count)];
-                                    chosenTrail = _trailDrawer.TrailSystem.GetTrail(trailId);
-                                    if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Using connection graph, chose trail {trailId}");
+                                    // Take the planned trail!
+                                    chosenTrail = plannedTrail;
+                                    vs.Skier.CurrentGoal.AdvanceToNextStep();
+                                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Following path: trail {chosenTrail.TrailId} toward goal");
                                 }
+                                else if (plannedTrail != null)
+                                {
+                                    // Goal trail exists but not nearby - find shortest path there
+                                    // For now, take any trail that leads downhill (toward more options)
+                                    if (nearbyTrails.Count > 0)
+                                    {
+                                        chosenTrail = ChooseTrailByPreference(vs.Skier, nearbyTrails);
+                                        if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Goal not nearby, taking {chosenTrail.TrailId} to get closer");
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // FALLBACK: If no goal or goal complete, use weighted preference
+                        if (chosenTrail == null && nearbyTrails.Count > 0)
+                        {
+                            chosenTrail = ChooseTrailByPreference(vs.Skier, nearbyTrails);
+                            if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] No goal, chose preferred {chosenTrail.Difficulty} trail {chosenTrail.TrailId}");
+                        }
+                        
+                        // LAST RESORT: Connection graph
+                        if (chosenTrail == null)
+                        {
+                            var connectedTrailIds = _liftBuilder.Connectivity.Connections.GetTrailsFromLift(vs.CurrentLift.LiftId);
+                            if (connectedTrailIds.Count > 0)
+                            {
+                                int trailId = connectedTrailIds[Random.Range(0, connectedTrailIds.Count)];
+                                chosenTrail = _trailDrawer.TrailSystem.GetTrail(trailId);
+                                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Using connection graph, chose trail {trailId}");
                             }
                         }
                         
@@ -903,6 +940,46 @@ namespace SkiResortTycoon.UnityBridge
             }
             
             return nearbyLifts;
+        }
+        
+        /// <summary>
+        /// Chooses a trail based on skier's skill preferences using weighted random selection.
+        /// </summary>
+        private TrailData ChooseTrailByPreference(Skier skier, List<TrailData> availableTrails)
+        {
+            if (availableTrails.Count == 0) return null;
+            if (availableTrails.Count == 1) return availableTrails[0];
+            
+            // Calculate weighted probabilities
+            float totalWeight = 0f;
+            var weights = new List<float>();
+            
+            foreach (var trail in availableTrails)
+            {
+                // Get preference weight (0-1) based on skier skill and trail difficulty
+                float pref = _distribution.GetPreference(skier.Skill, trail.Difficulty);
+                
+                // Ensure minimum weight so even non-preferred trails have tiny chance
+                float weight = Mathf.Max(pref, 0.05f);
+                weights.Add(weight);
+                totalWeight += weight;
+            }
+            
+            // Weighted random selection
+            float roll = Random.value * totalWeight;
+            float cumulative = 0f;
+            
+            for (int i = 0; i < availableTrails.Count; i++)
+            {
+                cumulative += weights[i];
+                if (roll <= cumulative)
+                {
+                    return availableTrails[i];
+                }
+            }
+            
+            // Fallback
+            return availableTrails[availableTrails.Count - 1];
         }
         
         /// <summary>

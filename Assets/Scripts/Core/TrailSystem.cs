@@ -133,6 +133,7 @@ namespace SkiResortTycoon.Core
         
         /// <summary>
         /// Validates trail using world-space positions from the mountain mesh.
+        /// VERY PERMISSIVE: Any amount of net downhill is valid.
         /// </summary>
         private bool ValidateTrailWorldSpace(TrailData trail)
         {
@@ -153,10 +154,11 @@ namespace SkiResortTycoon.Core
             
             trail.TotalElevationDrop = totalDrop;
             
-            // ANY downhill is acceptable (very relaxed)
-            if (totalDrop < 0.01f) // Just needs to go down a tiny bit
+            // EXTREMELY PERMISSIVE: Just needs to go down at all (even 0.001 units)
+            // This allows nearly flat trails as long as they have ANY net downhill
+            if (totalDrop <= 0f)
             {
-                return false;
+                return false; // Only reject if perfectly flat or uphill overall
             }
             
             // Calculate 3D path length
@@ -175,22 +177,22 @@ namespace SkiResortTycoon.Core
                 totalRun += segmentRun;
                 
                 // Check if uphill
-                if (next.Y > current.Y)
+                if (next.Y > current.Y + 0.1f) // Small tolerance for noise
                 {
                     uphillCount++;
                 }
             }
             
-            // Very short trails are ok (>1m)
-            if (totalRun < 1f)
+            // Minimum length: just 0.5 units (very short trails OK)
+            if (totalRun < 0.5f)
             {
                 return false;
             }
             
-            // Allow up to 50% uphill segments (very permissive)
+            // Allow up to 80% uphill segments (extremely permissive)
             int totalSegments = trail.WorldPathPoints.Count - 1;
             float uphillPercent = totalSegments > 0 ? (float)uphillCount / totalSegments : 0f;
-            if (uphillPercent > 0.5f) // 50% max
+            if (uphillPercent > 0.8f)
             {
                 return false;
             }
@@ -214,6 +216,13 @@ namespace SkiResortTycoon.Core
         {
             TrailStats stats = new TrailStats();
             
+            // NEW: Use WorldPathPoints if available (preferred for 3D terrain)
+            if (trail.WorldPathPoints != null && trail.WorldPathPoints.Count >= 2)
+            {
+                return CalculateDifficultyWorldSpace(trail, stats);
+            }
+            
+            // LEGACY: Fall back to tile-based calculation
             if (trail.PathPoints.Count < 2)
             {
                 trail.Difficulty = TrailDifficulty.Green;
@@ -232,7 +241,7 @@ namespace SkiResortTycoon.Core
             
             int startHeight = _terrain.GetHeight(start.Value);
             int endHeight = _terrain.GetHeight(end.Value);
-            float totalDrop = startHeight - endHeight; // Net vertical drop (must be positive)
+            float totalDrop = startHeight - endHeight;
             
             // Calculate total 2D run distance along path
             float totalRun = 0f;
@@ -244,11 +253,9 @@ namespace SkiResortTycoon.Core
                 TileCoord current = trail.PathPoints[i];
                 TileCoord next = trail.PathPoints[i + 1];
                 
-                // 2D distance in tile units (1 for cardinal, ~1.414 for diagonal)
                 float segmentRun = CalculateHorizontalDistance(current, next);
                 totalRun += segmentRun;
                 
-                // Calculate segment grade for max detection
                 int currentHeight = _terrain.GetHeight(current);
                 int nextHeight = _terrain.GetHeight(next);
                 float segmentDrop = currentHeight - nextHeight;
@@ -264,10 +271,61 @@ namespace SkiResortTycoon.Core
                 }
             }
             
-            // Average grade = total drop / total run
+            ApplyDifficultyFromGrade(trail, stats, totalDrop, totalRun, maxSegmentGrade, maxGradeSegment);
+            return stats;
+        }
+        
+        /// <summary>
+        /// Calculates difficulty using world-space 3D positions.
+        /// </summary>
+        private TrailStats CalculateDifficultyWorldSpace(TrailData trail, TrailStats stats)
+        {
+            Vector3f start = trail.WorldPathPoints[0];
+            Vector3f end = trail.WorldPathPoints[trail.WorldPathPoints.Count - 1];
+            
+            float totalDrop = start.Y - end.Y;
+            
+            // Calculate total horizontal run and find steepest segment
+            float totalRun = 0f;
+            float maxSegmentGrade = 0f;
+            int maxGradeSegment = -1;
+            
+            for (int i = 0; i < trail.WorldPathPoints.Count - 1; i++)
+            {
+                Vector3f current = trail.WorldPathPoints[i];
+                Vector3f next = trail.WorldPathPoints[i + 1];
+                
+                // Horizontal distance (XZ plane)
+                float dx = next.X - current.X;
+                float dz = next.Z - current.Z;
+                float segmentRun = (float)Math.Sqrt(dx * dx + dz * dz);
+                totalRun += segmentRun;
+                
+                // Segment grade
+                float segmentDrop = current.Y - next.Y;
+                if (segmentRun > 0.1f)
+                {
+                    float segmentGrade = Math.Abs(segmentDrop / segmentRun);
+                    if (segmentGrade > maxSegmentGrade)
+                    {
+                        maxSegmentGrade = segmentGrade;
+                        maxGradeSegment = i;
+                    }
+                }
+            }
+            
+            ApplyDifficultyFromGrade(trail, stats, totalDrop, totalRun, maxSegmentGrade, maxGradeSegment);
+            return stats;
+        }
+        
+        /// <summary>
+        /// Applies difficulty rating based on calculated grades.
+        /// </summary>
+        private void ApplyDifficultyFromGrade(TrailData trail, TrailStats stats, 
+            float totalDrop, float totalRun, float maxSegmentGrade, int maxGradeSegment)
+        {
             float avgGrade = totalRun > 0 ? totalDrop / totalRun : 0f;
             
-            // Store stats
             stats.TotalRun = totalRun;
             stats.TotalDrop = totalDrop;
             stats.AvgGrade = avgGrade;
@@ -278,10 +336,8 @@ namespace SkiResortTycoon.Core
             trail.MaxSlope = maxSegmentGrade;
             trail.TotalElevationDrop = totalDrop;
             
-            // Classify based on avgGrade (with small penalty for steep segments)
+            // Classify based on avgGrade (with penalty for steep segments)
             float effectiveGrade = avgGrade;
-            
-            // Add small penalty if max segment is significantly steeper
             if (maxSegmentGrade > avgGrade * 1.5f)
             {
                 effectiveGrade = avgGrade * 0.9f + maxSegmentGrade * 0.1f;
@@ -307,8 +363,6 @@ namespace SkiResortTycoon.Core
             
             // Register snap points now that trail is finalized
             RegisterSnapPoints(trail);
-            
-            return stats;
         }
         
         /// <summary>

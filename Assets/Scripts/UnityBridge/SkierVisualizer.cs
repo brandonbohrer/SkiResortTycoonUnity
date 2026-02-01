@@ -29,6 +29,9 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private float _skiSpeed = 5f; // tiles per second
         [SerializeField] private float _spawnInterval = 2f; // seconds between spawns
         
+        [Header("Debug")]
+        [SerializeField] private bool _enableDebugLogs = false; // Toggle console spam
+        
         private List<VisualSkier> _activeSkiers = new List<VisualSkier>();
         private float _spawnTimer;
         private Material _skierMaterial;
@@ -44,14 +47,14 @@ namespace SkiResortTycoon.UnityBridge
             // Create material for skier dots
             _skierMaterial = new Material(Shader.Find("Unlit/Color"));
             _skierMaterial.color = _skierColor;
-            Debug.Log("[SkierVisualizer] Awake - initialized material");
+            if (_enableDebugLogs) Debug.Log("[SkierVisualizer] Awake - initialized material");
         }
         
         private void Update()
         {
             if (!_hasLoggedUpdate)
             {
-                Debug.Log("[SkierVisualizer] Update is being called");
+                if (_enableDebugLogs) Debug.Log("[SkierVisualizer] Update is being called");
                 _hasLoggedUpdate = true;
             }
             
@@ -130,7 +133,7 @@ namespace SkiResortTycoon.UnityBridge
                 new System.Random()
             );
             
-            Debug.Log($"[SkierVisualizer] SkierAI initialized with {allTrails.Count} trails and {allLifts.Count} lifts");
+            if (_enableDebugLogs) Debug.Log("[SkierVisualizer] SkierAI initialized with {allTrails.Count} trails and {allLifts.Count} lifts");
         }
         
         private void TrySpawnSkier()
@@ -178,7 +181,7 @@ namespace SkiResortTycoon.UnityBridge
                         break;
                 }
                 
-                Debug.Log($"[Skier {skier.SkierId}] AI planned {goal.PlannedPath.Count} steps to reach {goal.Type} (destination trail: {goal.DestinationTrailId})");
+                if (_enableDebugLogs) Debug.Log("[Skier {skier.SkierId}] AI planned {goal.PlannedPath.Count} steps to reach {goal.Type} (destination trail: {goal.DestinationTrailId})");
             }
             
             // Fallback: if AI couldn't plan, use legacy proximity-based selection
@@ -235,9 +238,10 @@ namespace SkiResortTycoon.UnityBridge
             skierObj.name = $"Skier_{skier.SkierId}_{skier.Skill}";
             skierObj.transform.localScale = Vector3.one * _skierSize;
             
-            // Set material
+            // Set material with skill-based color
             var renderer = skierObj.GetComponent<Renderer>();
-            renderer.material = _skierMaterial;
+            renderer.material = new Material(Shader.Find("Unlit/Color"));
+            renderer.material.color = GetSkillColor(skier.Skill);
             
             // Remove collider
             Destroy(skierObj.GetComponent<Collider>());
@@ -253,7 +257,7 @@ namespace SkiResortTycoon.UnityBridge
             string goalInfo = goal != null && goal.PlannedPath.Count > 0 
                 ? $"Goal: {goal.Type}, Path: {string.Join("→", goal.PlannedPath)}"
                 : "Using fallback path";
-            Debug.Log($"[Skier {skier.SkierId}] {skier.Skill} spawned → Lift {startLift.LiftId} → Trail {targetTrail.TrailId} ({targetTrail.Difficulty}) | {goalInfo}");
+            if (_enableDebugLogs) Debug.Log("[Skier {skier.SkierId}] {skier.Skill} spawned → Lift {startLift.LiftId} → Trail {targetTrail.TrailId} ({targetTrail.Difficulty}) | {goalInfo}");
             
             // Create visual skier data
             var visualSkier = new VisualSkier
@@ -304,7 +308,7 @@ namespace SkiResortTycoon.UnityBridge
                     );
                     vs.GameObject.transform.position = liftBottom;
                     
-                    Debug.Log($"[Skier {vs.Skier.SkierId}] At lift bottom {liftBottom}, riding to ({vs.CurrentLift.EndPosition.X}, {vs.CurrentLift.EndPosition.Y}, {vs.CurrentLift.EndPosition.Z})");
+                    if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] At lift bottom {liftBottom}, riding to ({vs.CurrentLift.EndPosition.X}, {vs.CurrentLift.EndPosition.Y}, {vs.CurrentLift.EndPosition.Z})");
                     break;
                 }
                 
@@ -320,7 +324,7 @@ namespace SkiResortTycoon.UnityBridge
                     // Log position every ~25% progress
                     if ((int)(oldProgress * 4) != (int)(vs.PhaseProgress * 4))
                     {
-                        Debug.Log($"[Skier {vs.Skier.SkierId}] Riding lift {(vs.PhaseProgress * 100):F0}% - pos {vs.GameObject.transform.position}");
+                        if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Riding lift {(vs.PhaseProgress * 100):F0}% - pos {vs.GameObject.transform.position}");
                     }
                     
                     if (vs.PhaseProgress >= 1f)
@@ -341,7 +345,7 @@ namespace SkiResortTycoon.UnityBridge
                         {
                             // Pick random nearby trail - this is the new flexible approach!
                             chosenTrail = nearbyTrails[Random.Range(0, nearbyTrails.Count)];
-                            Debug.Log($"[Skier {vs.Skier.SkierId}] Found {nearbyTrails.Count} trails near lift top, chose trail {chosenTrail.TrailId} (spatial)");
+                            if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Found {nearbyTrails.Count} trails near lift top, chose trail {chosenTrail.TrailId} (spatial)");
                         }
                         else
                         {
@@ -349,7 +353,7 @@ namespace SkiResortTycoon.UnityBridge
                             if (vs.CurrentTrailIndex < vs.PlannedTrails.Count)
                             {
                                 chosenTrail = vs.PlannedTrails[vs.CurrentTrailIndex];
-                                Debug.Log($"[Skier {vs.Skier.SkierId}] No nearby trails, using planned trail {chosenTrail.TrailId}");
+                                if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] No nearby trails, using planned trail {chosenTrail.TrailId}");
                             }
                             else
                             {
@@ -359,7 +363,7 @@ namespace SkiResortTycoon.UnityBridge
                                 {
                                     int trailId = connectedTrailIds[Random.Range(0, connectedTrailIds.Count)];
                                     chosenTrail = _trailDrawer.TrailSystem.GetTrail(trailId);
-                                    Debug.Log($"[Skier {vs.Skier.SkierId}] Using connection graph, chose trail {trailId}");
+                                    if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Using connection graph, chose trail {trailId}");
                                 }
                             }
                         }
@@ -372,7 +376,7 @@ namespace SkiResortTycoon.UnityBridge
                             vs.LateralOffset = Random.Range(-0.8f, 0.8f); // New random position for this trail
                             vs.HasSwitchedAtJunction = false; // Reset for new run - can switch once on this run
                             vs.Skier.RunsCompleted++;
-                            Debug.Log($"[Skier {vs.Skier.SkierId}] Reached top! Starting to ski trail {vs.CurrentTrail.TrailId}");
+                            if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Reached top! Starting to ski trail {vs.CurrentTrail.TrailId}");
                         }
                         else
                         {
@@ -410,14 +414,14 @@ namespace SkiResortTycoon.UnityBridge
                     // Log position every ~25% progress
                     if ((int)(oldProgress * 4) != (int)(vs.PhaseProgress * 4))
                     {
-                        Debug.Log($"[Skier {vs.Skier.SkierId}] Skiing trail {(vs.PhaseProgress * 100):F0}% - pos {vs.GameObject.transform.position}");
+                        if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Skiing trail {(vs.PhaseProgress * 100):F0}% - pos {vs.GameObject.transform.position}");
                     }
                     
                     if (vs.PhaseProgress >= 1f)
                     {
                         // Finished this trail - figure out what to do next!
                         Vector3 trailEndPos = vs.GameObject.transform.position;
-                        Debug.Log($"[Skier {vs.Skier.SkierId}] Finished trail {vs.CurrentTrail.TrailId} at position {trailEndPos}");
+                        if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Finished trail {vs.CurrentTrail.TrailId} at position {trailEndPos}");
                         
                         // PRIORITY 1: Check for nearby lifts to board (mid-mountain lifts!)
                         var nearbyLifts = FindNearbyLifts(trailEndPos, 20f);
@@ -427,7 +431,7 @@ namespace SkiResortTycoon.UnityBridge
                             vs.CurrentLift = nearbyLifts[Random.Range(0, nearbyLifts.Count)];
                             vs.Phase = SkierPhase.WalkingToLift;
                             vs.PhaseProgress = 0f;
-                            Debug.Log($"[Skier {vs.Skier.SkierId}] Found {nearbyLifts.Count} nearby lifts, boarding lift {vs.CurrentLift.LiftId} (SPATIAL)");
+                            if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Found {nearbyLifts.Count} nearby lifts, boarding lift {vs.CurrentLift.LiftId} (SPATIAL)");
                             return;
                         }
                         
@@ -451,7 +455,7 @@ namespace SkiResortTycoon.UnityBridge
                             
                             if (nextTrail != null)
                             {
-                                Debug.Log($"[Skier {vs.Skier.SkierId}] Trail junction! Transitioning from trail {vs.CurrentTrail.TrailId} → trail {nextTrailId}");
+                                if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Trail junction! Transitioning from trail {vs.CurrentTrail.TrailId} → trail {nextTrailId}");
                                 vs.CurrentTrail = nextTrail;
                                 vs.PhaseProgress = 0f;
                                 vs.LateralOffset = Random.Range(-0.8f, 0.8f); // New random position
@@ -471,7 +475,7 @@ namespace SkiResortTycoon.UnityBridge
                                 vs.CurrentTrail = validTrails[Random.Range(0, validTrails.Count)];
                                 vs.PhaseProgress = 0f;
                                 vs.LateralOffset = Random.Range(-0.8f, 0.8f);
-                                Debug.Log($"[Skier {vs.Skier.SkierId}] Found {validTrails.Count} nearby trails, continuing to trail {vs.CurrentTrail.TrailId} (SPATIAL)");
+                                if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Found {validTrails.Count} nearby trails, continuing to trail {vs.CurrentTrail.TrailId} (SPATIAL)");
                                 return;
                             }
                         }
@@ -486,7 +490,7 @@ namespace SkiResortTycoon.UnityBridge
                             if (distanceToBase <= 50f) // Within 50 units of base
                             {
                                 vs.Skier.RunsCompleted++;
-                                Debug.Log($"[Skier {vs.Skier.SkierId}] Reached base! Completed run #{vs.Skier.RunsCompleted}. Choosing new destination...");
+                                if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Reached base! Completed run #{vs.Skier.RunsCompleted}. Choosing new destination...");
                                 ChooseNewDestination(vs);
                                 return;
                             }
@@ -531,7 +535,7 @@ namespace SkiResortTycoon.UnityBridge
                                             if (distToNextTrail < 20f)
                                             {
                                                 float newProgress = FindClosestProgressOnTrail(currentPos, nextTrail);
-                                                Debug.Log($"[Skier {vs.Skier.SkierId}] Following goal: Trail {vs.CurrentTrail.TrailId} → Trail {nextTrail.TrailId}");
+                                                if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Following goal: Trail {vs.CurrentTrail.TrailId} → Trail {nextTrail.TrailId}");
                                                 vs.CurrentTrail = nextTrail;
                                                 vs.PhaseProgress = newProgress;
                                                 vs.LateralOffset = Random.Range(-0.8f, 0.8f);
@@ -566,7 +570,7 @@ namespace SkiResortTycoon.UnityBridge
                                         var chosenTrail = preferredTrails[Random.Range(0, preferredTrails.Count)];
                                         float newProgress = FindClosestProgressOnTrail(currentPos, chosenTrail);
                                         
-                                        Debug.Log($"[Skier {vs.Skier.SkierId}] Exploring junction: Trail {vs.CurrentTrail.TrailId} → Trail {chosenTrail.TrailId} ({chosenTrail.Difficulty})");
+                                        if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Exploring junction: Trail {vs.CurrentTrail.TrailId} → Trail {chosenTrail.TrailId} ({chosenTrail.Difficulty})");
                                         vs.CurrentTrail = chosenTrail;
                                         vs.PhaseProgress = newProgress;
                                         vs.LateralOffset = Random.Range(-0.8f, 0.8f);
@@ -586,7 +590,7 @@ namespace SkiResortTycoon.UnityBridge
             // Check if skier wants to keep skiing using AI logic
             if (!vs.Skier.WantsToKeepSkiing())
             {
-                Debug.Log($"[Skier {vs.Skier.SkierId}] Done skiing (runs: {vs.Skier.RunsCompleted}/{vs.Skier.DesiredRuns}, satisfaction: {vs.Skier.GetSatisfaction():F2})");
+                if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Done skiing (runs: {vs.Skier.RunsCompleted}/{vs.Skier.DesiredRuns}, satisfaction: {vs.Skier.GetSatisfaction():F2})");
                 vs.IsFinished = true;
                 return;
             }
@@ -673,7 +677,7 @@ namespace SkiResortTycoon.UnityBridge
             vs.PhaseProgress = 0f;
             
             string pathInfo = vs.UseGoalBasedAI ? $"(AI goal: {goal?.Type})" : "(fallback)";
-            Debug.Log($"[Skier {vs.Skier.SkierId}] New destination: Lift {vs.CurrentLift.LiftId} → Trail {nextTrail.TrailId} ({nextTrail.Difficulty}) {pathInfo}");
+            if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] New destination: Lift {vs.CurrentLift.LiftId} → Trail {nextTrail.TrailId} ({nextTrail.Difficulty}) {pathInfo}");
         }
         
         private void UpdateSkierOnTrail(VisualSkier skier, GridSystem grid)
@@ -861,6 +865,26 @@ namespace SkiResortTycoon.UnityBridge
             }
             
             return nearbyLifts;
+        }
+        
+        /// <summary>
+        /// Returns a color based on skier skill level (matches trail difficulty colors).
+        /// </summary>
+        private Color GetSkillColor(SkillLevel skill)
+        {
+            switch (skill)
+            {
+                case SkillLevel.Beginner:
+                    return new Color(0.1f, 1f, 0.1f); // Green
+                case SkillLevel.Intermediate:
+                    return new Color(0.2f, 0.5f, 1f); // Blue
+                case SkillLevel.Advanced:
+                    return new Color(0.1f, 0.1f, 0.1f); // Black/Dark gray
+                case SkillLevel.Expert:
+                    return new Color(1f, 0.2f, 0.2f); // Red (double-black)
+                default:
+                    return Color.white;
+            }
         }
         
         /// <summary>

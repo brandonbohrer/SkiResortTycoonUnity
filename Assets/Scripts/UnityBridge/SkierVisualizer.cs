@@ -34,6 +34,11 @@ namespace SkiResortTycoon.UnityBridge
         private Material _skierMaterial;
         private bool _hasLoggedUpdate = false;
         
+        // Skier Intelligence System
+        private SkierAI _skierAI;
+        private NetworkGraph _networkGraph;
+        private SkierDistribution _distribution;
+        
         private void Awake()
         {
             // Create material for skier dots
@@ -69,6 +74,12 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
             
+            // Initialize SkierAI if needed (lazy initialization)
+            if (_skierAI == null)
+            {
+                InitializeSkierAI();
+            }
+            
             // Spawn new skiers periodically
             _spawnTimer += Time.deltaTime;
             if (_spawnTimer >= _spawnInterval && _activeSkiers.Count < _maxActiveSkiers)
@@ -92,6 +103,36 @@ namespace SkiResortTycoon.UnityBridge
             }
         }
         
+        /// <summary>
+        /// Initializes the SkierAI system for goal-based decision making.
+        /// </summary>
+        private void InitializeSkierAI()
+        {
+            var terrainData = _trailDrawer.GridRenderer.TerrainData;
+            var registry = _liftBuilder.Connectivity.Registry;
+            var allTrails = _trailDrawer.TrailSystem.GetAllTrails();
+            var allLifts = _liftBuilder.LiftSystem.GetAllLifts();
+            
+            // Create distribution (fixed 20/30/30/20 for now)
+            _distribution = new SkierDistribution();
+            
+            // Create network graph
+            _networkGraph = new NetworkGraph(registry, terrainData);
+            _networkGraph.BuildGraph();
+            
+            // Create AI system
+            _skierAI = new SkierAI(
+                _networkGraph, 
+                registry, 
+                _distribution, 
+                allTrails, 
+                allLifts, 
+                new System.Random()
+            );
+            
+            Debug.Log($"[SkierVisualizer] SkierAI initialized with {allTrails.Count} trails and {allLifts.Count} lifts");
+        }
+        
         private void TrySpawnSkier()
         {
             var terrainData = _trailDrawer.GridRenderer.TerrainData;
@@ -107,20 +148,52 @@ namespace SkiResortTycoon.UnityBridge
             if (allLifts.Count == 0 || allTrails.Count == 0)
                 return;
             
-            // CRITICAL FIX: Start from BASE, not random lift!
-            // Find a lift whose bottom is near the base
-            LiftData startLift = null;
-            float closestDist = float.MaxValue;
+            // Create skier with random skill level
+            var skillLevel = _distribution.GetRandomSkillLevel(new System.Random());
+            var skier = new Skier(_activeSkiers.Count, skillLevel);
             
-            foreach (var lift in allLifts)
+            // Use SkierAI to plan the skier's initial goal
+            var goal = _skierAI.PlanNewGoal(skier);
+            skier.CurrentGoal = goal;
+            
+            // Determine starting lift and trail from goal's planned path
+            LiftData startLift = null;
+            TrailData targetTrail = null;
+            
+            if (goal != null && goal.PlannedPath.Count > 0)
             {
-                // Convert Vector2 baseSpawnPosition to Vector3f for distance calculation
-                Vector3f basePos3D = new Vector3f(baseSpawnPosition.x, 0, baseSpawnPosition.y);
-                float dist = Vector3f.Distance(basePos3D, lift.StartPosition);
-                if (dist < closestDist)
+                // Extract first lift and trail from planned path
+                foreach (var step in goal.PlannedPath)
                 {
-                    closestDist = dist;
-                    startLift = lift;
+                    if (step.StepType == PathStepType.RideLift && startLift == null)
+                    {
+                        startLift = allLifts.Find(l => l.LiftId == step.EntityId);
+                    }
+                    else if (step.StepType == PathStepType.SkiTrail && targetTrail == null)
+                    {
+                        targetTrail = allTrails.Find(t => t.TrailId == step.EntityId);
+                    }
+                    
+                    if (startLift != null && targetTrail != null)
+                        break;
+                }
+                
+                Debug.Log($"[Skier {skier.SkierId}] AI planned {goal.PlannedPath.Count} steps to reach {goal.Type} (destination trail: {goal.DestinationTrailId})");
+            }
+            
+            // Fallback: if AI couldn't plan, use legacy proximity-based selection
+            if (startLift == null)
+            {
+                float closestDist = float.MaxValue;
+                foreach (var lift in allLifts)
+                {
+                    Vector3f basePos3D = new Vector3f(baseSpawnPosition.x, 0, baseSpawnPosition.y);
+                    float dist = Vector3f.Distance(basePos3D, lift.StartPosition);
+                    if (dist < closestDist)
+                    {
+                        closestDist = dist;
+                        startLift = lift;
+                    }
                 }
             }
             
@@ -130,53 +203,36 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
             
-            
-        // Get trails connected to this lift's top station
-        var connectedTrailIds = _liftBuilder.Connectivity.Connections.GetTrailsFromLift(startLift.LiftId);
-        TrailData trail = null;
-        
-        if (connectedTrailIds.Count == 0)
-        {
-            // SPATIAL AWARENESS: No exact connections? Find trails NEAR lift top!
-            Vector3 liftTopPos = new Vector3(
-                startLift.EndPosition.X,
-                startLift.EndPosition.Y,
-                startLift.EndPosition.Z
-            );
-            
-            var nearbyTrails = FindNearbyTrails(liftTopPos, 25f);
-            if (nearbyTrails.Count > 0)
+            // Fallback for trail if AI didn't provide one
+            if (targetTrail == null)
             {
-                trail = nearbyTrails[Random.Range(0, nearbyTrails.Count)];
-                Debug.Log($"[SkierVisualizer] Lift {startLift.LiftId} has {nearbyTrails.Count} nearby trails (SPATIAL), chose trail {trail.TrailId}");
+                var connectedTrailIds = _liftBuilder.Connectivity.Connections.GetTrailsFromLift(startLift.LiftId);
+                if (connectedTrailIds.Count > 0)
+                {
+                    int trailId = connectedTrailIds[Random.Range(0, connectedTrailIds.Count)];
+                    targetTrail = _trailDrawer.TrailSystem.GetTrail(trailId);
+                }
+                else
+                {
+                    // SPATIAL AWARENESS: Find trails NEAR lift top
+                    Vector3 liftTopPos = new Vector3(startLift.EndPosition.X, startLift.EndPosition.Y, startLift.EndPosition.Z);
+                    var nearbyTrails = FindNearbyTrails(liftTopPos, 25f);
+                    if (nearbyTrails.Count > 0)
+                    {
+                        targetTrail = nearbyTrails[Random.Range(0, nearbyTrails.Count)];
+                    }
+                }
             }
-            else
+            
+            if (targetTrail == null)
             {
-                Debug.LogWarning($"[SkierVisualizer] Lift {startLift.LiftId} (nearest to base) has no trails within 25 units!");
+                Debug.LogWarning($"[SkierVisualizer] Could not find valid trail for lift {startLift.LiftId}!");
                 return;
             }
-        }
-        else
-        {
-            // Pick a random trail from the connected trails
-            int trailId = connectedTrailIds[Random.Range(0, connectedTrailIds.Count)];
-            trail = _trailDrawer.TrailSystem.GetTrail(trailId);
-        }
-        
-        if (trail == null)
-        {
-            Debug.LogWarning($"[SkierVisualizer] Could not find valid trail for lift {startLift.LiftId}!");
-            return;
-        }
-            
-            // Create skier with random skill level
-            var distribution = new SkierDistribution();
-            var skillLevel = distribution.GetRandomSkillLevel(new System.Random());
-            var skier = new Skier(_activeSkiers.Count, skillLevel);
             
             // Create visual skier GameObject
             var skierObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            skierObj.name = $"Skier_{skier.SkierId}";
+            skierObj.name = $"Skier_{skier.SkierId}_{skier.Skill}";
             skierObj.transform.localScale = Vector3.one * _skierSize;
             
             // Set material
@@ -186,16 +242,18 @@ namespace SkiResortTycoon.UnityBridge
             // Remove collider
             Destroy(skierObj.GetComponent<Collider>());
             
-            // Set initial position at base (use X/Z for horizontal, Y for height)
+            // Set initial position at base
             var baseCoord = new TileCoord((int)baseSpawnPosition.x, (int)baseSpawnPosition.y);
             var tile = grid.GetTile(baseCoord);
-            float baseHeight = tile != null ? tile.Height : -35f; // Default to Base Lodge height
-            
-            // Unity coordinates: X and Z horizontal, Y vertical
+            float baseHeight = tile != null ? tile.Height : -35f;
             var startPos = new Vector3(baseSpawnPosition.x, baseHeight, baseSpawnPosition.y);
             skierObj.transform.position = startPos;
             
-            Debug.Log($"[Skier {skier.SkierId}] Spawned at {startPos}, will ride Lift {startLift.LiftId} → Trail {trail.TrailId} ({trail.Difficulty})");
+            // Log spawning info with skill and goal
+            string goalInfo = goal != null && goal.PlannedPath.Count > 0 
+                ? $"Goal: {goal.Type}, Path: {string.Join("→", goal.PlannedPath)}"
+                : "Using fallback path";
+            Debug.Log($"[Skier {skier.SkierId}] {skier.Skill} spawned → Lift {startLift.LiftId} → Trail {targetTrail.TrailId} ({targetTrail.Difficulty}) | {goalInfo}");
             
             // Create visual skier data
             var visualSkier = new VisualSkier
@@ -203,15 +261,16 @@ namespace SkiResortTycoon.UnityBridge
                 GameObject = skierObj,
                 Skier = skier,
                 CurrentLift = startLift,
-                CurrentTrail = trail,
-                PlannedTrails = new List<TrailData> { trail },
+                CurrentTrail = targetTrail,
+                PlannedTrails = new List<TrailData> { targetTrail },
                 CurrentTrailIndex = 0,
                 Phase = SkierPhase.WalkingToLift,
                 PhaseProgress = 0f,
-                LateralOffset = Random.Range(-0.8f, 0.8f), // Random position across trail (-1 to 1, stay away from edges)
-                HasSwitchedAtJunction = false, // Allow one switch per run
+                LateralOffset = Random.Range(-0.8f, 0.8f),
+                HasSwitchedAtJunction = false,
                 Pathfinder = null,
-                ReachableTrails = allTrails
+                ReachableTrails = allTrails,
+                UseGoalBasedAI = (goal != null && goal.PlannedPath.Count > 0)
             };
             
             _activeSkiers.Add(visualSkier);
@@ -443,34 +502,76 @@ namespace SkiResortTycoon.UnityBridge
                     // Update position along trail
                     UpdateSkierOnTrail(vs, grid);
                     
-                    // MID-TRAIL JUNCTION DETECTION: Check for nearby trails periodically
-                    // Only check every 10% progress to avoid excessive checks
-                    if (Mathf.Abs(vs.PhaseProgress % 0.1f) < 0.02f) // Near a 10% milestone
+                    // HYBRID JUNCTION HANDLING
+                    // 1. Goal-based: follow AI-planned multi-trail routes
+                    // 2. Exploration: small chance to switch to preferred-difficulty trails at junctions
+                    if (!vs.HasSwitchedAtJunction)
                     {
-                        // CRITICAL: Only allow ONE switch per run to prevent endless loops!
-                        if (!vs.HasSwitchedAtJunction)
+                        bool switched = false;
+                        
+                        // First: Check if goal requires a trail switch
+                        if (vs.UseGoalBasedAI && vs.Skier.CurrentGoal != null)
                         {
-                            Vector3 currentPos = vs.GameObject.transform.position;
-                            var nearbyTrails = FindNearbyTrails(currentPos, 15f); // Smaller radius for junctions
+                            var goal = vs.Skier.CurrentGoal;
+                            var currentStep = goal.GetCurrentStep();
                             
-                            // Filter out current trail
-                            var validTrails = nearbyTrails.FindAll(t => t.TrailId != vs.CurrentTrail.TrailId);
-                            
-                            if (validTrails.Count > 0)
+                            if (currentStep != null && currentStep.StepType == PathStepType.SkiTrail)
                             {
-                                // Random chance to switch trails at junction (40% chance)
-                                if (Random.value < 0.4f)
+                                if (goal.CurrentPathIndex < goal.PlannedPath.Count - 1)
                                 {
-                                    var chosenTrail = validTrails[Random.Range(0, validTrails.Count)];
+                                    var nextStep = goal.PlannedPath[goal.CurrentPathIndex + 1];
+                                    if (nextStep.StepType == PathStepType.SkiTrail && nextStep.EntityId != vs.CurrentTrail.TrailId)
+                                    {
+                                        Vector3 currentPos = vs.GameObject.transform.position;
+                                        var nextTrail = _trailDrawer.TrailSystem.GetTrail(nextStep.EntityId);
+                                        
+                                        if (nextTrail != null)
+                                        {
+                                            float distToNextTrail = FindDistanceToTrailStart(currentPos, nextTrail);
+                                            if (distToNextTrail < 20f)
+                                            {
+                                                float newProgress = FindClosestProgressOnTrail(currentPos, nextTrail);
+                                                Debug.Log($"[Skier {vs.Skier.SkierId}] Following goal: Trail {vs.CurrentTrail.TrailId} → Trail {nextTrail.TrailId}");
+                                                vs.CurrentTrail = nextTrail;
+                                                vs.PhaseProgress = newProgress;
+                                                vs.LateralOffset = Random.Range(-0.8f, 0.8f);
+                                                vs.HasSwitchedAtJunction = true;
+                                                goal.AdvanceToNextStep();
+                                                switched = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Second: Natural exploration at junctions (20% chance, preference-weighted)
+                        if (!switched && vs.PhaseProgress > 0.2f && vs.PhaseProgress < 0.8f)
+                        {
+                            // Only check occasionally (every ~10% progress)
+                            if (Mathf.Abs(vs.PhaseProgress % 0.1f) < 0.015f)
+                            {
+                                Vector3 currentPos = vs.GameObject.transform.position;
+                                var nearbyTrails = FindNearbyTrails(currentPos, 12f);
+                                var validTrails = nearbyTrails.FindAll(t => t.TrailId != vs.CurrentTrail.TrailId);
+                                
+                                if (validTrails.Count > 0)
+                                {
+                                    // Filter by preference - only switch to trails the skier prefers
+                                    var preferredTrails = validTrails.FindAll(t => 
+                                        _distribution.GetPreference(vs.Skier.Skill, t.Difficulty) >= 0.3f);
                                     
-                                    // SEAMLESS TRANSITION: Find closest point on new trail
-                                    float newProgress = FindClosestProgressOnTrail(currentPos, chosenTrail);
-                                    
-                                    Debug.Log($"[Skier {vs.Skier.SkierId}] JUNCTION! Switching from trail {vs.CurrentTrail.TrailId} → trail {chosenTrail.TrailId} at {(vs.PhaseProgress * 100):F0}% (new progress: {(newProgress * 100):F0}%)");
-                                    vs.CurrentTrail = chosenTrail;
-                                    vs.PhaseProgress = newProgress; // SEAMLESS - continue from closest point!
-                                    vs.LateralOffset = Random.Range(-0.8f, 0.8f); // New lateral position
-                                    vs.HasSwitchedAtJunction = true; // Mark as switched - no more switching this run!
+                                    if (preferredTrails.Count > 0 && Random.value < 0.20f)
+                                    {
+                                        var chosenTrail = preferredTrails[Random.Range(0, preferredTrails.Count)];
+                                        float newProgress = FindClosestProgressOnTrail(currentPos, chosenTrail);
+                                        
+                                        Debug.Log($"[Skier {vs.Skier.SkierId}] Exploring junction: Trail {vs.CurrentTrail.TrailId} → Trail {chosenTrail.TrailId} ({chosenTrail.Difficulty})");
+                                        vs.CurrentTrail = chosenTrail;
+                                        vs.PhaseProgress = newProgress;
+                                        vs.LateralOffset = Random.Range(-0.8f, 0.8f);
+                                        vs.HasSwitchedAtJunction = true;
+                                    }
                                 }
                             }
                         }
@@ -482,64 +583,97 @@ namespace SkiResortTycoon.UnityBridge
         
         private void ChooseNewDestination(VisualSkier vs)
         {
-            // Always start from base! Find lift nearest to base
+            // Check if skier wants to keep skiing using AI logic
+            if (!vs.Skier.WantsToKeepSkiing())
+            {
+                Debug.Log($"[Skier {vs.Skier.SkierId}] Done skiing (runs: {vs.Skier.RunsCompleted}/{vs.Skier.DesiredRuns}, satisfaction: {vs.Skier.GetSatisfaction():F2})");
+                vs.IsFinished = true;
+                return;
+            }
+            
+            // Use SkierAI to plan new goal
+            var goal = _skierAI.PlanNewGoal(vs.Skier);
+            vs.Skier.CurrentGoal = goal;
+            
             var allLifts = _liftBuilder.LiftSystem.GetAllLifts();
-            if (allLifts.Count == 0)
+            var allTrails = _trailDrawer.TrailSystem.GetAllTrails();
+            
+            LiftData nextLift = null;
+            TrailData nextTrail = null;
+            
+            // Extract path from goal
+            if (goal != null && goal.PlannedPath.Count > 0)
+            {
+                foreach (var step in goal.PlannedPath)
+                {
+                    if (step.StepType == PathStepType.RideLift && nextLift == null)
+                    {
+                        nextLift = allLifts.Find(l => l.LiftId == step.EntityId);
+                    }
+                    else if (step.StepType == PathStepType.SkiTrail && nextTrail == null)
+                    {
+                        nextTrail = allTrails.Find(t => t.TrailId == step.EntityId);
+                    }
+                    
+                    if (nextLift != null && nextTrail != null)
+                        break;
+                }
+                
+                vs.UseGoalBasedAI = true;
+            }
+            
+            // Fallback to legacy behavior
+            if (nextLift == null)
+            {
+                var baseSpawn = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
+                Vector3f basePos = baseSpawn.Count > 0 ? baseSpawn[0].Position : new Vector3f(224f, -35f, 205f);
+                
+                float closestDist = float.MaxValue;
+                foreach (var lift in allLifts)
+                {
+                    float dist = Vector3f.Distance(basePos, lift.StartPosition);
+                    if (dist < closestDist)
+                    {
+                        closestDist = dist;
+                        nextLift = lift;
+                    }
+                }
+                vs.UseGoalBasedAI = false;
+            }
+            
+            if (nextLift == null)
             {
                 vs.IsFinished = true;
                 return;
             }
             
-            // Get base position (from first skier's spawn location or use default)
-            var baseSpawn = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
-            Vector3f basePos = baseSpawn.Count > 0 ? baseSpawn[0].Position : new Vector3f(224f, -35f, 205f);
-            
-            // Find lift nearest to base
-            LiftData baseLift = null;
-            float closestDist = float.MaxValue;
-            
-            foreach (var lift in allLifts)
+            // Fallback for trail
+            if (nextTrail == null)
             {
-                float dist = Vector3f.Distance(basePos, lift.StartPosition);
-                if (dist < closestDist)
+                var connectedTrailIds = _liftBuilder.Connectivity.Connections.GetTrailsFromLift(nextLift.LiftId);
+                if (connectedTrailIds.Count > 0)
                 {
-                    closestDist = dist;
-                    baseLift = lift;
+                    int trailId = connectedTrailIds[Random.Range(0, connectedTrailIds.Count)];
+                    nextTrail = _trailDrawer.TrailSystem.GetTrail(trailId);
                 }
             }
             
-            if (baseLift == null)
+            if (nextTrail == null)
             {
+                Debug.LogWarning($"[Skier {vs.Skier.SkierId}] Lift {nextLift.LiftId} has no connected trails!");
                 vs.IsFinished = true;
                 return;
             }
             
-            vs.CurrentLift = baseLift;
-            
-            // Get trails connected to this lift
-            var connectedTrailIds = _liftBuilder.Connectivity.Connections.GetTrailsFromLift(vs.CurrentLift.LiftId);
-            if (connectedTrailIds.Count == 0)
-            {
-                Debug.LogWarning($"[Skier {vs.Skier.SkierId}] Lift {vs.CurrentLift.LiftId} (base lift) has no connected trails!");
-                vs.IsFinished = true;
-                return;
-            }
-            
-            // Pick random connected trail
-            int trailId = connectedTrailIds[Random.Range(0, connectedTrailIds.Count)];
-            var randomTrail = _trailDrawer.TrailSystem.GetTrail(trailId);
-            if (randomTrail == null)
-            {
-                Debug.LogWarning($"[Skier {vs.Skier.SkierId}] Trail {trailId} not found!");
-                vs.IsFinished = true;
-                return;
-            }
-            
-            vs.PlannedTrails = new List<TrailData> { randomTrail };
+            vs.CurrentLift = nextLift;
+            vs.CurrentTrail = nextTrail;
+            vs.PlannedTrails = new List<TrailData> { nextTrail };
             vs.CurrentTrailIndex = 0;
             vs.Phase = SkierPhase.WalkingToLift;
             vs.PhaseProgress = 0f;
-            Debug.Log($"[Skier {vs.Skier.SkierId}] Chose new destination from BASE: Lift {vs.CurrentLift.LiftId} → Trail {randomTrail.TrailId} ({randomTrail.Difficulty})");
+            
+            string pathInfo = vs.UseGoalBasedAI ? $"(AI goal: {goal?.Type})" : "(fallback)";
+            Debug.Log($"[Skier {vs.Skier.SkierId}] New destination: Lift {vs.CurrentLift.LiftId} → Trail {nextTrail.TrailId} ({nextTrail.Difficulty}) {pathInfo}");
         }
         
         private void UpdateSkierOnTrail(VisualSkier skier, GridSystem grid)
@@ -667,6 +801,20 @@ namespace SkiResortTycoon.UnityBridge
             }
             
             return 1f;
+        }
+        
+        /// <summary>
+        /// Calculates the distance from a position to the start of a trail.
+        /// Used for goal-based junction detection.
+        /// </summary>
+        private float FindDistanceToTrailStart(Vector3 position, TrailData trail)
+        {
+            if (trail.WorldPathPoints != null && trail.WorldPathPoints.Count > 0)
+            {
+                var start = trail.WorldPathPoints[0];
+                return Vector3.Distance(position, new Vector3(start.X, start.Y, start.Z));
+            }
+            return float.MaxValue;
         }
         
         private Vector3 TileToWorld(TileCoord coord, GridSystem grid)
@@ -849,6 +997,9 @@ namespace SkiResortTycoon.UnityBridge
             // Pathfinding references (for replanning)
             public SkierPathfinder Pathfinder;
             public List<TrailData> ReachableTrails;
+            
+            // Goal-based AI
+            public bool UseGoalBasedAI; // Flag to enable new AI system
         }
     }
 }

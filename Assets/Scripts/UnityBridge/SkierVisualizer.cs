@@ -425,13 +425,47 @@ namespace SkiResortTycoon.UnityBridge
                         
                         // PRIORITY 1: Check for nearby lifts to board (mid-mountain lifts!)
                         var nearbyLifts = FindNearbyLifts(trailEndPos, 20f);
-                        if (nearbyLifts.Count > 0)
+                        
+                        // Filter lifts by skill - only board lifts with trails we can ski
+                        // BUT: 2% "Jerry" chance to accidentally board any lift (funny!)
+                        bool isJerry = Random.value < 0.02f;
+                        var validLifts = new List<LiftData>();
+                        
+                        foreach (var lift in nearbyLifts)
                         {
-                            // Board a nearby lift!
-                            vs.CurrentLift = nearbyLifts[Random.Range(0, nearbyLifts.Count)];
+                            if (isJerry)
+                            {
+                                validLifts.Add(lift);
+                                continue;
+                            }
+                            
+                            // Check if this lift has any trails we can ski
+                            bool hasValidTrail = false;
+                            var nearbyTrailsAtTop = FindNearbyTrails(
+                                new Vector3(lift.EndPosition.X, lift.EndPosition.Y, lift.EndPosition.Z), 30f);
+                            
+                            foreach (var trail in nearbyTrailsAtTop)
+                            {
+                                if (_distribution.IsAllowed(vs.Skier.Skill, trail.Difficulty))
+                                {
+                                    hasValidTrail = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (hasValidTrail)
+                            {
+                                validLifts.Add(lift);
+                            }
+                        }
+                        
+                        if (validLifts.Count > 0)
+                        {
+                            // Board a valid lift!
+                            vs.CurrentLift = validLifts[Random.Range(0, validLifts.Count)];
                             vs.Phase = SkierPhase.WalkingToLift;
                             vs.PhaseProgress = 0f;
-                            if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Found {nearbyLifts.Count} nearby lifts, boarding lift {vs.CurrentLift.LiftId} (SPATIAL)");
+                            if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Boarding lift {vs.CurrentLift.LiftId} {(isJerry ? "(JERRY!)" : "")}");
                             return;
                         }
                         
@@ -455,11 +489,12 @@ namespace SkiResortTycoon.UnityBridge
                             
                             if (nextTrail != null)
                             {
-                                if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Trail junction! Transitioning from trail {vs.CurrentTrail.TrailId} → trail {nextTrailId}");
+                                // Find closest point on next trail (no teleporting!)
+                                float closestProgress = FindClosestProgressOnTrail(trailEndPos, nextTrail);
+                                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Trail junction! Transitioning from trail {vs.CurrentTrail.TrailId} → trail {nextTrailId}");
                                 vs.CurrentTrail = nextTrail;
-                                vs.PhaseProgress = 0f;
-                                vs.LateralOffset = Random.Range(-0.8f, 0.8f); // New random position
-                                // Stay in SkiingTrail phase, seamless transition!
+                                vs.PhaseProgress = closestProgress;
+                                vs.LateralOffset = Random.Range(-0.8f, 0.8f);
                                 return;
                             }
                         }
@@ -472,10 +507,13 @@ namespace SkiResortTycoon.UnityBridge
                             var validTrails = nearbyTrails.FindAll(t => t.TrailId != vs.CurrentTrail.TrailId);
                             if (validTrails.Count > 0)
                             {
-                                vs.CurrentTrail = validTrails[Random.Range(0, validTrails.Count)];
-                                vs.PhaseProgress = 0f;
+                                var chosenTrail = validTrails[Random.Range(0, validTrails.Count)];
+                                // Find closest point on trail (no teleporting!)
+                                float closestProgress = FindClosestProgressOnTrail(trailEndPos, chosenTrail);
+                                vs.CurrentTrail = chosenTrail;
+                                vs.PhaseProgress = closestProgress;
                                 vs.LateralOffset = Random.Range(-0.8f, 0.8f);
-                                if (_enableDebugLogs) Debug.Log("[Skier {vs.Skier.SkierId}] Found {validTrails.Count} nearby trails, continuing to trail {vs.CurrentTrail.TrailId} (SPATIAL)");
+                                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Continuing to trail {vs.CurrentTrail.TrailId} at {(closestProgress * 100):F0}%");
                                 return;
                             }
                         }

@@ -209,6 +209,7 @@ namespace SkiResortTycoon.UnityBridge
                 Phase = SkierPhase.WalkingToLift,
                 PhaseProgress = 0f,
                 LateralOffset = Random.Range(-0.8f, 0.8f), // Random position across trail (-1 to 1, stay away from edges)
+                HasSwitchedAtJunction = false, // Allow one switch per run
                 Pathfinder = null,
                 ReachableTrails = allTrails
             };
@@ -310,6 +311,7 @@ namespace SkiResortTycoon.UnityBridge
                             vs.Phase = SkierPhase.SkiingTrail;
                             vs.PhaseProgress = 0f;
                             vs.LateralOffset = Random.Range(-0.8f, 0.8f); // New random position for this trail
+                            vs.HasSwitchedAtJunction = false; // Reset for new run - can switch once on this run
                             vs.Skier.RunsCompleted++;
                             Debug.Log($"[Skier {vs.Skier.SkierId}] Reached top! Starting to ski trail {vs.CurrentTrail.TrailId}");
                         }
@@ -440,6 +442,39 @@ namespace SkiResortTycoon.UnityBridge
                     
                     // Update position along trail
                     UpdateSkierOnTrail(vs, grid);
+                    
+                    // MID-TRAIL JUNCTION DETECTION: Check for nearby trails periodically
+                    // Only check every 10% progress to avoid excessive checks
+                    if (Mathf.Abs(vs.PhaseProgress % 0.1f) < 0.02f) // Near a 10% milestone
+                    {
+                        // CRITICAL: Only allow ONE switch per run to prevent endless loops!
+                        if (!vs.HasSwitchedAtJunction)
+                        {
+                            Vector3 currentPos = vs.GameObject.transform.position;
+                            var nearbyTrails = FindNearbyTrails(currentPos, 15f); // Smaller radius for junctions
+                            
+                            // Filter out current trail
+                            var validTrails = nearbyTrails.FindAll(t => t.TrailId != vs.CurrentTrail.TrailId);
+                            
+                            if (validTrails.Count > 0)
+                            {
+                                // Random chance to switch trails at junction (40% chance)
+                                if (Random.value < 0.4f)
+                                {
+                                    var chosenTrail = validTrails[Random.Range(0, validTrails.Count)];
+                                    
+                                    // SEAMLESS TRANSITION: Find closest point on new trail
+                                    float newProgress = FindClosestProgressOnTrail(currentPos, chosenTrail);
+                                    
+                                    Debug.Log($"[Skier {vs.Skier.SkierId}] JUNCTION! Switching from trail {vs.CurrentTrail.TrailId} → trail {chosenTrail.TrailId} at {(vs.PhaseProgress * 100):F0}% (new progress: {(newProgress * 100):F0}%)");
+                                    vs.CurrentTrail = chosenTrail;
+                                    vs.PhaseProgress = newProgress; // SEAMLESS - continue from closest point!
+                                    vs.LateralOffset = Random.Range(-0.8f, 0.8f); // New lateral position
+                                    vs.HasSwitchedAtJunction = true; // Mark as switched - no more switching this run!
+                                }
+                            }
+                        }
+                    }
                     break;
                 }
             }
@@ -719,6 +754,75 @@ namespace SkiResortTycoon.UnityBridge
             return nearbyTrails;
         }
         
+        /// <summary>
+        /// Find the closest point on a trail's path and return the progress (0-1) at that point.
+        /// Used for seamless trail switching at junctions.
+        /// </summary>
+        private float FindClosestProgressOnTrail(Vector3 position, TrailData trail)
+        {
+            if (trail.WorldPathPoints == null || trail.WorldPathPoints.Count < 2)
+                return 0f;
+            
+            float closestDistance = float.MaxValue;
+            float closestProgress = 0f;
+            float totalDistance = 0f;
+            float distanceToClosest = 0f;
+            
+            // Calculate total trail length and find closest segment
+            for (int i = 0; i < trail.WorldPathPoints.Count - 1; i++)
+            {
+                var p1 = trail.WorldPathPoints[i];
+                var p2 = trail.WorldPathPoints[i + 1];
+                
+                Vector3 v1 = new Vector3(p1.X, p1.Y, p1.Z);
+                Vector3 v2 = new Vector3(p2.X, p2.Y, p2.Z);
+                
+                float segmentLength = Vector3.Distance(v1, v2);
+                
+                // Find closest point on this segment
+                Vector3 closestPointOnSegment = ClosestPointOnLineSegment(position, v1, v2);
+                float distanceToSegment = Vector3.Distance(position, closestPointOnSegment);
+                
+                if (distanceToSegment < closestDistance)
+                {
+                    closestDistance = distanceToSegment;
+                    distanceToClosest = totalDistance + Vector3.Distance(v1, closestPointOnSegment);
+                }
+                
+                totalDistance += segmentLength;
+            }
+            
+            // Convert distance to progress (0-1)
+            if (totalDistance > 0)
+            {
+                closestProgress = Mathf.Clamp01(distanceToClosest / totalDistance);
+            }
+            
+            return closestProgress;
+        }
+        
+        /// <summary>
+        /// Find the closest point on a line segment to a given position.
+        /// </summary>
+        private Vector3 ClosestPointOnLineSegment(Vector3 point, Vector3 lineStart, Vector3 lineEnd)
+        {
+            Vector3 line = lineEnd - lineStart;
+            float lineLength = line.magnitude;
+            
+            if (lineLength < 0.001f)
+                return lineStart;
+            
+            Vector3 lineDirection = line / lineLength;
+            
+            // Project point onto line
+            float projectionDistance = Vector3.Dot(point - lineStart, lineDirection);
+            
+            // Clamp to segment bounds
+            projectionDistance = Mathf.Clamp(projectionDistance, 0f, lineLength);
+            
+            return lineStart + lineDirection * projectionDistance;
+        }
+        
         private enum SkierPhase
         {
             WalkingToLift,
@@ -740,6 +844,7 @@ namespace SkiResortTycoon.UnityBridge
             
             // Boundary-aware movement
             public float LateralOffset; // -1 to 1, position across trail width
+            public bool HasSwitchedAtJunction; // Prevent endless switching loops
             
             // Pathfinding references (for replanning)
             public SkierPathfinder Pathfinder;

@@ -74,6 +74,7 @@ namespace SkiResortTycoon.UI
             
             if (_timeText != null)
             {
+                // Format time with proper spacing - don't run into money
                 _timeText.text = FormatTime(state.TimeMinutes);
             }
         }

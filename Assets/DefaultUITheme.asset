@@ -1,0 +1,71 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6d30f898d4e384602a51ad1a8b2798b3, type: 3}
+  m_Name: DefaultUITheme
+  m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UI.UITheme
+  PrimaryColor: {r: 0.129, g: 0.588, b: 0.953, a: 1}
+  SecondaryColor: {r: 0.149, g: 0.196, b: 0.22, a: 1}
+  AccentColor: {r: 0, g: 0.737, b: 0.831, a: 1}
+  SuccessColor: {r: 0.298, g: 0.686, b: 0.314, a: 1}
+  WarningColor: {r: 1, g: 0.596, b: 0, a: 1}
+  ErrorColor: {r: 0.957, g: 0.263, b: 0.212, a: 1}
+  TextPrimary: {r: 1, g: 1, b: 1, a: 1}
+  TextSecondary: {r: 1, g: 1, b: 1, a: 0.7}
+  TextDisabled: {r: 1, g: 1, b: 1, a: 0.38}
+  PanelBackground: {r: 0.1, g: 0.12, b: 0.14, a: 0.92}
+  PanelHeaderBackground: {r: 0.15, g: 0.18, b: 0.22, a: 0.95}
+  PanelBorder: {r: 1, g: 1, b: 1, a: 0.1}
+  ButtonNormal: {r: 0.2, g: 0.24, b: 0.28, a: 1}
+  ButtonHover: {r: 0.28, g: 0.32, b: 0.36, a: 1}
+  ButtonPressed: {r: 0.16, g: 0.19, b: 0.22, a: 1}
+  ButtonDisabled: {r: 0.15, g: 0.17, b: 0.19, a: 0.5}
+  ButtonSelected: {r: 0, g: 0.737, b: 0.831, a: 1}
+  SatisfactionHigh: {r: 0.298, g: 0.686, b: 0.314, a: 1}
+  SatisfactionNormal: {r: 1, g: 1, b: 1, a: 1}
+  SatisfactionLow: {r: 1, g: 0.596, b: 0, a: 1}
+  SatisfactionCritical: {r: 0.957, g: 0.263, b: 0.212, a: 1}
+  TrailGreen: {r: 0.2, g: 0.8, b: 0.2, a: 1}
+  TrailBlue: {r: 0.2, g: 0.5, b: 1, a: 1}
+  TrailBlack: {r: 0.15, g: 0.15, b: 0.15, a: 1}
+  TrailDoubleBlack: {r: 0.9, g: 0.2, b: 0.2, a: 1}
+  PanelAnimationDuration: 0.25
+  TabSwitchDuration: 0.15
+  ButtonHoverDuration: 0.1
+  PanelAnimationCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  PanelPadding: 12
+  ElementSpacing: 8
+  CornerRadius: 6
+  HeaderHeight: 36
+  ButtonHeight: 32

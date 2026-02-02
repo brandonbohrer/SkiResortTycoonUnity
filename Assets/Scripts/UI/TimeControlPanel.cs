@@ -116,7 +116,19 @@ namespace SkiResortTycoon.UI
             if (button == null) return;
             
             var colors = button.colors;
-            colors.normalColor = isActive ? new Color(0.3f, 0.8f, 0.3f) : Color.white;
+            
+            // Use UITheme colors if available
+            UITheme theme = UIManager.Instance?.Theme;
+            if (theme != null)
+            {
+                colors.normalColor = isActive ? theme.ButtonSelected : theme.ButtonNormal;
+                colors.highlightedColor = isActive ? theme.ButtonSelected : theme.ButtonHover;
+            }
+            else
+            {
+                colors.normalColor = isActive ? new Color(0f, 0.737f, 0.831f) : new Color(0.25f, 0.25f, 0.25f);
+            }
+            
             button.colors = colors;
         }
     }

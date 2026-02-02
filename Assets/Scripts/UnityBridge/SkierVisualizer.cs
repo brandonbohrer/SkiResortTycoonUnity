@@ -42,6 +42,11 @@ namespace SkiResortTycoon.UnityBridge
         private NetworkGraph _networkGraph;
         private SkierDistribution _distribution;
         
+        /// <summary>
+        /// Number of skiers currently active on the mountain
+        /// </summary>
+        public int ActiveSkierCount => _activeSkiers?.Count ?? 0;
+        
         private void Awake()
         {
             // Create material for skier dots

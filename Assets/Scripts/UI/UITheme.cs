@@ -46,11 +46,11 @@ namespace SkiResortTycoon.UI
         public Color PanelBorder = new Color(1f, 1f, 1f, 0.1f);
         
         [Header("Button Colors")]
-        public Color ButtonNormal = new Color(0.2f, 0.24f, 0.28f, 1f);
-        public Color ButtonHover = new Color(0.28f, 0.32f, 0.36f, 1f);
-        public Color ButtonPressed = new Color(0.16f, 0.19f, 0.22f, 1f);
-        public Color ButtonDisabled = new Color(0.15f, 0.17f, 0.19f, 0.5f);
-        public Color ButtonSelected = new Color(0f, 0.737f, 0.831f, 1f); // AccentColor
+        public Color ButtonNormal = Color.white; // White by default
+        public Color ButtonHover = new Color(0.678f, 0.847f, 0.902f, 1f); // Light blue (#ADD8E6)
+        public Color ButtonPressed = new Color(0.529f, 0.808f, 0.922f, 1f); // Slightly darker blue
+        public Color ButtonDisabled = new Color(0.7f, 0.7f, 0.7f, 0.5f); // Light grey, transparent
+        public Color ButtonSelected = new Color(0f, 0.737f, 0.831f, 1f); // AccentColor (cyan)
         
         [Header("Satisfaction Colors")]
         public Color SatisfactionHigh = new Color(0.298f, 0.686f, 0.314f, 1f); // Green

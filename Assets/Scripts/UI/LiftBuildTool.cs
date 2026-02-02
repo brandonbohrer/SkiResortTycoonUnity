@@ -1,17 +1,23 @@
 using UnityEngine;
+using SkiResortTycoon.UnityBridge;
+using System.Reflection;
 
 namespace SkiResortTycoon.UI
 {
     /// <summary>
-    /// Placeholder tool for lift building.
-    /// This is a minimal implementation to populate the BuildActionBar.
+    /// Lift building tool - integrates UI button with existing LiftBuilder system.
+    /// Activating this tool enters lift build mode (same as pressing L).
     /// </summary>
     public class LiftBuildTool : BaseTool
     {
+        [Header("Tool References")]
+        [SerializeField] private LiftBuilder _liftBuilder;
+        
         [Header("Lift Settings")]
         [SerializeField] private int _baseCost = 25000;
         
-        private Vector3? _startPosition = null;
+        private FieldInfo _isBuildModeField;
+        private bool _previousBuildMode = false;
         
         public override string ToolName => "Lift";
         public override string ToolDescription => "Build a new ski lift";
@@ -19,67 +25,106 @@ namespace SkiResortTycoon.UI
         public override void OnActivate()
         {
             base.OnActivate();
-            NotificationManager.Instance?.ShowInfo("Click to set lift bottom station");
-            _startPosition = null;
+            
+            if (_liftBuilder == null)
+            {
+                _liftBuilder = FindObjectOfType<LiftBuilder>();
+                if (_liftBuilder == null)
+                {
+                    Debug.LogError("[LiftBuildTool] LiftBuilder not found in scene!");
+                    NotificationManager.Instance?.ShowError("Lift system not available");
+                    return;
+                }
+            }
+            
+            // Get the private _isBuildMode field using reflection
+            if (_isBuildModeField == null)
+            {
+                _isBuildModeField = typeof(LiftBuilder).GetField("_isBuildMode", 
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+            }
+            
+            // Remember previous state
+            if (_isBuildModeField != null)
+            {
+                _previousBuildMode = (bool)_isBuildModeField.GetValue(_liftBuilder);
+                
+                // Enable build mode
+                _isBuildModeField.SetValue(_liftBuilder, true);
+            }
+            
+            NotificationManager.Instance?.ShowInfo("Click bottom station, then top station");
+            
+            // Show cursor if available
+            var cursorVisualField = typeof(LiftBuilder).GetField("_cursorVisual", 
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            if (cursorVisualField != null)
+            {
+                var cursorVisual = cursorVisualField.GetValue(_liftBuilder) as GameObject;
+                if (cursorVisual != null)
+                {
+                    cursorVisual.SetActive(true);
+                }
+            }
         }
         
         public override void OnDeactivate()
         {
             base.OnDeactivate();
-            _startPosition = null;
+            
+            if (_liftBuilder == null || _isBuildModeField == null) return;
+            
+            // Cancel any in-progress placement
+            var cancelMethod = typeof(LiftBuilder).GetMethod("CancelPlacement", 
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            if (cancelMethod != null)
+            {
+                cancelMethod.Invoke(_liftBuilder, null);
+            }
+            
+            // Restore previous build mode state (or turn off)
+            _isBuildModeField.SetValue(_liftBuilder, _previousBuildMode);
+            
+            // Hide cursor
+            var cursorVisualField = typeof(LiftBuilder).GetField("_cursorVisual", 
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            if (cursorVisualField != null)
+            {
+                var cursorVisual = cursorVisualField.GetValue(_liftBuilder) as GameObject;
+                if (cursorVisual != null && !_previousBuildMode)
+                {
+                    cursorVisual.SetActive(false);
+                }
+            }
         }
         
         protected override void HandleInput()
         {
+            // The LiftBuilder handles its own input in its Update method
+            // We just need to keep build mode enabled while this tool is active
             base.HandleInput();
             
-            if (IsMouseOverUI()) return;
-            
-            Vector3 worldPos = GetMouseWorldPosition();
-            
-            if (Input.GetMouseButtonDown(0))
+            // If escape is pressed, cancel and deactivate
+            if (Input.GetKeyDown(KeyCode.Escape))
             {
-                if (_startPosition == null)
-                {
-                    _startPosition = worldPos;
-                    Debug.Log($"[LiftBuildTool] Start position set at {worldPos}");
-                    NotificationManager.Instance?.ShowInfo("Click to set lift top station");
-                }
-                else
-                {
-                    Debug.Log($"[LiftBuildTool] End position at {worldPos}");
-                    
-                    float distance = Vector3.Distance(_startPosition.Value, worldPos);
-                    int cost = Mathf.RoundToInt(_baseCost * (distance / 100f));
-                    
-                    ConfirmationDialog.Instance?.ShowBuildConfirmation(
-                        "Ski Lift", 
-                        cost, 
-                        500, // maintenance per day
-                        () => {
-                            NotificationManager.Instance?.ShowSuccess("Lift built!");
-                            _startPosition = null;
-                        },
-                        () => {
-                            NotificationManager.Instance?.ShowInfo("Lift cancelled");
-                            _startPosition = null;
-                        }
-                    );
-                }
+                UIManager.Instance?.DeactivateTool();
             }
         }
         
         public override void OnCancel()
         {
-            if (_startPosition != null)
+            if (_liftBuilder != null)
             {
-                _startPosition = null;
-                NotificationManager.Instance?.ShowInfo("Lift placement cancelled");
+                var cancelMethod = typeof(LiftBuilder).GetMethod("CancelPlacement", 
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                if (cancelMethod != null)
+                {
+                    cancelMethod.Invoke(_liftBuilder, null);
+                    NotificationManager.Instance?.ShowInfo("Lift placement cancelled");
+                }
             }
-            else
-            {
-                base.OnCancel();
-            }
+            
+            base.OnCancel();
         }
     }
 }

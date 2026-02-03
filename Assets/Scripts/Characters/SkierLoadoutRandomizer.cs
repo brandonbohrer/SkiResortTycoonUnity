@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class SkierLoadoutRandomizer : MonoBehaviour
 {
-    [Header("Sockets")]
+    [Header("Sockets (in SkierRoot prefab)")]
     [SerializeField] private Transform bodySocket;
     [SerializeField] private Transform headSocket;
     [SerializeField] private Transform leftFootSocket;
@@ -12,7 +12,7 @@ public class SkierLoadoutRandomizer : MonoBehaviour
     [SerializeField] private GameObject maleBodyPrefab;
     [SerializeField] private GameObject femaleBodyPrefab;
 
-    [Header("Skis (pick one set; will spawn L+R)")]
+    [Header("Skis (pick one; spawn twice)")]
     [SerializeField] private GameObject[] skiPrefabs;
 
     [Header("Headgear (optional)")]
@@ -29,30 +29,43 @@ public class SkierLoadoutRandomizer : MonoBehaviour
         Randomize();
     }
 
-    // If you later use pooling, call Randomize() in OnEnable() instead.
     public void Randomize()
     {
         ClearOld();
 
-        // 1) Body: male or female (50/50)
-        var bodyPrefab = (Random.value < 0.5f) ? maleBodyPrefab : femaleBodyPrefab;
-        _bodyInstance = Spawn(bodyPrefab, bodySocket);
+        // 0) Resolve sockets from THIS prefab (SkierRoot), not from body instance
+        // (If you assigned them in inspector, these are already good.
+        //  This just makes it resilient if you forget.)
+        var resolvedBodySocket = bodySocket ? bodySocket : FindSocket(transform, "BodySocket");
+        var resolvedLeft = leftFootSocket ? leftFootSocket : FindSocket(transform, "LeftFootSocket");
+        var resolvedRight = rightFootSocket ? rightFootSocket : FindSocket(transform, "RightFootSocket");
+        var resolvedHead = headSocket ? headSocket : FindSocket(transform, "HeadSocket");
 
-        // 2) Skis: one prefab, spawned twice (L + R)
+        if (resolvedBodySocket == null)
+        {
+            Debug.LogError("BodySocket not found/assigned on SkierRoot.");
+            return;
+        }
+
+        // 1) Body
+        var bodyPrefab = (Random.value < 0.5f) ? maleBodyPrefab : femaleBodyPrefab;
+        _bodyInstance = Spawn(bodyPrefab, resolvedBodySocket, zeroScale: false);
+
+        // 2) Skis
         if (skiPrefabs != null && skiPrefabs.Length > 0)
         {
             var skiPrefab = skiPrefabs[Random.Range(0, skiPrefabs.Length)];
-            _leftSki = Spawn(skiPrefab, leftFootSocket);
-            _rightSki = Spawn(skiPrefab, rightFootSocket);
+            _leftSki = Spawn(skiPrefab, resolvedLeft, zeroScale: false);
+            _rightSki = Spawn(skiPrefab, resolvedRight, zeroScale: false);
         }
 
-        // 3) Headgear: optional
-        if (headSocket != null &&
+        // 3) Headgear
+        if (resolvedHead != null &&
             headgearPrefabs != null && headgearPrefabs.Length > 0 &&
             Random.value < headgearChance)
         {
             var hatPrefab = headgearPrefabs[Random.Range(0, headgearPrefabs.Length)];
-            _headgear = Spawn(hatPrefab, headSocket);
+            _headgear = Spawn(hatPrefab, resolvedHead, zeroScale: false);
         }
     }
 
@@ -66,14 +79,34 @@ public class SkierLoadoutRandomizer : MonoBehaviour
         _bodyInstance = _leftSki = _rightSki = _headgear = null;
     }
 
-    private GameObject Spawn(GameObject prefab, Transform socket)
+    private GameObject Spawn(GameObject prefab, Transform socket, bool zeroScale)
     {
         if (prefab == null || socket == null) return null;
 
         var go = Instantiate(prefab, socket);
+
+        // Snap position/rotation to socket
         go.transform.localPosition = Vector3.zero;
         go.transform.localRotation = Quaternion.identity;
-        go.transform.localScale = Vector3.one;
+
+        // DO NOT force scale unless you 100% know everything is authored at scale=1
+        if (zeroScale)
+            go.transform.localScale = Vector3.one;
+
         return go;
+    }
+
+    private static Transform FindSocket(Transform root, string socketName)
+    {
+        if (root == null) return null;
+
+        // Robust: search all descendants by name
+        var all = root.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < all.Length; i++)
+        {
+            if (all[i] != null && all[i].name == socketName)
+                return all[i];
+        }
+        return null;
     }
 }

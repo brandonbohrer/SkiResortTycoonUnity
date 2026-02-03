@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 4e4c6a5fcd6d7f141b2efe5e6fdcd6b7
+timeCreated: 1543806529
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 134501
+  packageName: POLYGON Snow Kit - Low Poly 3D Art by Synty
+  packageVersion: 1.4.0
+  assetPath: Assets/PolygonSnow/Prefabs/Props/SM_Prop_Lift_Chair_01.prefab
+  uploadId: 735241

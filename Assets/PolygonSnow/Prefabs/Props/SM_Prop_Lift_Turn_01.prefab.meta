@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: aba4a5f9155abe742b4ee285a651f9ac
+timeCreated: 1543806526
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 134501
+  packageName: POLYGON Snow Kit - Low Poly 3D Art by Synty
+  packageVersion: 1.4.0
+  assetPath: Assets/PolygonSnow/Prefabs/Props/SM_Prop_Lift_Turn_01.prefab
+  uploadId: 735241

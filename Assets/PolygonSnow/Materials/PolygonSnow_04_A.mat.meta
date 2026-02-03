@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: d5b926a10d8434b40a8910a26e5c3ea5
+timeCreated: 1543805804
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 134501
+  packageName: POLYGON Snow Kit - Low Poly 3D Art by Synty
+  packageVersion: 1.4.0
+  assetPath: Assets/PolygonSnow/Materials/PolygonSnow_04_A.mat
+  uploadId: 735241

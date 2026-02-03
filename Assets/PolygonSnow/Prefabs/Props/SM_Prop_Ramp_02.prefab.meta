@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 2519664c96b5d514cb93ce3291cc0455
+timeCreated: 1543806529
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 134501
+  packageName: POLYGON Snow Kit - Low Poly 3D Art by Synty
+  packageVersion: 1.4.0
+  assetPath: Assets/PolygonSnow/Prefabs/Props/SM_Prop_Ramp_02.prefab
+  uploadId: 735241

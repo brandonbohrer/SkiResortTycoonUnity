@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 3492ab048fa119b4088c90a19f6d481f
+timeCreated: 1543876141
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 134501
+  packageName: POLYGON Snow Kit - Low Poly 3D Art by Synty
+  packageVersion: 1.4.0
+  assetPath: Assets/PolygonSnow/Prefabs/FX/FX_Snow_Bike_02.prefab
+  uploadId: 735241

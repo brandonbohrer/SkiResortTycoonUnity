@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 6ce2aabc13c38a748a58decc2ab8c5c4
+timeCreated: 1543810524
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 134501
+  packageName: POLYGON Snow Kit - Low Poly 3D Art by Synty
+  packageVersion: 1.4.0
+  assetPath: Assets/PolygonSnow/Prefabs/Characters/SM_Attachment_FaceMask_Female_01.prefab
+  uploadId: 735241

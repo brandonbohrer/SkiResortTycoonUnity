@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 41600255f9be67246b5639b53f7291cc
+timeCreated: 1543806531
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 134501
+  packageName: POLYGON Snow Kit - Low Poly 3D Art by Synty
+  packageVersion: 1.4.0
+  assetPath: Assets/PolygonSnow/Prefabs/Vehicle/SM_Veh_Snowmobile_01.prefab
+  uploadId: 735241

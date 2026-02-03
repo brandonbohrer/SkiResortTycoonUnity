@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 7ccc6bfd860115442b7715c92146231b
+timeCreated: 1543806530
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 134501
+  packageName: POLYGON Snow Kit - Low Poly 3D Art by Synty
+  packageVersion: 1.4.0
+  assetPath: Assets/PolygonSnow/Prefabs/Props/SM_Prop_Fence_02.prefab
+  uploadId: 735241

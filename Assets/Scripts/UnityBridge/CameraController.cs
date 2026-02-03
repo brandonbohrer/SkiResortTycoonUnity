@@ -119,10 +119,10 @@ namespace SkiResortTycoon.UnityBridge
                         Bounds bounds = renderer.bounds;
                         
                         // Set camera bounds from mountain bounds
-                        _minX = 0;
-                        _maxX = 500;
+                        _minX = -100;
+                        _maxX = 600;
                         _minZ = -100;
-                        _maxZ = 500;
+                        _maxZ = 600;
                         
                         // CRITICAL: Use MAX Y (peak height), not center Y
                         // Since camera tilts DOWN at 30°, setting focus at peak means:

@@ -25,6 +25,9 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private Color _snapColor = Color.green;
         [SerializeField] private Color _defaultColor = Color.white;
         
+        [Header("Prefab Builder (optional - enables 3D lift visuals)")]
+        [SerializeField] private LiftPrefabBuilder _prefabBuilder;
+        
         private LiftSystem _liftSystem;
         private WorldConnectivity _connectivity;
         private MagneticCursor _magneticCursor;
@@ -37,6 +40,10 @@ namespace SkiResortTycoon.UnityBridge
         public LiftSystem LiftSystem => _liftSystem;
         public WorldConnectivity Connectivity => _connectivity;
         public bool IsBuildMode => _isBuildMode;
+        public bool HasBottomStation => _hasBottomStation;
+        public Vector3? BottomWorldPosition => _hasBottomStation && _currentLift != null
+            ? (Vector3?)MountainManager.ToUnityVector3(_currentLift.StartPosition) : null;
+        public LiftPrefabBuilder PrefabBuilder => _prefabBuilder;
         
         void Start()
         {
@@ -106,6 +113,7 @@ namespace SkiResortTycoon.UnityBridge
                     {
                         _cursorVisual.SetActive(false);
                     }
+                    TreeClearer.RestorePreviewTrees();
                 }
                 else
                 {
@@ -142,6 +150,45 @@ namespace SkiResortTycoon.UnityBridge
                     var renderer = _cursorVisual.GetComponent<Renderer>();
                     renderer.material.color = _magneticCursor.IsSnapped ? _snapColor : _defaultColor;
                 }
+            }
+            
+            // Live preview: update prefab builder while dragging top point
+            if (_hasBottomStation && rawPosition.HasValue)
+            {
+                Vector3 baseWorld = MountainManager.ToUnityVector3(_currentLift.StartPosition);
+                Vector3 topWorld = _magneticCursor != null ? _magneticCursor.SnappedPosition : rawPosition.Value;
+                
+                // Only show preview if top is above base (valid lift)
+                if (topWorld.y > baseWorld.y)
+                {
+                    // Update 3D preview
+                    if (_prefabBuilder != null)
+                    {
+                        _prefabBuilder.UpdatePreview(baseWorld, topWorld);
+                    }
+                    
+                    // Dynamic tree clearing for preview
+                    float length = Vector3.Distance(baseWorld, topWorld);
+                    float step = 3f; // Dense sampling for smooth preview clearing
+                    int samples = Mathf.Max(2, Mathf.CeilToInt(length / step) + 1);
+                    var points = new List<Vector3>();
+                    for (int i = 0; i < samples; i++)
+                    {
+                        float t = (float)i / (samples - 1);
+                        points.Add(Vector3.Lerp(baseWorld, topWorld, t));
+                    }
+                    TreeClearer.ClearTreesForPreview(points, corridorWidth: 8f);
+                }
+                else
+                {
+                    if (_prefabBuilder != null) _prefabBuilder.DestroyPreview();
+                    TreeClearer.RestorePreviewTrees();
+                }
+            }
+            else if (!_hasBottomStation)
+            {
+                // Not placing yet, ensure preview trees are restored
+                TreeClearer.RestorePreviewTrees();
             }
             
             // Click to place stations
@@ -223,13 +270,25 @@ namespace SkiResortTycoon.UnityBridge
                     _connectivity.Registry.Register(bottomSnap);
                     _connectivity.Registry.Register(topSnap);
                     
-                    // Clear trees along the lift path
-                    List<Vector3> liftPath = new List<Vector3>
+                    Vector3 baseWorld = MountainManager.ToUnityVector3(_currentLift.StartPosition);
+                    Vector3 topWorld  = MountainManager.ToUnityVector3(_currentLift.EndPosition);
+                    
+                    // Restore preview trees first, then permanently clear
+                    TreeClearer.RestorePreviewTrees();
+                    
+                    // Clear trees along the FULL lift corridor (not just endpoints)
+                    if (_prefabBuilder != null)
                     {
-                        MountainManager.ToUnityVector3(_currentLift.StartPosition),
-                        MountainManager.ToUnityVector3(_currentLift.EndPosition)
-                    };
-                    TreeClearer.ClearTreesAlongPath(liftPath, corridorWidth: 5f);
+                        _prefabBuilder.DestroyPreview();
+                        _prefabBuilder.ClearTreesAlongLift(baseWorld, topWorld);
+                        _prefabBuilder.BuildLift(_currentLift);
+                    }
+                    else
+                    {
+                        // Legacy: clear at endpoints only
+                        List<Vector3> liftPath = new List<Vector3> { baseWorld, topWorld };
+                        TreeClearer.ClearTreesAlongPath(liftPath, corridorWidth: 5f);
+                    }
                     
                     // Rebuild connections (this will automatically connect lift tops to nearby trail starts)
                     _connectivity.RebuildConnections();
@@ -259,12 +318,18 @@ namespace SkiResortTycoon.UnityBridge
             // Reset for next lift
             _hasBottomStation = false;
             _currentLift = null;
+            
+            // Clean up preview visuals
+            if (_prefabBuilder != null) _prefabBuilder.DestroyPreview();
+            TreeClearer.RestorePreviewTrees();
         }
         
         private void CancelPlacement()
         {
             _hasBottomStation = false;
             _currentLift = null;
+            if (_prefabBuilder != null) _prefabBuilder.DestroyPreview();
+            TreeClearer.RestorePreviewTrees();
         }
         
         private Vector3? GetMountainPositionUnderMouse()

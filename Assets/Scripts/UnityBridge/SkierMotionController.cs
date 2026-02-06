@@ -233,10 +233,16 @@ namespace SkiResortTycoon.UnityBridge
 
             Vector3 start = V3f(_currentLift.StartPosition);
             Vector3 end   = V3f(_currentLift.EndPosition);
-            Vector3 pos   = Vector3.Lerp(start, end, _liftProgress);
-            pos.y += _heightOffset;
+            
+            // Position along lift path
+            Vector3 pos = Vector3.Lerp(start, end, _liftProgress);
+            
+            // Add chair height (7.825m) so skier rides at chair level
+            // This matches the chair spawn height from LiftPrefabBuilder
+            const float CHAIR_HEIGHT = 7.825f;
+            pos.y += CHAIR_HEIGHT;
 
-            // Tangent is lift direction
+            // Tangent is lift direction (projected to XZ for forward facing)
             Vector3 liftDir = (end - start);
             liftDir.y = 0;
             if (liftDir.sqrMagnitude > 0.001f) _currentTangent = liftDir.normalized;

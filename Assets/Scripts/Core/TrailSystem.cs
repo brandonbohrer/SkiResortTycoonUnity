@@ -127,6 +127,9 @@ namespace SkiResortTycoon.Core
                 return false;
             }
             
+            // Guarantee top-to-bottom ordering for consistent skier direction
+            trail.EnsureDownhillOrder();
+            
             trail.IsValid = true;
             return true;
         }
@@ -196,6 +199,9 @@ namespace SkiResortTycoon.Core
             {
                 return false;
             }
+            
+            // Guarantee top-to-bottom ordering for consistent skier direction
+            trail.EnsureDownhillOrder();
             
             trail.IsValid = true;
             return true;

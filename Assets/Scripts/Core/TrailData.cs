@@ -120,6 +120,39 @@ namespace SkiResortTycoon.Core
         }
         
         /// <summary>
+        /// Ensures WorldPathPoints are ordered top-to-bottom (highest elevation first).
+        /// This guarantees skiers always face downhill when following the path.
+        /// Also re-orders legacy PathPoints and regenerates boundaries.
+        /// </summary>
+        public void EnsureDownhillOrder()
+        {
+            if (WorldPathPoints.Count >= 2)
+            {
+                float startY = WorldPathPoints[0].Y;
+                float endY = WorldPathPoints[WorldPathPoints.Count - 1].Y;
+                
+                if (endY > startY)
+                {
+                    // Trail goes uphill -- reverse to go downhill
+                    WorldPathPoints.Reverse();
+                    
+                    // Keep boundaries in sync
+                    if (LeftBoundaryPoints.Count > 0)
+                        LeftBoundaryPoints.Reverse();
+                    if (RightBoundaryPoints.Count > 0)
+                        RightBoundaryPoints.Reverse();
+                }
+            }
+            
+            if (PathPoints.Count >= 2)
+            {
+                // Legacy coords: higher Y-index typically means higher elevation,
+                // but we just mirror the world-space decision to stay consistent
+                PathPoints.Reverse();
+            }
+        }
+        
+        /// <summary>
         /// Generates left and right boundary edges from the centerline path.
         /// Boundaries are perpendicular offsets at TrailWidth/2 distance from center.
         /// </summary>

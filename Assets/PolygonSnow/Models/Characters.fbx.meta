@@ -1,150 +1,395 @@
 fileFormatVersion: 2
 guid: f2f6b282a7f0ccb458af716461441b4b
-timeCreated: 1543807342
-licenseType: Store
+AssetOrigin:
+  serializedVersion: 1
+  productId: 134501
+  packageName: POLYGON Snow Kit - Low Poly 3D Art by Synty
+  packageVersion: 1.4.0
+  assetPath: Assets/PolygonSnow/Models/Characters.fbx
+  uploadId: 735241
 ModelImporter:
-  serializedVersion: 19
-  fileIDToRecycleName:
-    100000: Ankle_L
-    100002: Ankle_R
-    100004: Ball_L
-    100006: Ball_R
-    100008: Character_Skier_01
-    100010: Character_Snowboarder_01
-    100012: //RootNode
-    100014: Clavicle_L
-    100016: Clavicle_R
-    100018: Elbow_L
-    100020: Elbow_R
-    100022: Eyebrows
-    100024: Eyes
-    100026: Finger_01
-    100028: Finger_01 1
-    100030: Finger_02
-    100032: Finger_02 1
-    100034: Finger_03
-    100036: Finger_03 1
-    100038: Finger_04
-    100040: Finger_04 1
-    100042: Hand_L
-    100044: Hand_R
-    100046: Head
-    100048: Hips
-    100050: IndexFinger_01
-    100052: IndexFinger_01 1
-    100054: IndexFinger_02
-    100056: IndexFinger_02 1
-    100058: IndexFinger_03
-    100060: IndexFinger_03 1
-    100062: IndexFinger_04
-    100064: IndexFinger_04 1
-    100066: LowerLeg_L
-    100068: LowerLeg_R
-    100070: Neck
-    100072: Root
-    100074: Shoulder_L
-    100076: Shoulder_R
-    100078: Spine_01
-    100080: Spine_02
-    100082: Spine_03
-    100084: Thumb_01
-    100086: Thumb_01 1
-    100088: Thumb_02
-    100090: Thumb_02 1
-    100092: Thumb_03
-    100094: Thumb_03 1
-    100096: Toes_L
-    100098: Toes_R
-    100100: UpperLeg_L
-    100102: UpperLeg_R
-    100104: Character_Snow_Female_01
-    100106: Character_Snow_Male_01
-    400000: Ankle_L
-    400002: Ankle_R
-    400004: Ball_L
-    400006: Ball_R
-    400008: Character_Skier_01
-    400010: Character_Snowboarder_01
-    400012: //RootNode
-    400014: Clavicle_L
-    400016: Clavicle_R
-    400018: Elbow_L
-    400020: Elbow_R
-    400022: Eyebrows
-    400024: Eyes
-    400026: Finger_01
-    400028: Finger_01 1
-    400030: Finger_02
-    400032: Finger_02 1
-    400034: Finger_03
-    400036: Finger_03 1
-    400038: Finger_04
-    400040: Finger_04 1
-    400042: Hand_L
-    400044: Hand_R
-    400046: Head
-    400048: Hips
-    400050: IndexFinger_01
-    400052: IndexFinger_01 1
-    400054: IndexFinger_02
-    400056: IndexFinger_02 1
-    400058: IndexFinger_03
-    400060: IndexFinger_03 1
-    400062: IndexFinger_04
-    400064: IndexFinger_04 1
-    400066: LowerLeg_L
-    400068: LowerLeg_R
-    400070: Neck
-    400072: Root
-    400074: Shoulder_L
-    400076: Shoulder_R
-    400078: Spine_01
-    400080: Spine_02
-    400082: Spine_03
-    400084: Thumb_01
-    400086: Thumb_01 1
-    400088: Thumb_02
-    400090: Thumb_02 1
-    400092: Thumb_03
-    400094: Thumb_03 1
-    400096: Toes_L
-    400098: Toes_R
-    400100: UpperLeg_L
-    400102: UpperLeg_R
-    400104: Character_Snow_Female_01
-    400106: Character_Snow_Male_01
-    4300000: Character_Skier_01
-    4300002: Character_Snowboarder_01
-    4300004: Character_Snow_Female_01
-    4300006: Character_Snow_Male_01
-    7400000: Take 001
-    9500000: //RootNode
-    13700000: Character_Skier_01
-    13700002: Character_Snowboarder_01
-    13700004: Character_Snow_Female_01
-    13700006: Character_Snow_Male_01
+  serializedVersion: 24200
+  internalIDToNameTable:
+  - first:
+      1: 100000
+    second: Ankle_L
+  - first:
+      1: 100002
+    second: Ankle_R
+  - first:
+      1: 100004
+    second: Ball_L
+  - first:
+      1: 100006
+    second: Ball_R
+  - first:
+      1: 100008
+    second: Character_Skier_01
+  - first:
+      1: 100010
+    second: Character_Snowboarder_01
+  - first:
+      1: 100012
+    second: //RootNode
+  - first:
+      1: 100014
+    second: Clavicle_L
+  - first:
+      1: 100016
+    second: Clavicle_R
+  - first:
+      1: 100018
+    second: Elbow_L
+  - first:
+      1: 100020
+    second: Elbow_R
+  - first:
+      1: 100022
+    second: Eyebrows
+  - first:
+      1: 100024
+    second: Eyes
+  - first:
+      1: 100026
+    second: Finger_01
+  - first:
+      1: 100028
+    second: Finger_01 1
+  - first:
+      1: 100030
+    second: Finger_02
+  - first:
+      1: 100032
+    second: Finger_02 1
+  - first:
+      1: 100034
+    second: Finger_03
+  - first:
+      1: 100036
+    second: Finger_03 1
+  - first:
+      1: 100038
+    second: Finger_04
+  - first:
+      1: 100040
+    second: Finger_04 1
+  - first:
+      1: 100042
+    second: Hand_L
+  - first:
+      1: 100044
+    second: Hand_R
+  - first:
+      1: 100046
+    second: Head
+  - first:
+      1: 100048
+    second: Hips
+  - first:
+      1: 100050
+    second: IndexFinger_01
+  - first:
+      1: 100052
+    second: IndexFinger_01 1
+  - first:
+      1: 100054
+    second: IndexFinger_02
+  - first:
+      1: 100056
+    second: IndexFinger_02 1
+  - first:
+      1: 100058
+    second: IndexFinger_03
+  - first:
+      1: 100060
+    second: IndexFinger_03 1
+  - first:
+      1: 100062
+    second: IndexFinger_04
+  - first:
+      1: 100064
+    second: IndexFinger_04 1
+  - first:
+      1: 100066
+    second: LowerLeg_L
+  - first:
+      1: 100068
+    second: LowerLeg_R
+  - first:
+      1: 100070
+    second: Neck
+  - first:
+      1: 100072
+    second: Root
+  - first:
+      1: 100074
+    second: Shoulder_L
+  - first:
+      1: 100076
+    second: Shoulder_R
+  - first:
+      1: 100078
+    second: Spine_01
+  - first:
+      1: 100080
+    second: Spine_02
+  - first:
+      1: 100082
+    second: Spine_03
+  - first:
+      1: 100084
+    second: Thumb_01
+  - first:
+      1: 100086
+    second: Thumb_01 1
+  - first:
+      1: 100088
+    second: Thumb_02
+  - first:
+      1: 100090
+    second: Thumb_02 1
+  - first:
+      1: 100092
+    second: Thumb_03
+  - first:
+      1: 100094
+    second: Thumb_03 1
+  - first:
+      1: 100096
+    second: Toes_L
+  - first:
+      1: 100098
+    second: Toes_R
+  - first:
+      1: 100100
+    second: UpperLeg_L
+  - first:
+      1: 100102
+    second: UpperLeg_R
+  - first:
+      1: 100104
+    second: Character_Snow_Female_01
+  - first:
+      1: 100106
+    second: Character_Snow_Male_01
+  - first:
+      4: 400000
+    second: Ankle_L
+  - first:
+      4: 400002
+    second: Ankle_R
+  - first:
+      4: 400004
+    second: Ball_L
+  - first:
+      4: 400006
+    second: Ball_R
+  - first:
+      4: 400008
+    second: Character_Skier_01
+  - first:
+      4: 400010
+    second: Character_Snowboarder_01
+  - first:
+      4: 400012
+    second: //RootNode
+  - first:
+      4: 400014
+    second: Clavicle_L
+  - first:
+      4: 400016
+    second: Clavicle_R
+  - first:
+      4: 400018
+    second: Elbow_L
+  - first:
+      4: 400020
+    second: Elbow_R
+  - first:
+      4: 400022
+    second: Eyebrows
+  - first:
+      4: 400024
+    second: Eyes
+  - first:
+      4: 400026
+    second: Finger_01
+  - first:
+      4: 400028
+    second: Finger_01 1
+  - first:
+      4: 400030
+    second: Finger_02
+  - first:
+      4: 400032
+    second: Finger_02 1
+  - first:
+      4: 400034
+    second: Finger_03
+  - first:
+      4: 400036
+    second: Finger_03 1
+  - first:
+      4: 400038
+    second: Finger_04
+  - first:
+      4: 400040
+    second: Finger_04 1
+  - first:
+      4: 400042
+    second: Hand_L
+  - first:
+      4: 400044
+    second: Hand_R
+  - first:
+      4: 400046
+    second: Head
+  - first:
+      4: 400048
+    second: Hips
+  - first:
+      4: 400050
+    second: IndexFinger_01
+  - first:
+      4: 400052
+    second: IndexFinger_01 1
+  - first:
+      4: 400054
+    second: IndexFinger_02
+  - first:
+      4: 400056
+    second: IndexFinger_02 1
+  - first:
+      4: 400058
+    second: IndexFinger_03
+  - first:
+      4: 400060
+    second: IndexFinger_03 1
+  - first:
+      4: 400062
+    second: IndexFinger_04
+  - first:
+      4: 400064
+    second: IndexFinger_04 1
+  - first:
+      4: 400066
+    second: LowerLeg_L
+  - first:
+      4: 400068
+    second: LowerLeg_R
+  - first:
+      4: 400070
+    second: Neck
+  - first:
+      4: 400072
+    second: Root
+  - first:
+      4: 400074
+    second: Shoulder_L
+  - first:
+      4: 400076
+    second: Shoulder_R
+  - first:
+      4: 400078
+    second: Spine_01
+  - first:
+      4: 400080
+    second: Spine_02
+  - first:
+      4: 400082
+    second: Spine_03
+  - first:
+      4: 400084
+    second: Thumb_01
+  - first:
+      4: 400086
+    second: Thumb_01 1
+  - first:
+      4: 400088
+    second: Thumb_02
+  - first:
+      4: 400090
+    second: Thumb_02 1
+  - first:
+      4: 400092
+    second: Thumb_03
+  - first:
+      4: 400094
+    second: Thumb_03 1
+  - first:
+      4: 400096
+    second: Toes_L
+  - first:
+      4: 400098
+    second: Toes_R
+  - first:
+      4: 400100
+    second: UpperLeg_L
+  - first:
+      4: 400102
+    second: UpperLeg_R
+  - first:
+      4: 400104
+    second: Character_Snow_Female_01
+  - first:
+      4: 400106
+    second: Character_Snow_Male_01
+  - first:
+      43: 4300000
+    second: Character_Skier_01
+  - first:
+      43: 4300002
+    second: Character_Snowboarder_01
+  - first:
+      43: 4300004
+    second: Character_Snow_Female_01
+  - first:
+      43: 4300006
+    second: Character_Snow_Male_01
+  - first:
+      74: 7400000
+    second: Take 001
+  - first:
+      95: 9500000
+    second: //RootNode
+  - first:
+      137: 13700000
+    second: Character_Skier_01
+  - first:
+      137: 13700002
+    second: Character_Snowboarder_01
+  - first:
+      137: 13700004
+    second: Character_Snow_Female_01
+  - first:
+      137: 13700006
+    second: Character_Snow_Male_01
+  externalObjects: {}
   materials:
-    importMaterials: 0
+    materialImportMode: 0
     materialName: 0
     materialSearch: 1
+    materialLocation: 0
   animations:
     legacyGenerateAnimations: 4
     bakeSimulation: 0
     resampleCurves: 1
     optimizeGameObjects: 0
+    removeConstantScaleCurves: 0
     motionNodeName: 
-    rigImportErrors: 
-    rigImportWarnings: 
     animationImportErrors: 
     animationImportWarnings: 
     animationRetargetingWarnings: 
     animationDoRetargetingWarnings: 0
+    importAnimatedCustomProperties: 0
+    importConstraints: 0
     animationCompression: 3
     animationRotationError: 0.5
     animationPositionError: 0.5
     animationScaleError: 0.5
     animationWrapMode: 0
     extraExposedTransformPaths: []
+    extraUserProperties: []
     clipAnimations: []
     isReadable: 0
   meshes:
@@ -152,26 +397,52 @@ ModelImporter:
     globalScale: 1
     meshCompression: 0
     addColliders: 0
+    useSRGBMaterialColor: 1
+    sortHierarchyByName: 1
+    importPhysicalCameras: 0
+    importVisibility: 0
     importBlendShapes: 0
+    importCameras: 0
+    importLights: 0
+    nodeNameCollisionStrategy: 0
+    fileIdsGeneration: 1
     swapUVChannels: 0
     generateSecondaryUV: 0
     useFileUnits: 1
-    optimizeMeshForGPU: 0
     keepQuads: 0
     weldVertices: 0
+    bakeAxisConversion: 0
+    preserveHierarchy: 0
+    skinWeightsMode: 0
+    maxBonesPerVertex: 4
+    minBoneWeight: 0.001
+    optimizeBones: 1
+    generateMeshLods: 0
+    meshLodGenerationFlags: 0
+    maximumMeshLod: -1
+    meshOptimizationFlags: 1
+    indexFormat: 1
     secondaryUVAngleDistortion: 8
     secondaryUVAreaDistortion: 15.000001
     secondaryUVHardAngle: 88
+    secondaryUVMarginMethod: 0
+    secondaryUVMinLightmapResolution: 40
+    secondaryUVMinObjectScale: 1
     secondaryUVPackMargin: 4
     useFileScale: 1
+    strictVertexDataChecks: 0
   tangentSpace:
     normalSmoothAngle: 0
     normalImportMode: 1
     tangentImportMode: 3
+    normalCalculationMode: 0
+    legacyComputeAllNormalsFromSmoothingGroupsWhenMeshHasBlendShapes: 1
+    blendShapeNormalImportMode: 1
+    normalSmoothingSource: 0
+  referencedClips: []
   importAnimation: 0
-  copyAvatar: 0
   humanDescription:
-    serializedVersion: 2
+    serializedVersion: 3
     human:
     - boneName: Hips
       humanName: Hips
@@ -761,22 +1032,20 @@ ModelImporter:
     armStretch: 0.05
     legStretch: 0.05
     feetSpacing: 0
+    globalScale: 1
     rootMotionBoneName: 
-    rootMotionBoneRotation: {x: 0, y: 0, z: 0, w: 1}
     hasTranslationDoF: 0
     hasExtraRoot: 1
     skeletonHasParents: 1
   lastHumanDescriptionAvatarSource: {instanceID: 0}
+  autoGenerateAvatarMappingIfUnspecified: 1
   animationType: 3
   humanoidOversampling: 1
+  avatarSetup: 1
+  addHumanoidExtraRootOnlyWhenUsingAvatar: 0
+  importBlendShapeDeformPercent: 0
+  remapMaterialsIfMaterialImportModeIsNone: 1
   additionalBone: 0
   userData: 
   assetBundleName: 
   assetBundleVariant: 
-AssetOrigin:
-  serializedVersion: 1
-  productId: 134501
-  packageName: POLYGON Snow Kit - Low Poly 3D Art by Synty
-  packageVersion: 1.4.0
-  assetPath: Assets/PolygonSnow/Models/Characters.fbx
-  uploadId: 735241

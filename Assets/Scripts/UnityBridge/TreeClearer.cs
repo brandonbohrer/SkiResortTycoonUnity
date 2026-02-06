@@ -11,25 +11,27 @@ namespace SkiResortTycoon.UnityBridge
     {
         private static TreeClearer _instance;
         private GameObject _treesContainer;
-        
+
         // ── Preview tree management (for interactive placement) ────────
-        private HashSet<GameObject> _previewClearedTrees = new HashSet<GameObject>();
-        private List<TreeState> _previewTreeStates = new List<TreeState>();
-        
-        void Awake()
+        private readonly HashSet<GameObject> _previewClearedTrees = new HashSet<GameObject>();
+        private readonly List<TreeState> _previewTreeStates = new List<TreeState>();
+
+        private void Awake()
         {
             _instance = this;
             Debug.Log("[TreeClearer] Initialized and ready!");
         }
-        
+
         private struct TreeState
         {
             public GameObject Tree;
             public bool WasActive;
         }
-        
-        // ── Preview clearing (temporary, can be restored) ──────────────
-        
+
+        // ─────────────────────────────────────────────────────────────
+        // Public API
+        // ─────────────────────────────────────────────────────────────
+
         /// <summary>
         /// Clear trees for preview (hides them but stores state for restoration).
         /// Call RestorePreviewTrees() to bring them back.
@@ -39,7 +41,7 @@ namespace SkiResortTycoon.UnityBridge
             if (_instance == null) return;
             _instance.ClearTreesForPreviewInternal(pathPoints, corridorWidth);
         }
-        
+
         /// <summary>
         /// Restore all trees that were hidden for preview.
         /// </summary>
@@ -48,9 +50,7 @@ namespace SkiResortTycoon.UnityBridge
             if (_instance == null) return;
             _instance.RestorePreviewTreesInternal();
         }
-        
-        // ── Permanent clearing ──────────────────────────────────────────
-        
+
         /// <summary>
         /// Clears trees within a radius of a single point.
         /// </summary>
@@ -61,13 +61,18 @@ namespace SkiResortTycoon.UnityBridge
                 Debug.LogWarning("[TreeClearer] No instance found. Add TreeClearer component to scene.");
                 return;
             }
-            
-            _instance.ClearTreesInternal(worldPosition, radius);
+
+            int cleared = _instance.ClearTreesInternal(worldPosition, radius);
+            if (cleared > 0)
+            {
+                Debug.Log($"[TreeClearer] Cleared {cleared} trees within {radius}m of {worldPosition}");
+            }
         }
-        
+
         /// <summary>
-        /// Clears trees along a line path (for lifts or trails).
-        /// Interpolates between consecutive points so no tree in the corridor is missed.
+        /// Clears trees along a path (lift/trail). Uses true distance-to-segment in XZ
+        /// so diagonal builds do NOT over-clear (no more circle-stamping samples).
+        /// corridorWidth is the radius around the path centerline.
         /// </summary>
         public static void ClearTreesAlongPath(List<Vector3> pathPoints, float corridorWidth)
         {
@@ -76,56 +81,52 @@ namespace SkiResortTycoon.UnityBridge
                 Debug.LogWarning("[TreeClearer] No instance found. Add TreeClearer component to scene.");
                 return;
             }
-            
-            if (pathPoints.Count == 0) return;
-            
-            // Build a dense sample list: at every corridorWidth step between
-            // consecutive path points + all original points.
-            var samples = new List<Vector3>();
-            samples.Add(pathPoints[0]);
-            
-            for (int i = 1; i < pathPoints.Count; i++)
-            {
-                Vector3 a = pathPoints[i - 1];
-                Vector3 b = pathPoints[i];
-                float segLen = Vector3.Distance(a, b);
-                int steps = Mathf.Max(1, Mathf.CeilToInt(segLen / corridorWidth));
-                for (int s = 1; s <= steps; s++)
-                {
-                    float t = (float)s / steps;
-                    samples.Add(Vector3.Lerp(a, b, t));
-                }
-            }
-            
-            foreach (Vector3 point in samples)
-            {
-                _instance.ClearTreesInternal(point, corridorWidth);
-            }
+
+            if (pathPoints == null || pathPoints.Count < 2) return;
+            _instance.ClearTreesAlongPathInternal(pathPoints, corridorWidth);
         }
-        
-        private void ClearTreesInternal(Vector3 worldPosition, float radius)
+
+        // ─────────────────────────────────────────────────────────────
+        // Permanent clearing internals
+        // ─────────────────────────────────────────────────────────────
+
+        private void ClearTreesAlongPathInternal(List<Vector3> pathPoints, float corridorWidth)
         {
-            // Find trees container
-            if (_treesContainer == null)
+            if (!TryEnsureTreesContainer()) return;
+
+            Transform[] trees = _treesContainer.GetComponentsInChildren<Transform>(true);
+            int totalCleared = 0;
+
+            for (int i = 0; i < trees.Length; i++)
             {
-                _treesContainer = GameObject.Find("Trees");
-                if (_treesContainer == null)
+                Transform tree = trees[i];
+                if (tree == _treesContainer.transform) continue;
+
+                Vector3 tp = tree.position;
+
+                // Minimum distance in XZ to any segment of the polyline
+                float minDist = MinDistanceToPathXZ(tp, pathPoints, corridorWidth);
+                if (minDist <= corridorWidth)
                 {
-                    Debug.LogWarning("[TreeClearer] No 'Trees' container found in scene. Trees cannot be cleared.");
-                    return;
+                    Destroy(tree.gameObject);
+                    totalCleared++;
                 }
             }
-            
-            // Get all tree transforms
-            Transform[] trees = _treesContainer.GetComponentsInChildren<Transform>();
+
+            Debug.Log($"[TreeClearer] Cleared {totalCleared} trees along path (corridor={corridorWidth}m)");
+        }
+
+        private int ClearTreesInternal(Vector3 worldPosition, float radius)
+        {
+            if (!TryEnsureTreesContainer()) return 0;
+
+            Transform[] trees = _treesContainer.GetComponentsInChildren<Transform>(true);
             int clearedCount = 0;
-            
+
             foreach (Transform tree in trees)
             {
-                // Skip the container itself
                 if (tree == _treesContainer.transform) continue;
-                
-                // Check distance to world position
+
                 float distance = Vector3.Distance(tree.position, worldPosition);
                 if (distance <= radius)
                 {
@@ -133,80 +134,110 @@ namespace SkiResortTycoon.UnityBridge
                     clearedCount++;
                 }
             }
-            
-            if (clearedCount > 0)
-            {
-                Debug.Log($"[TreeClearer] Cleared {clearedCount} trees within {radius}m of {worldPosition}");
-            }
+
+            return clearedCount;
         }
-        
-        // ── Preview clearing internals ──────────────────────────────────
-        
+
+        // ─────────────────────────────────────────────────────────────
+        // Preview clearing internals
+        // ─────────────────────────────────────────────────────────────
+
         private void ClearTreesForPreviewInternal(List<Vector3> pathPoints, float corridorWidth)
         {
-            // First restore any previously cleared trees
+            // First restore any previously cleared preview trees
             RestorePreviewTreesInternal();
-            
-            // Find trees container
-            if (_treesContainer == null)
-            {
-                _treesContainer = GameObject.Find("Trees");
-                if (_treesContainer == null) return;
-            }
-            
-            // Build dense sample list
-            var samples = new List<Vector3>();
-            if (pathPoints.Count > 0)
-            {
-                samples.Add(pathPoints[0]);
-                for (int i = 1; i < pathPoints.Count; i++)
-                {
-                    Vector3 a = pathPoints[i - 1];
-                    Vector3 b = pathPoints[i];
-                    float segLen = Vector3.Distance(a, b);
-                    int steps = Mathf.Max(1, Mathf.CeilToInt(segLen / (corridorWidth * 0.5f))); // Denser sampling
-                    for (int s = 1; s <= steps; s++)
-                    {
-                        float t = (float)s / steps;
-                        samples.Add(Vector3.Lerp(a, b, t));
-                    }
-                }
-            }
-            
-            // Get all trees (active and inactive)
+
+            if (pathPoints == null || pathPoints.Count < 2) return;
+            if (!TryEnsureTreesContainer()) return;
+
             Transform[] allTransforms = _treesContainer.GetComponentsInChildren<Transform>(true);
-            
-            foreach (Vector3 sample in samples)
+
+            for (int i = 0; i < allTransforms.Length; i++)
             {
-                foreach (Transform treeTransform in allTransforms)
+                Transform treeTransform = allTransforms[i];
+                if (treeTransform == _treesContainer.transform) continue;
+
+                GameObject tree = treeTransform.gameObject;
+                if (_previewClearedTrees.Contains(tree)) continue; // already hidden
+
+                float minDist = MinDistanceToPathXZ(treeTransform.position, pathPoints, corridorWidth);
+                if (minDist <= corridorWidth)
                 {
-                    if (treeTransform == _treesContainer.transform) continue;
-                    
-                    GameObject tree = treeTransform.gameObject;
-                    if (_previewClearedTrees.Contains(tree)) continue; // Already hidden
-                    
-                    float distance = Vector3.Distance(tree.transform.position, sample);
-                    if (distance <= corridorWidth)
-                    {
-                        _previewTreeStates.Add(new TreeState { Tree = tree, WasActive = tree.activeSelf });
-                        tree.SetActive(false);
-                        _previewClearedTrees.Add(tree);
-                    }
+                    _previewTreeStates.Add(new TreeState { Tree = tree, WasActive = tree.activeSelf });
+                    tree.SetActive(false);
+                    _previewClearedTrees.Add(tree);
                 }
             }
         }
-        
+
         private void RestorePreviewTreesInternal()
         {
-            foreach (var state in _previewTreeStates)
+            for (int i = 0; i < _previewTreeStates.Count; i++)
             {
+                var state = _previewTreeStates[i];
                 if (state.Tree != null)
                 {
                     state.Tree.SetActive(state.WasActive);
                 }
             }
+
             _previewTreeStates.Clear();
             _previewClearedTrees.Clear();
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // Geometry helpers
+        // ─────────────────────────────────────────────────────────────
+
+        private static float MinDistanceToPathXZ(Vector3 point, List<Vector3> pathPoints, float earlyOutRadius)
+        {
+            float minDist = float.MaxValue;
+
+            for (int s = 1; s < pathPoints.Count; s++)
+            {
+                float d = DistancePointToSegmentXZ(point, pathPoints[s - 1], pathPoints[s]);
+                if (d < minDist) minDist = d;
+
+                // Early out if we already know it's inside the corridor
+                if (minDist <= earlyOutRadius) break;
+            }
+
+            return minDist;
+        }
+
+        private static float DistancePointToSegmentXZ(Vector3 p, Vector3 a, Vector3 b)
+        {
+            Vector2 P = new Vector2(p.x, p.z);
+            Vector2 A = new Vector2(a.x, a.z);
+            Vector2 B = new Vector2(b.x, b.z);
+
+            Vector2 AB = B - A;
+            float ab2 = Vector2.Dot(AB, AB);
+            if (ab2 < 0.0001f) return Vector2.Distance(P, A); // a==b
+
+            float t = Vector2.Dot(P - A, AB) / ab2;
+            t = Mathf.Clamp01(t);
+            Vector2 closest = A + t * AB;
+
+            return Vector2.Distance(P, closest);
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // Utility
+        // ─────────────────────────────────────────────────────────────
+
+        private bool TryEnsureTreesContainer()
+        {
+            if (_treesContainer != null) return true;
+
+            _treesContainer = GameObject.Find("Trees");
+            if (_treesContainer == null)
+            {
+                Debug.LogWarning("[TreeClearer] No 'Trees' container found in scene. Trees cannot be cleared.");
+                return false;
+            }
+
+            return true;
         }
     }
 }

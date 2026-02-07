@@ -36,6 +36,10 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private float _liftSpeed = 2f; // tiles per second
         [SerializeField] private float _skiSpeed = 5f; // tiles per second
         [SerializeField] private float _spawnInterval = 2f; // seconds between spawns
+        
+        [Header("Lodge Settings")]
+        [SerializeField] private float _lodgeCheckRadius = 30f; // How far skiers look for lodges
+        [SerializeField] private float _lodgeVisitChance = 0.15f; // 15% chance to visit lodge after trail
 
         [Header("Debug")]
         [SerializeField] private bool _enableDebugLogs = false; // Toggle console spam
@@ -116,6 +120,12 @@ namespace SkiResortTycoon.UnityBridge
                 // Remove if finished
                 if (skier.IsFinished)
                 {
+                    // If skier was inside a lodge, free the slot
+                    if (skier.TargetLodge != null)
+                    {
+                        skier.TargetLodge.ForceExitSkier(skier.Skier.SkierId);
+                        skier.TargetLodge = null;
+                    }
                     Destroy(skier.GameObject);
                     _activeSkiers.RemoveAt(i);
                 }
@@ -345,6 +355,14 @@ namespace SkiResortTycoon.UnityBridge
                 case SkierPhase.SkiingTrail:
                     HandleSkiingTrail(vs, deltaTime);
                     break;
+                    
+                case SkierPhase.WalkingToLodge:
+                    HandleWalkingToLodge(vs);
+                    break;
+                    
+                case SkierPhase.InLodge:
+                    HandleInLodge(vs);
+                    break;
             }
         }
 
@@ -472,14 +490,37 @@ namespace SkiResortTycoon.UnityBridge
 
         /// <summary>
         /// Called when the motion controller signals the skier finished the current trail.
-        /// Decide what to do next: board lift, continue to another trail, or return to base.
+        /// Decide what to do next: board lift, continue to another trail, visit lodge, or return to base.
         /// </summary>
         private void OnTrailFinished(VisualSkier vs)
         {
             Vector3 trailEndPos = vs.GameObject.transform.position;
             if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Finished trail {vs.CurrentTrail.TrailId} at {trailEndPos}");
 
-            // PRIORITY 1: Check for nearby lifts
+            // PRIORITY 1: Check for nearby lodges (random chance)
+            if (Random.value < _lodgeVisitChance)
+            {
+                LodgeManager lodgeManager = LodgeManager.Instance;
+                if (lodgeManager != null)
+                {
+                    var nearbyLodges = lodgeManager.FindLodgesInRadius(trailEndPos, _lodgeCheckRadius);
+                    var availableLodges = nearbyLodges.FindAll(l => !l.IsFull);
+                    
+                    if (availableLodges.Count > 0)
+                    {
+                        // Choose random available lodge
+                        LodgeFacility targetLodge = availableLodges[Random.Range(0, availableLodges.Count)];
+                        vs.TargetLodge = targetLodge;
+                        vs.Phase = SkierPhase.WalkingToLodge;
+                        vs.Motion.SetWalkTarget(targetLodge.Position);
+                        
+                        if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Heading to lodge at {targetLodge.Position}");
+                        return;
+                    }
+                }
+            }
+
+            // PRIORITY 2: Check for nearby lifts
             var nearbyLifts = FindNearbyLifts(trailEndPos, 20f);
             bool isJerry = Random.value < 0.02f;
             var validLifts = new List<LiftData>();
@@ -523,7 +564,7 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
 
-            // PRIORITY 2: Trail-to-trail connections
+            // PRIORITY 3: Trail-to-trail connections
             var allConnections = _liftBuilder.Connectivity.Connections.GetAllConnections();
             var nextTrailIds = new List<int>();
             foreach (var conn in allConnections)
@@ -545,7 +586,7 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
 
-            // PRIORITY 3: Nearby trail starts spatially
+            // PRIORITY 4: Nearby trail starts spatially
             var nearbyTrails = FindNearbyTrailStarts(trailEndPos, 25f);
             var validTrails = nearbyTrails.FindAll(t => t.TrailId != vs.CurrentTrail.TrailId);
             if (validTrails.Count > 0)
@@ -557,7 +598,7 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
 
-            // PRIORITY 4: Near base?
+            // PRIORITY 5: Near base?
             var baseSpawns = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
             if (baseSpawns.Count > 0)
             {
@@ -738,6 +779,72 @@ namespace SkiResortTycoon.UnityBridge
             if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] New destination: Lift {nextLift.LiftId} → Trail {nextTrail.TrailId} ({nextTrail.Difficulty})");
         }
 
+        // ── WalkingToLodge ──────────────────────────────────────────────
+        
+        private void HandleWalkingToLodge(VisualSkier vs)
+        {
+            if (vs.TargetLodge == null)
+            {
+                // Lodge was destroyed, choose new destination
+                ChooseNewDestination(vs);
+                return;
+            }
+            
+            // Check if reached lodge
+            float distanceToLodge = Vector3.Distance(vs.GameObject.transform.position, vs.TargetLodge.Position);
+            if (distanceToLodge <= 3f) // Within 3m
+            {
+                // Try to enter lodge
+                if (vs.TargetLodge.TryEnterLodge(vs.Skier.SkierId))
+                {
+                    // Success! Hide skier and start resting
+                    vs.Phase = SkierPhase.InLodge;
+                    vs.GameObject.SetActive(false); // Hide while inside
+                    vs.LodgeRestTimer = 0f; // Timer tracked by lodge facility
+                    
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Entered lodge!");
+                }
+                else
+                {
+                    // Lodge is full, go somewhere else
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Lodge full, choosing new destination");
+                    ChooseNewDestination(vs);
+                }
+            }
+        }
+        
+        // ── InLodge ─────────────────────────────────────────────────────
+        
+        private void HandleInLodge(VisualSkier vs)
+        {
+            if (vs.TargetLodge == null)
+            {
+                // Lodge was destroyed, exit immediately
+                vs.GameObject.SetActive(true);
+                ChooseNewDestination(vs);
+                return;
+            }
+            
+            // Check if rest time is complete (lodge handles timing)
+            if (!vs.TargetLodge.ContainsSkier(vs.Skier.SkierId))
+            {
+                // Rest complete! Respawn and continue skiing
+                vs.GameObject.SetActive(true);
+                
+                // Position at lodge exit
+                vs.GameObject.transform.position = vs.TargetLodge.Position;
+                vs.Motion.Teleport(vs.TargetLodge.Position);
+                
+                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Left lodge, choosing new destination");
+                
+                // Clear lodge reference
+                vs.TargetLodge = null;
+                
+                // Choose new destination
+                ChooseNewDestination(vs);
+            }
+        }
+
         // ─────────────────────────────────────────────────────────────────
         //  Spatial queries  (FIXED: no more "check all points" bug)
         // ─────────────────────────────────────────────────────────────────
@@ -903,7 +1010,9 @@ namespace SkiResortTycoon.UnityBridge
         {
             WalkingToLift = 0,
             RidingLift = 1,
-            SkiingTrail = 2
+            SkiingTrail = 2,
+            WalkingToLodge = 3,
+            InLodge = 4
         }
 
         private class VisualSkier
@@ -931,6 +1040,10 @@ namespace SkiResortTycoon.UnityBridge
 
             // Motion controller (owns all position / rotation math)
             public SkierMotionController Motion;
+            
+            // Lodge tracking
+            public LodgeFacility TargetLodge;
+            public float LodgeRestTimer;
         }
     }
 }

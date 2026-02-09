@@ -308,6 +308,10 @@ namespace SkiResortTycoon.UnityBridge
                     var connectedTrails = _connectivity.Connections.GetTrailsFromLift(_currentLift.LiftId);
                     Debug.Log($"Connected to {connectedTrails.Count} trail(s)");
                     Debug.Log($"==================");
+                    
+                    // Invalidate all skier goals so they re-plan with the new lift
+                    var skierViz = FindObjectOfType<SkierVisualizer>();
+                    if (skierViz != null) skierViz.InvalidateAllSkierGoals();
                 }
                 else
                 {

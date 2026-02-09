@@ -62,6 +62,26 @@ namespace SkiResortTycoon.UnityBridge
         /// </summary>
         public int ActiveSkierCount => _activeSkiers?.Count ?? 0;
 
+        /// <summary>
+        /// Invalidates all active skier goals, forcing them to re-plan on their next
+        /// decision point. Call this when new trails or lifts are built so skiers
+        /// discover and use the new infrastructure.
+        /// </summary>
+        public void InvalidateAllSkierGoals()
+        {
+            if (_activeSkiers == null) return;
+            int count = 0;
+            foreach (var vs in _activeSkiers)
+            {
+                if (vs.Skier.CurrentGoal != null)
+                {
+                    vs.Skier.CurrentGoal = null;
+                    count++;
+                }
+            }
+            if (_enableDebugLogs) Debug.Log($"[SkierVisualizer] Invalidated {count} skier goals (new infrastructure built)");
+        }
+
         private void Awake()
         {
             // Create material for skier dots
@@ -405,15 +425,21 @@ namespace SkiResortTycoon.UnityBridge
             if (Random.value < 0.20f && nearbyTrails.Count > 0)
             {
                 var preferredTrails = nearbyTrails.FindAll(t =>
-                    _distribution.GetPreference(vs.Skier.Skill, t.Difficulty) >= 0.2f);
+                {
+                    float pref = _distribution.GetPreference(vs.Skier.Skill, t.Difficulty);
+                    if (pref >= 0.15f) return true;
+                    // Also consider trails that lead to desirable terrain downstream
+                    float downstream = ComputeTrailDownstreamValue(vs.Skier.Skill, t);
+                    return downstream >= 0.3f;
+                });
                 if (preferredTrails.Count > 0)
                 {
-                    chosenTrail = ChooseTrailByPreference(vs.Skier, preferredTrails);
+                    chosenTrail = ChooseTrailByPreference(vs.Skier, preferredTrails, true);
                     if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] EXPLORING! Ditched goal for {chosenTrail.Difficulty} trail {chosenTrail.TrailId}");
                 }
             }
 
-            // GOAL PATH FOLLOWING
+            // GOAL PATH FOLLOWING (with downstream override)
             if (chosenTrail == null && vs.Skier.CurrentGoal != null)
             {
                 var currentStep = vs.Skier.CurrentGoal.GetCurrentStep();
@@ -424,20 +450,49 @@ namespace SkiResortTycoon.UnityBridge
                     {
                         chosenTrail = plannedTrail;
                         vs.Skier.CurrentGoal.AdvanceToNextStep();
-                        if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Following path: trail {chosenTrail.TrailId} toward goal");
+
+                        // DOWNSTREAM OVERRIDE: check if another nearby trail leads to
+                        // significantly better terrain than the planned trail.
+                        // Uses dead-end-aware values so beginners won't chase greens
+                        // into double-black-only areas. Also probabilistic (60%) to
+                        // preserve some variety and ensure all lifts get traffic.
+                        float chosenValue = ComputeTrailDecisionValue(vs.Skier.Skill, chosenTrail);
+                        TrailData bestAlt = null;
+                        float bestAltValue = 0f;
+
+                        foreach (var alt in nearbyTrails)
+                        {
+                            if (alt.TrailId == chosenTrail.TrailId) continue;
+                            float altValue = ComputeTrailDecisionValue(vs.Skier.Skill, alt);
+                            if (altValue > bestAltValue)
+                            {
+                                bestAltValue = altValue;
+                                bestAlt = alt;
+                            }
+                        }
+
+                        if (bestAlt != null && bestAltValue > chosenValue + 0.2f && Random.value < 0.60f)
+                        {
+                            if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Overriding goal for downstream: Trail {bestAlt.TrailId} (value: {bestAltValue:F2}) over planned {chosenTrail.TrailId} (value: {chosenValue:F2})");
+                            chosenTrail = bestAlt;
+                            vs.Skier.CurrentGoal = null; // Goal is stale after deviation
+                        }
+
+                        if (vs.Skier.CurrentGoal != null && _enableDebugLogs)
+                            Debug.Log($"[Skier {vs.Skier.SkierId}] Following path: trail {chosenTrail.TrailId} toward goal");
                     }
                     else if (plannedTrail != null && nearbyTrails.Count > 0)
                     {
-                        chosenTrail = ChooseTrailByPreference(vs.Skier, nearbyTrails);
+                        chosenTrail = ChooseTrailByPreference(vs.Skier, nearbyTrails, true);
                         if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Goal not nearby, taking {chosenTrail.TrailId}");
                     }
                 }
             }
 
-            // FALLBACK: weighted preference
+            // FALLBACK: weighted preference with downstream awareness
             if (chosenTrail == null && nearbyTrails.Count > 0)
             {
-                chosenTrail = ChooseTrailByPreference(vs.Skier, nearbyTrails);
+                chosenTrail = ChooseTrailByPreference(vs.Skier, nearbyTrails, true);
             }
 
             // LAST RESORT: Connection graph
@@ -520,36 +575,63 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
 
-            // PRIORITY 2: Check for nearby lifts
+            // PRIORITY 2: Check for nearby lifts (downstream-aware scoring)
             var nearbyLifts = FindNearbyLifts(trailEndPos, 20f);
             bool isJerry = Random.value < 0.02f;
-            var validLifts = new List<LiftData>();
+            var scoredLifts = new List<(LiftData lift, float score)>();
 
             foreach (var lift in nearbyLifts)
             {
                 if (isJerry)
                 {
-                    validLifts.Add(lift);
+                    scoredLifts.Add((lift, 1f));
                     continue;
                 }
 
-                bool hasValidTrail = false;
-                var nearbyTrailsAtTop = FindNearbyTrailStarts(
-                    new Vector3(lift.EndPosition.X, lift.EndPosition.Y, lift.EndPosition.Z), 30f);
-                foreach (var trail in nearbyTrailsAtTop)
+                // Score lift by what terrain is reachable (immediate + 2-hop downstream)
+                float score = ScoreLiftForSkier(vs.Skier.Skill, lift);
+                if (score > 0.01f)
                 {
-                    if (_distribution.IsAllowed(vs.Skier.Skill, trail.Difficulty))
+                    scoredLifts.Add((lift, score));
+                }
+            }
+
+            // Desperation fallback: if no good lifts found, accept any lift with trails
+            if (scoredLifts.Count == 0 && nearbyLifts.Count > 0)
+            {
+                foreach (var lift in nearbyLifts)
+                {
+                    var trailsAtTop = FindNearbyTrailStarts(
+                        new Vector3(lift.EndPosition.X, lift.EndPosition.Y, lift.EndPosition.Z), 30f);
+                    if (trailsAtTop.Count > 0)
                     {
-                        hasValidTrail = true;
+                        scoredLifts.Add((lift, 0.01f));
+                    }
+                }
+                if (scoredLifts.Count > 0 && _enableDebugLogs)
+                    Debug.Log($"[Skier {vs.Skier.SkierId}] Taking desperate lift choice (no preferred terrain reachable)");
+            }
+
+            if (scoredLifts.Count > 0)
+            {
+                // Weighted random selection: prefer lifts leading to better terrain
+                float totalScore = 0f;
+                foreach (var (l, s) in scoredLifts)
+                    totalScore += s;
+
+                float roll = Random.value * totalScore;
+                float cumulative = 0f;
+                vs.CurrentLift = scoredLifts[0].lift;
+                foreach (var (l, s) in scoredLifts)
+                {
+                    cumulative += s;
+                    if (roll <= cumulative)
+                    {
+                        vs.CurrentLift = l;
                         break;
                     }
                 }
-                if (hasValidTrail) validLifts.Add(lift);
-            }
 
-            if (validLifts.Count > 0)
-            {
-                vs.CurrentLift = validLifts[Random.Range(0, validLifts.Count)];
                 vs.Phase = SkierPhase.WalkingToLift;
 
                 var liftBottom = new Vector3(
@@ -659,27 +741,66 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
 
-            // Natural exploration at junctions (20% chance)
-            if (!switched && progress > 0.2f && progress < 0.8f)
+            // ── Downstream-aware junction switching ──
+            // Skiers seek out junctions leading to better terrain, but with moderation.
+            // Uses dead-end-aware values (ComputeTrailDecisionValue) so beginners won't
+            // switch to a green that leads to a double-black-only area.
+            // Probabilities are balanced to ensure all lifts/trails get some traffic.
+            if (!switched && progress > 0.1f && progress < 0.9f)
             {
-                if (Mathf.Abs(progress % 0.1f) < 0.015f)
+                if (Mathf.Abs(progress % 0.05f) < 0.015f)
                 {
                     Vector3 currentPos = vs.GameObject.transform.position;
-                    var nearbyTrails = FindNearbyTrailSegments(currentPos, 12f);
+                    var nearbyTrails = FindNearbyTrailSegments(currentPos, 15f);
                     var validTrails = nearbyTrails.FindAll(t => t.TrailId != vs.CurrentTrail.TrailId);
 
                     if (validTrails.Count > 0)
                     {
-                        var preferredTrails = validTrails.FindAll(t =>
-                            _distribution.GetPreference(vs.Skier.Skill, t.Difficulty) >= 0.3f);
+                        // Dead-end-aware value of current trail
+                        float currentValue = ComputeTrailDecisionValue(vs.Skier.Skill, vs.CurrentTrail);
 
-                        if (preferredTrails.Count > 0 && Random.value < 0.20f)
+                        // Find the best junction trail using dead-end-aware scoring
+                        TrailData bestJunction = null;
+                        float bestJunctionValue = 0f;
+
+                        foreach (var t in validTrails)
                         {
-                            var chosenTrail = preferredTrails[Random.Range(0, preferredTrails.Count)];
-                            if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Exploring junction: Trail {vs.CurrentTrail.TrailId} → Trail {chosenTrail.TrailId}");
-                            vs.CurrentTrail = chosenTrail;
-                            vs.Motion.SwitchTrail(chosenTrail, currentPos);
-                            vs.HasSwitchedAtJunction = true;
+                            float value = ComputeTrailDecisionValue(vs.Skier.Skill, t);
+                            if (value > bestJunctionValue)
+                            {
+                                bestJunctionValue = value;
+                                bestJunction = t;
+                            }
+                        }
+
+                        if (bestJunction != null)
+                        {
+                            float improvement = bestJunctionValue - currentValue;
+                            float switchChance = 0f;
+
+                            if (improvement > 0.25f)
+                            {
+                                // Much better terrain ahead - likely to switch
+                                switchChance = 0.50f;
+                            }
+                            else if (improvement > 0.1f)
+                            {
+                                // Noticeably better terrain
+                                switchChance = 0.25f;
+                            }
+                            else if (bestJunctionValue >= 0.2f)
+                            {
+                                // Decent trail nearby, normal exploration
+                                switchChance = 0.12f;
+                            }
+
+                            if (switchChance > 0f && Random.value < switchChance)
+                            {
+                                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Junction switch: Trail {vs.CurrentTrail.TrailId} → Trail {bestJunction.TrailId} (value: {bestJunctionValue:F2} vs current: {currentValue:F2})");
+                                vs.CurrentTrail = bestJunction;
+                                vs.Motion.SwitchTrail(bestJunction, currentPos);
+                                vs.HasSwitchedAtJunction = true;
+                            }
                         }
                     }
                 }
@@ -947,10 +1068,114 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         // ─────────────────────────────────────────────────────────────────
-        //  Trail preference / color helpers  (unchanged)
+        //  Downstream awareness helpers (look-ahead terrain evaluation)
         // ─────────────────────────────────────────────────────────────────
 
-        private TrailData ChooseTrailByPreference(Skier skier, List<TrailData> availableTrails)
+        /// <summary>
+        /// Computes the best preference value of terrain reachable 1 hop beyond a trail's end.
+        /// Looks at: trail end → nearby lifts → trails at those lift tops,
+        /// plus trail-to-trail connections at the trail end.
+        /// This lets skiers evaluate connector trails by what they lead to.
+        /// </summary>
+        private float ComputeTrailDownstreamValue(SkillLevel skill, TrailData trail)
+        {
+            if (trail.WorldPathPoints == null || trail.WorldPathPoints.Count < 2)
+                return 0f;
+
+            // Get trail end position
+            var trailEnd = trail.WorldPathPoints[trail.WorldPathPoints.Count - 1];
+            Vector3 endPos = new Vector3(trailEnd.X, trailEnd.Y, trailEnd.Z);
+
+            float bestPref = 0f;
+
+            // Check lifts reachable from trail end → trails at those lift tops
+            var liftsAtEnd = FindNearbyLifts(endPos, 25f);
+            foreach (var lift in liftsAtEnd)
+            {
+                Vector3 liftTopPos = new Vector3(lift.EndPosition.X, lift.EndPosition.Y, lift.EndPosition.Z);
+                var trailsAtTop = FindNearbyTrailStarts(liftTopPos, 25f);
+                foreach (var t in trailsAtTop)
+                {
+                    // Only count trails the skier can actually ski
+                    if (!_distribution.IsAllowed(skill, t.Difficulty)) continue;
+                    float pref = _distribution.GetPreference(skill, t.Difficulty);
+                    bestPref = Mathf.Max(bestPref, pref);
+                }
+            }
+
+            // Also check trail-to-trail connections (trails that start near this trail's end)
+            var nextTrails = FindNearbyTrailStarts(endPos, 25f);
+            foreach (var t in nextTrails)
+            {
+                if (t.TrailId == trail.TrailId) continue;
+                if (!_distribution.IsAllowed(skill, t.Difficulty)) continue;
+                float pref = _distribution.GetPreference(skill, t.Difficulty);
+                bestPref = Mathf.Max(bestPref, pref);
+            }
+
+            return bestPref;
+        }
+
+        /// <summary>
+        /// Computes a trail's decision value for a skier, combining direct appeal
+        /// with what terrain is reachable beyond it. Trails that dead-end (no reachable
+        /// terrain the skier can ski after) are heavily penalized. This prevents
+        /// beginners eagerly taking a green that leads to a double-black-only lift.
+        /// </summary>
+        private float ComputeTrailDecisionValue(SkillLevel skill, TrailData trail)
+        {
+            if (!_distribution.IsAllowed(skill, trail.Difficulty)) return 0f;
+            if (_distribution.IsDesperateOnly(skill, trail.Difficulty)) return 0.01f;
+
+            float directPref = _distribution.GetPreference(skill, trail.Difficulty);
+            float downstream = ComputeTrailDownstreamValue(skill, trail);
+
+            if (downstream > 0.01f)
+            {
+                // Trail leads to reachable terrain for this skier
+                return Mathf.Max(directPref, downstream);
+            }
+            else
+            {
+                // Dead end: no allowed terrain beyond this trail for this skier.
+                // The trail itself is still skiable, but getting stuck afterwards
+                // makes it much less attractive as a destination choice.
+                return directPref * 0.4f;
+            }
+        }
+
+        /// <summary>
+        /// Scores how attractive a lift is for a skier, considering both immediate
+        /// trails at the top and whether those trails lead to useful terrain.
+        /// Dead-end trails (that strand the skier) are penalized in the scoring.
+        /// </summary>
+        private float ScoreLiftForSkier(SkillLevel skill, LiftData lift)
+        {
+            float bestScore = 0f;
+
+            Vector3 liftTopPos = new Vector3(lift.EndPosition.X, lift.EndPosition.Y, lift.EndPosition.Z);
+            var trailsAtTop = FindNearbyTrailStarts(liftTopPos, 30f);
+
+            foreach (var trail in trailsAtTop)
+            {
+                float trailValue = ComputeTrailDecisionValue(skill, trail);
+                bestScore = Mathf.Max(bestScore, trailValue);
+            }
+
+            return bestScore;
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        //  Trail preference / color helpers
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Chooses a trail from a list using weighted random selection.
+        /// When considerDownstream is true, factors in what terrain is reachable
+        /// beyond each trail (transit awareness), so skiers will take connector
+        /// trails that lead to terrain they prefer.
+        /// </summary>
+        private TrailData ChooseTrailByPreference(Skier skier, List<TrailData> availableTrails, bool considerDownstream = false)
         {
             if (availableTrails.Count == 0) return null;
             if (availableTrails.Count == 1) return availableTrails[0];
@@ -960,8 +1185,20 @@ namespace SkiResortTycoon.UnityBridge
 
             foreach (var trail in availableTrails)
             {
-                float pref = _distribution.GetPreference(skier.Skill, trail.Difficulty);
-                float weight = Mathf.Max(pref, 0.05f);
+                float weight;
+
+                if (considerDownstream)
+                {
+                    float downstream = ComputeTrailDownstreamValue(skier.Skill, trail);
+                    weight = _distribution.GetEffectiveWeight(skier.Skill, trail.Difficulty, downstream);
+                    weight = Mathf.Max(weight, 0.05f);
+                }
+                else
+                {
+                    float pref = _distribution.GetPreference(skier.Skill, trail.Difficulty);
+                    weight = Mathf.Max(pref, 0.05f);
+                }
+
                 weights.Add(weight);
                 totalWeight += weight;
             }

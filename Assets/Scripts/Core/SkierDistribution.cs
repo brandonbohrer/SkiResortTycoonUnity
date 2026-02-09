@@ -159,6 +159,88 @@ namespace SkiResortTycoon.Core
             }
             _preferences[skill][difficulty] = weight;
         }
+        
+        /// <summary>
+        /// Returns true if this skill/difficulty combo should only happen in desperation
+        /// (skier has literally no other option).
+        /// Beginners on Black/DoubleBlack, Intermediates on DoubleBlack.
+        /// </summary>
+        public bool IsDesperateOnly(SkillLevel skill, TrailDifficulty difficulty)
+        {
+            // Beginners on Black/DoubleBlack: too dangerous
+            if (skill == SkillLevel.Beginner && 
+                (difficulty == TrailDifficulty.Black || difficulty == TrailDifficulty.DoubleBlack))
+                return true;
+            
+            // Intermediates on DoubleBlack: too dangerous
+            if (skill == SkillLevel.Intermediate && difficulty == TrailDifficulty.DoubleBlack)
+                return true;
+            
+            return false;
+        }
+        
+        /// <summary>
+        /// Gets an effective weight for runtime trail selection that accounts for
+        /// transit willingness and downstream terrain value.
+        /// Skiers are willing to cruise through easier trails as connectors,
+        /// especially when those trails lead to desirable terrain ahead.
+        /// </summary>
+        /// <param name="skill">Skier skill level</param>
+        /// <param name="difficulty">Trail difficulty</param>
+        /// <param name="downstreamBestPreference">Best preference found in terrain reachable beyond this trail (0 if unknown)</param>
+        public float GetEffectiveWeight(SkillLevel skill, TrailDifficulty difficulty, float downstreamBestPreference = -1f)
+        {
+            // Hard block: beginners on black/double black even as transit
+            if (IsDesperateOnly(skill, difficulty))
+                return 0.01f; // Near-zero but not zero (desperate fallback only)
+            
+            float basePref = GetPreference(skill, difficulty);
+            
+            // Transit tolerance: trails at or below your skill level are easy to cruise through.
+            // An expert doesn't love a green, but they'll happily cruise it to reach better terrain.
+            int skillLevel = (int)skill;
+            int diffLevel = (int)difficulty;
+            
+            float transitFloor = 0f;
+            if (diffLevel <= skillLevel)
+            {
+                // Trail is at or below skill level - easy, low-effort transit
+                transitFloor = 0.12f;
+            }
+            else if (diffLevel == skillLevel + 1)
+            {
+                // Trail is one step above skill level - manageable stretch
+                transitFloor = 0.05f;
+            }
+            
+            float weight = Math.Max(basePref, transitFloor);
+            
+            // Only apply downstream logic when downstream was actually computed (>= 0)
+            if (downstreamBestPreference >= 0f)
+            {
+                if (downstreamBestPreference > 0.01f)
+                {
+                    // Trail leads to reachable terrain for this skier
+                    if (downstreamBestPreference > 0.2f)
+                    {
+                        // Good terrain ahead - add downstream bonus
+                        float downstreamBonus = downstreamBestPreference * 0.5f;
+                        weight = Math.Max(weight, downstreamBonus);
+                    }
+                    // Moderate terrain ahead - keep base weight (no bonus, no penalty)
+                }
+                else
+                {
+                    // DEAD END: no allowed trails reachable for this skier after this trail.
+                    // A green trail into a double-black-only area is a dead end for beginners.
+                    // The trail itself might be fun, but getting stuck afterwards isn't worth it.
+                    weight = basePref * 0.4f;
+                }
+            }
+            // downstreamBestPreference == -1: not computed, keep base weight unchanged
+            
+            return weight;
+        }
     }
 }
 

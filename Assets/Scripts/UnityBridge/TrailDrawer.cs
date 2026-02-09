@@ -231,6 +231,10 @@ namespace SkiResortTycoon.UnityBridge
                 }
                 
                 Debug.Log($"==================");
+                
+                // Invalidate all skier goals so they re-plan with the new trail
+                var skierViz = FindObjectOfType<SkierVisualizer>();
+                if (skierViz != null) skierViz.InvalidateAllSkierGoals();
             }
             else
             {

@@ -378,11 +378,9 @@ namespace SkiResortTycoon.UnityBridge
                 hitStructure = hit.collider.GetComponentInParent<SelectableStructure>();
             }
             
-            // If no 3D hit, check trail line renderers via screen-space distance
-            if (hitStructure == null && _enableTrailHover)
-            {
-                hitStructure = CheckTrailHover();
-            }
+            // Trails now have capsule colliders along their path, so the raycast
+            // above handles them with the same precision as lifts. No screen-space
+            // fallback needed.
             
             // Handle hover state changes
             if (hitStructure != _hoveredStructure)

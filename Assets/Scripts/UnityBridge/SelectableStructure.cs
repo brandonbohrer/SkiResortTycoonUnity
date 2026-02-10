@@ -301,10 +301,49 @@ namespace SkiResortTycoon.UnityBridge
         
         private void AddTrailCollider()
         {
-            // Trails don't need a physics collider. They are detected via screen-space
-            // distance checking in StructureSelectionManager.CheckTrailHover().
-            // A huge bounding-box collider was intercepting raycasts for lifts/lodges,
-            // so we intentionally skip collider creation for trails.
+            // Build colliders from TrailData.WorldPathPoints (NOT from LineRenderer,
+            // because LR positions haven't been set yet at init time).
+            if (_trailData == null || _trailData.WorldPathPoints == null || _trailData.WorldPathPoints.Count < 2) return;
+            
+            var points = _trailData.WorldPathPoints;
+            
+            // Container to keep the hierarchy tidy
+            var container = new GameObject("TrailColliders");
+            container.transform.SetParent(transform, true);
+            
+            // Radius matches the visible trail line width
+            float lineWidth = (_lineRenderer != null) ? _lineRenderer.startWidth : 0.8f;
+            float radius = Mathf.Max(lineWidth * 0.5f, 0.5f);
+            
+            // Step through path points, placing one capsule per segment.
+            // Cap at ~80 capsules for performance.
+            int step = Mathf.Max(1, points.Count / 80);
+            int created = 0;
+            
+            for (int i = 0; i < points.Count - step; i += step)
+            {
+                int endIdx = Mathf.Min(i + step, points.Count - 1);
+                Vector3 p0 = MountainManager.ToUnityVector3(points[i]);
+                Vector3 p1 = MountainManager.ToUnityVector3(points[endIdx]);
+                
+                float segLen = Vector3.Distance(p0, p1);
+                if (segLen < 0.01f) continue;
+                
+                var segObj = new GameObject($"Seg_{i}");
+                segObj.transform.SetParent(container.transform, true);
+                
+                // Position at midpoint, orient along segment
+                segObj.transform.position = (p0 + p1) * 0.5f;
+                segObj.transform.rotation = Quaternion.LookRotation(p1 - p0);
+                
+                var cap = segObj.AddComponent<CapsuleCollider>();
+                cap.direction = 2; // Z axis (forward = segment direction)
+                cap.radius = radius;
+                cap.height = segLen + radius * 2f; // span the full segment
+                created++;
+            }
+            
+            Debug.Log($"[SelectableStructure] Added {created} capsule colliders along trail {_structureName}");
         }
         
         private void UpdatePulseEffect()

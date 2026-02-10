@@ -53,6 +53,13 @@ namespace SkiResortTycoon.UnityBridge
             List<int> toRemove = new List<int>();
             foreach (var kvp in _trailRenderers)
             {
+                // Check if renderer was destroyed (e.g., by manual deletion)
+                if (kvp.Value == null)
+                {
+                    toRemove.Add(kvp.Key);
+                    continue;
+                }
+                
                 bool found = false;
                 foreach (var trail in _trailDrawer.TrailSystem.Trails)
                 {
@@ -74,15 +81,21 @@ namespace SkiResortTycoon.UnityBridge
             {
                 _trailRenderers.Remove(id);
                 
-                // Also remove boundary renderers
+                // Also remove boundary renderers (with null checks)
                 if (_leftBoundaryRenderers.ContainsKey(id))
                 {
-                    Destroy(_leftBoundaryRenderers[id].gameObject);
+                    if (_leftBoundaryRenderers[id] != null)
+                    {
+                        Destroy(_leftBoundaryRenderers[id].gameObject);
+                    }
                     _leftBoundaryRenderers.Remove(id);
                 }
                 if (_rightBoundaryRenderers.ContainsKey(id))
                 {
-                    Destroy(_rightBoundaryRenderers[id].gameObject);
+                    if (_rightBoundaryRenderers[id] != null)
+                    {
+                        Destroy(_rightBoundaryRenderers[id].gameObject);
+                    }
                     _rightBoundaryRenderers.Remove(id);
                 }
             }

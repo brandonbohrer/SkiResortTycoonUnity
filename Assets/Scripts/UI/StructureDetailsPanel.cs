@@ -53,27 +53,34 @@ namespace SkiResortTycoon.UI
         
         void Start()
         {
-            // Setup button listeners
+            // Setup button listeners (RemoveAllListeners first to avoid duplicates
+            // since CreateDefaultDetailsPanel may have already added them via reflection)
             if (_closeButton != null)
             {
+                _closeButton.onClick.RemoveAllListeners();
                 _closeButton.onClick.AddListener(OnCloseClicked);
             }
             
             if (_renameButton != null)
             {
+                _renameButton.onClick.RemoveAllListeners();
                 _renameButton.onClick.AddListener(OnRenameClicked);
             }
             
             if (_deleteButton != null)
             {
+                _deleteButton.onClick.RemoveAllListeners();
                 _deleteButton.onClick.AddListener(OnDeleteClicked);
             }
             
             if (_upgradeButton != null)
             {
+                _upgradeButton.onClick.RemoveAllListeners();
                 _upgradeButton.onClick.AddListener(OnUpgradeClicked);
                 _upgradeButton.interactable = false; // Not implemented yet
             }
+            
+            Debug.Log($"[StructureDetailsPanel] Start() - buttons wired: close={_closeButton != null}, delete={_deleteButton != null}, rename={_renameButton != null}");
             
             // Start hidden
             if (_panelRoot != null)
@@ -438,27 +445,35 @@ namespace SkiResortTycoon.UI
         
         private void OnDeleteClicked()
         {
-            if (_currentStructure == null) return;
+            Debug.Log($"[StructureDetailsPanel] OnDeleteClicked called. _currentStructure={((_currentStructure != null) ? _currentStructure.StructureName : "NULL")}");
             
-            string structureName = _currentStructure.StructureName;
+            if (_currentStructure == null)
+            {
+                Debug.LogWarning("[StructureDetailsPanel] OnDeleteClicked: _currentStructure is null, aborting");
+                return;
+            }
             
-            ConfirmationDialog.Instance?.Show(
-                "Confirm Deletion",
-                $"Are you sure you want to delete {structureName}?",
-                () => {
-                    DeleteCurrentStructure();
-                },
-                () => {
-                    // Cancelled
-                }
-            );
+            // Skip confirmation dialog — just delete directly
+            DeleteCurrentStructure();
         }
         
         private void DeleteCurrentStructure()
         {
-            if (_currentStructure == null) return;
+            Debug.Log($"[StructureDetailsPanel] DeleteCurrentStructure called. _currentStructure={((_currentStructure != null) ? _currentStructure.StructureName : "NULL")}");
             
-            switch (_currentStructure.Type)
+            if (_currentStructure == null)
+            {
+                Debug.LogWarning("[StructureDetailsPanel] DeleteCurrentStructure: _currentStructure is null, aborting");
+                return;
+            }
+            
+            // Cache ref before deletion clears it
+            var structureToDelete = _currentStructure;
+            var structureGO = _currentStructure.gameObject;
+            
+            Debug.Log($"[StructureDetailsPanel] Deleting {structureToDelete.Type}: {structureToDelete.StructureName}");
+            
+            switch (structureToDelete.Type)
             {
                 case StructureType.Lift:
                     DeleteLift();
@@ -471,55 +486,100 @@ namespace SkiResortTycoon.UI
                     break;
             }
             
+            // Destroy the GameObject if it still exists (ensures visual removal for all types)
+            if (structureGO != null)
+            {
+                Debug.Log($"[StructureDetailsPanel] Destroying GameObject: {structureGO.name}");
+                Destroy(structureGO);
+            }
+            
+            // Close panel and deselect
             Hide();
+            if (StructureSelectionManager.Instance != null)
+            {
+                StructureSelectionManager.Instance.DeselectStructure();
+            }
+            
+            Debug.Log($"[StructureDetailsPanel] Successfully deleted {structureToDelete.Type}: {structureToDelete.StructureName}");
         }
         
         private void DeleteLift()
         {
             var lift = _currentStructure?.LiftData;
-            if (lift == null) return;
+            if (lift == null)
+            {
+                Debug.LogWarning("[StructureDetailsPanel] DeleteLift: LiftData is null");
+                return;
+            }
+            
+            Debug.Log($"[StructureDetailsPanel] DeleteLift: Removing lift '{lift.Name}' (ID: {lift.LiftId})");
             
             // Find the LiftBuilder to access LiftSystem
             var liftBuilder = FindObjectOfType<LiftBuilder>();
-            if (liftBuilder?.LiftSystem != null)
+            if (liftBuilder == null)
             {
-                // Remove from core system
-                liftBuilder.LiftSystem.RemoveLift(lift);
-                
-                // Remove visual
-                var prefabBuilder = liftBuilder.PrefabBuilder;
-                if (prefabBuilder != null)
-                {
-                    prefabBuilder.DestroyLift(lift.LiftId);
-                }
-                
-                // Rebuild connections
-                liftBuilder.Connectivity?.RebuildConnections();
-                
-                NotificationManager.Instance?.ShowSuccess($"Deleted {lift.Name}");
+                Debug.LogWarning("[StructureDetailsPanel] DeleteLift: No LiftBuilder found in scene");
+                return;
             }
+            
+            if (liftBuilder.LiftSystem == null)
+            {
+                Debug.LogWarning("[StructureDetailsPanel] DeleteLift: LiftBuilder.LiftSystem is null");
+                return;
+            }
+            
+            // Remove from core system
+            liftBuilder.LiftSystem.RemoveLift(lift);
+            Debug.Log("[StructureDetailsPanel] DeleteLift: Removed from LiftSystem");
+            
+            // Remove visual
+            var prefabBuilder = liftBuilder.PrefabBuilder;
+            if (prefabBuilder != null)
+            {
+                prefabBuilder.DestroyLift(lift.LiftId);
+                Debug.Log("[StructureDetailsPanel] DeleteLift: Destroyed visual via PrefabBuilder");
+            }
+            
+            // Rebuild connections
+            liftBuilder.Connectivity?.RebuildConnections();
+            
+            NotificationManager.Instance?.ShowSuccess($"Deleted {lift.Name}");
         }
         
         private void DeleteTrail()
         {
             var trail = _currentStructure?.TrailData;
-            if (trail == null) return;
+            if (trail == null)
+            {
+                Debug.LogWarning("[StructureDetailsPanel] DeleteTrail: TrailData is null");
+                return;
+            }
+            
+            Debug.Log($"[StructureDetailsPanel] DeleteTrail: Removing trail '{trail.Name}'");
             
             // Find the TrailDrawer to access TrailSystem
             var trailDrawer = FindObjectOfType<TrailDrawer>();
-            if (trailDrawer?.TrailSystem != null)
+            if (trailDrawer == null)
             {
-                // Remove from core system
-                trailDrawer.TrailSystem.RemoveTrail(trail);
-                
-                // Visual will be cleaned up by TrailVisualizer in its update loop
-                
-                // Rebuild connections
-                var liftBuilder = FindObjectOfType<LiftBuilder>();
-                liftBuilder?.Connectivity?.RebuildConnections();
-                
-                NotificationManager.Instance?.ShowSuccess($"Deleted {trail.Name}");
+                Debug.LogWarning("[StructureDetailsPanel] DeleteTrail: No TrailDrawer found in scene");
+                return;
             }
+            
+            if (trailDrawer.TrailSystem == null)
+            {
+                Debug.LogWarning("[StructureDetailsPanel] DeleteTrail: TrailDrawer.TrailSystem is null");
+                return;
+            }
+            
+            // Remove from core system
+            trailDrawer.TrailSystem.RemoveTrail(trail);
+            Debug.Log("[StructureDetailsPanel] DeleteTrail: Removed from TrailSystem");
+            
+            // Rebuild connections
+            var liftBuilder = FindObjectOfType<LiftBuilder>();
+            liftBuilder?.Connectivity?.RebuildConnections();
+            
+            NotificationManager.Instance?.ShowSuccess($"Deleted {trail.Name}");
         }
         
         private void DeleteLodge()

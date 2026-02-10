@@ -207,6 +207,20 @@ namespace SkiResortTycoon.UnityBridge
             panelType.GetField("_deleteButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.SetValue(_detailsPanel, deleteBtn);
             panelType.GetField("_closeButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.SetValue(_detailsPanel, closeBtn);
             
+            // Wire up button listeners directly here — don't rely on Start() timing
+            // with reflection-set fields. Use reflection to call private methods.
+            var onDeleteMethod = panelType.GetMethod("OnDeleteClicked", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var onCloseMethod = panelType.GetMethod("OnCloseClicked", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            
+            if (deleteBtn != null && onDeleteMethod != null)
+            {
+                deleteBtn.onClick.AddListener(() => onDeleteMethod.Invoke(_detailsPanel, null));
+            }
+            if (closeBtn != null && onCloseMethod != null)
+            {
+                closeBtn.onClick.AddListener(() => onCloseMethod.Invoke(_detailsPanel, null));
+            }
+            
             panelObj.SetActive(false);
             Debug.Log("[Selection] Created runtime StructureDetailsPanel");
         }

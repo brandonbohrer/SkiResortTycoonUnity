@@ -274,76 +274,37 @@ namespace SkiResortTycoon.UnityBridge
         
         private void AddCollidersIfNeeded()
         {
-            // Check if we already have colliders (including in children)
-            var existingColliders = GetComponentsInChildren<Collider>(true);
-            if (existingColliders != null && existingColliders.Length > 0)
+            // Add a tight-fitting BoxCollider to each individual child renderer
+            // that doesn't already have one. This gives pixel-precise selection
+            // because only the actual visual part has a collider, not a giant
+            // bounding box. GetComponentInParent<SelectableStructure>() on the
+            // hit object walks up to find us.
+            //
+            // Do NOT use MeshCollider (crashes on complex meshes).
+            // Do NOT use a single box on the root (way too large, imprecise).
+            
+            int added = 0;
+            foreach (var renderer in _renderers)
             {
-                Debug.Log($"[SelectableStructure] {_structureName} already has {existingColliders.Length} collider(s), skipping");
-                return;
+                if (renderer == null) continue;
+                if (renderer.GetComponent<Collider>() != null) continue; // already has one
+                
+                renderer.gameObject.AddComponent<BoxCollider>();
+                added++;
             }
             
-            // For lifts, DON'T add colliders - they should come from the prefab
-            // Adding colliders to complex hierarchies can crash Unity
-            if (_structureType == StructureType.Lift)
+            if (added > 0)
             {
-                Debug.LogWarning($"[SelectableStructure] Lift {_structureName} has no colliders - this may make selection difficult");
-                return;
-            }
-            
-            // For lodges, add simple box colliders only if renderers exist
-            if (_structureType == StructureType.Lodge)
-            {
-                foreach (var renderer in _renderers)
-                {
-                    if (renderer == null) continue;
-                    if (renderer.GetComponent<Collider>() == null)
-                    {
-                        // Only add box colliders - MeshColliders can crash with complex meshes
-                        var box = renderer.gameObject.AddComponent<BoxCollider>();
-                        Debug.Log($"[SelectableStructure] Added BoxCollider to {renderer.gameObject.name}");
-                    }
-                }
+                Debug.Log($"[SelectableStructure] Added {added} BoxCollider(s) to parts of {_structureName}");
             }
         }
         
         private void AddTrailCollider()
         {
-            // For trails, create a capsule collider along the path
-            // We'll use a simplified approach with a box collider
-            if (_trailData == null || _trailData.WorldPathPoints.Count < 2) return;
-            
-            // Create a child object to hold the collider
-            var colliderObj = new GameObject("TrailCollider");
-            colliderObj.transform.SetParent(transform);
-            colliderObj.layer = gameObject.layer;
-            
-            // Calculate bounds of the trail
-            Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
-            Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
-            
-            foreach (var point in _trailData.WorldPathPoints)
-            {
-                Vector3 p = MountainManager.ToUnityVector3(point);
-                min = Vector3.Min(min, p);
-                max = Vector3.Max(max, p);
-            }
-            
-            // Add some padding for easier selection
-            float padding = 5f;
-            min -= Vector3.one * padding;
-            max += Vector3.one * padding;
-            
-            Vector3 center = (min + max) / 2f;
-            Vector3 size = max - min;
-            
-            colliderObj.transform.position = center;
-            var boxCollider = colliderObj.AddComponent<BoxCollider>();
-            boxCollider.size = size;
-            boxCollider.isTrigger = true; // Use trigger so it doesn't affect physics
-            
-            // Add this component reference to the collider object too
-            var refScript = colliderObj.AddComponent<SelectableStructureColliderRef>();
-            refScript.ParentSelectable = this;
+            // Trails don't need a physics collider. They are detected via screen-space
+            // distance checking in StructureSelectionManager.CheckTrailHover().
+            // A huge bounding-box collider was intercepting raycasts for lifts/lodges,
+            // so we intentionally skip collider creation for trails.
         }
         
         private void UpdatePulseEffect()

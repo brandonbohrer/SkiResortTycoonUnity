@@ -106,6 +106,20 @@ namespace SkiResortTycoon.UnityBridge
                 canvasObj.AddComponent<GraphicRaycaster>();
             }
             
+            // Ensure the canvas has a GraphicRaycaster (required for button clicks)
+            if (canvas.GetComponent<GraphicRaycaster>() == null)
+            {
+                canvas.gameObject.AddComponent<GraphicRaycaster>();
+            }
+            
+            // Ensure an EventSystem exists (required for any UI interaction)
+            if (FindObjectOfType<UnityEngine.EventSystems.EventSystem>() == null)
+            {
+                var esObj = new GameObject("EventSystem");
+                esObj.AddComponent<UnityEngine.EventSystems.EventSystem>();
+                esObj.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
+            }
+            
             // Create panel
             var panelObj = new GameObject("StructureDetailsPanel");
             panelObj.transform.SetParent(canvas.transform, false);
@@ -147,9 +161,12 @@ namespace SkiResortTycoon.UnityBridge
             titleRect.offsetMin = Vector2.zero;
             titleRect.offsetMax = Vector2.zero;
             var titleText = titleObj.AddComponent<TextMeshProUGUI>();
+            var defaultFont = TMPro.TMP_Settings.defaultFontAsset;
+            if (defaultFont != null) titleText.font = defaultFont;
             titleText.text = "Structure Details";
-            titleText.fontSize = 18;
+            titleText.fontSize = 20;
             titleText.fontStyle = FontStyles.Bold;
+            titleText.color = Color.white;
             titleText.alignment = TextAlignmentOptions.Center;
             
             // Stats container
@@ -221,8 +238,11 @@ namespace SkiResortTycoon.UnityBridge
             textRect.offsetMin = Vector2.zero;
             textRect.offsetMax = Vector2.zero;
             var tmp = textObj.AddComponent<TextMeshProUGUI>();
+            var btnFont = TMPro.TMP_Settings.defaultFontAsset;
+            if (btnFont != null) tmp.font = btnFont;
             tmp.text = text;
             tmp.fontSize = 14;
+            tmp.fontStyle = FontStyles.Bold;
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.color = Color.white;
             
@@ -348,31 +368,17 @@ namespace SkiResortTycoon.UnityBridge
             Ray ray = _camera.ScreenPointToRay(Input.mousePosition);
             SelectableStructure hitStructure = null;
             
-            // First try raycast for 3D structures (lifts, lodges)
-            if (Physics.Raycast(ray, out RaycastHit hit, _raycastDistance, _selectableLayers))
+            // Single closest-hit raycast. Each structure part (pillar, chair, turn
+            // wheel, lodge mesh) has its own tight BoxCollider, so the closest hit
+            // IS the thing directly under the cursor. No radius, no bounding-box
+            // approximation — pixel-precise.
+            if (Physics.Raycast(ray, out RaycastHit hit, _raycastDistance))
             {
-                // Check if we hit a SelectableStructure directly
-                hitStructure = hit.collider.GetComponent<SelectableStructure>();
-                
-                // Check if we hit a collider ref (for trails)
-                if (hitStructure == null)
-                {
-                    var colliderRef = hit.collider.GetComponent<SelectableStructureColliderRef>();
-                    if (colliderRef != null)
-                    {
-                        hitStructure = colliderRef.ParentSelectable;
-                    }
-                }
-                
-                // Check parent hierarchy (for lift parts)
-                if (hitStructure == null)
-                {
-                    hitStructure = hit.collider.GetComponentInParent<SelectableStructure>();
-                }
+                // Walk up the hierarchy to find the SelectableStructure root
+                hitStructure = hit.collider.GetComponentInParent<SelectableStructure>();
             }
             
-            // If no hit from raycast, check trail line renderers (they don't have colliders)
-            // This can be disabled for performance if needed
+            // If no 3D hit, check trail line renderers via screen-space distance
             if (hitStructure == null && _enableTrailHover)
             {
                 hitStructure = CheckTrailHover();

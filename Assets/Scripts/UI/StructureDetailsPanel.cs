@@ -56,7 +56,7 @@ namespace SkiResortTycoon.UI
             // Setup button listeners
             if (_closeButton != null)
             {
-                _closeButton.onClick.AddListener(Hide);
+                _closeButton.onClick.AddListener(OnCloseClicked);
             }
             
             if (_renameButton != null)
@@ -172,11 +172,8 @@ namespace SkiResortTycoon.UI
             _targetAlpha = 0f;
             _currentStructure = null;
             
-            // Deselect structure
-            if (StructureSelectionManager.Instance != null)
-            {
-                StructureSelectionManager.Instance.DeselectStructure();
-            }
+            // NOTE: Don't call DeselectStructure() here - it creates a mutual recursion loop.
+            // The caller (DeselectStructure or Close button) is responsible for deselection.
         }
         
         private void UpdateHeader()
@@ -320,17 +317,24 @@ namespace SkiResortTycoon.UI
             layout.childForceExpandWidth = true;
             layout.childForceExpandHeight = false;
             
-            var rowRect = row.GetComponent<RectTransform>();
-            rowRect.sizeDelta = new Vector2(0, 24);
+            var rowLayoutElem = row.AddComponent<LayoutElement>();
+            rowLayoutElem.minHeight = 28;
+            rowLayoutElem.preferredHeight = 28;
+            
+            // Load TMP default font (required for runtime-created text)
+            var font = TMPro.TMP_Settings.defaultFontAsset;
             
             // Label
             var labelObj = new GameObject("Label");
             labelObj.transform.SetParent(row.transform, false);
             var labelTmp = labelObj.AddComponent<TextMeshProUGUI>();
+            if (font != null) labelTmp.font = font;
             labelTmp.text = label;
             labelTmp.fontSize = 14;
-            labelTmp.color = new Color(0.7f, 0.7f, 0.7f);
+            labelTmp.color = new Color(0.85f, 0.85f, 0.85f); // Bright enough to read on dark bg
             labelTmp.alignment = TextAlignmentOptions.Left;
+            labelTmp.enableWordWrapping = false;
+            labelTmp.overflowMode = TextOverflowModes.Ellipsis;
             
             var labelLayout = labelObj.AddComponent<LayoutElement>();
             labelLayout.flexibleWidth = 1;
@@ -339,11 +343,14 @@ namespace SkiResortTycoon.UI
             var valueObj = new GameObject("Value");
             valueObj.transform.SetParent(row.transform, false);
             var valueTmp = valueObj.AddComponent<TextMeshProUGUI>();
+            if (font != null) valueTmp.font = font;
             valueTmp.text = value;
             valueTmp.fontSize = 14;
             valueTmp.color = valueColor ?? Color.white;
             valueTmp.alignment = TextAlignmentOptions.Right;
             valueTmp.fontStyle = FontStyles.Bold;
+            valueTmp.enableWordWrapping = false;
+            valueTmp.overflowMode = TextOverflowModes.Ellipsis;
             
             var valueLayout = valueObj.AddComponent<LayoutElement>();
             valueLayout.flexibleWidth = 1;
@@ -417,6 +424,16 @@ namespace SkiResortTycoon.UI
         {
             // TODO: Implement rename dialog
             NotificationManager.Instance?.ShowInfo("Rename feature coming soon!");
+        }
+        
+        private void OnCloseClicked()
+        {
+            Hide();
+            // Tell the selection manager to deselect (which won't call Hide again due to idempotent guard)
+            if (StructureSelectionManager.Instance != null)
+            {
+                StructureSelectionManager.Instance.DeselectStructure();
+            }
         }
         
         private void OnDeleteClicked()

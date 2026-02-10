@@ -21,6 +21,7 @@ namespace SkiResortTycoon.UnityBridge
         [Header("Cursor Textures")]
         [SerializeField] private Texture2D _pointerCursor;
         [SerializeField] private Vector2 _pointerHotspot = new Vector2(0, 0);
+        [SerializeField] [Range(0.1f, 2f)] private float _cursorScale = 1f;
         
         [Header("Settings")]
         [SerializeField] private float _raycastDistance = 1000f;
@@ -36,6 +37,10 @@ namespace SkiResortTycoon.UnityBridge
         private int _errorCount;
         private const int MAX_ERRORS = 5; // Disable after too many errors
         private bool _handlingClick; // Re-entrancy guard for click handling
+        
+        // Cached scaled cursor texture
+        private Texture2D _scaledCursorTexture;
+        private float _lastCursorScale = -1f;
         
         // Cached selectables (to avoid expensive FindObjectsOfType every frame)
         private System.Collections.Generic.List<SelectableStructure> _cachedSelectables = new System.Collections.Generic.List<SelectableStructure>();
@@ -61,12 +66,6 @@ namespace SkiResortTycoon.UnityBridge
             if (_camera == null)
             {
                 _camera = Camera.main;
-            }
-            
-            // Create default pointer cursor if not assigned
-            if (_pointerCursor == null)
-            {
-                CreateDefaultPointerCursor();
             }
             
             // DON'T scan for existing structures automatically - causes crashes
@@ -634,11 +633,80 @@ namespace SkiResortTycoon.UnityBridge
         
         private void SetPointerCursor()
         {
-            if (_pointerCursor != null && !_isCustomCursorActive)
+            // Use custom cursor texture if assigned, otherwise use default system cursor
+            if (_pointerCursor != null)
             {
-                Cursor.SetCursor(_pointerCursor, _pointerHotspot, CursorMode.Auto);
+                // Create scaled version if scale changed or doesn't exist
+                if (_scaledCursorTexture == null || Mathf.Abs(_lastCursorScale - _cursorScale) > 0.01f)
+                {
+                    CreateScaledCursorTexture();
+                }
+                
+                // Use scaled texture if it exists, otherwise use original
+                Texture2D cursorToUse = _scaledCursorTexture != null ? _scaledCursorTexture : _pointerCursor;
+                Vector2 hotspot = _scaledCursorTexture != null ? _pointerHotspot * _cursorScale : _pointerHotspot;
+                
+                Cursor.SetCursor(cursorToUse, hotspot, CursorMode.Auto);
                 _isCustomCursorActive = true;
             }
+            else
+            {
+                Cursor.SetCursor(null, Vector2.zero, CursorMode.Auto);
+                _isCustomCursorActive = false;
+            }
+        }
+        
+        private void CreateScaledCursorTexture()
+        {
+            if (_pointerCursor == null) return;
+            
+            // Clean up old scaled texture
+            if (_scaledCursorTexture != null)
+            {
+                Destroy(_scaledCursorTexture);
+            }
+            
+            // If scale is 1.0, don't create a scaled version
+            if (Mathf.Abs(_cursorScale - 1f) < 0.01f)
+            {
+                _scaledCursorTexture = null;
+                _lastCursorScale = _cursorScale;
+                return;
+            }
+            
+            // Calculate new dimensions
+            int newWidth = Mathf.Max(1, Mathf.RoundToInt(_pointerCursor.width * _cursorScale));
+            int newHeight = Mathf.Max(1, Mathf.RoundToInt(_pointerCursor.height * _cursorScale));
+            
+            // Create scaled texture
+            _scaledCursorTexture = new Texture2D(newWidth, newHeight, TextureFormat.RGBA32, false);
+            _scaledCursorTexture.filterMode = FilterMode.Bilinear;
+            
+            // Scale the pixels
+            Color[] originalPixels = _pointerCursor.GetPixels();
+            Color[] scaledPixels = new Color[newWidth * newHeight];
+            
+            for (int y = 0; y < newHeight; y++)
+            {
+                for (int x = 0; x < newWidth; x++)
+                {
+                    // Sample from original texture using bilinear filtering
+                    float u = x / (float)(newWidth - 1);
+                    float v = y / (float)(newHeight - 1);
+                    
+                    int origX = Mathf.RoundToInt(u * (_pointerCursor.width - 1));
+                    int origY = Mathf.RoundToInt(v * (_pointerCursor.height - 1));
+                    
+                    origX = Mathf.Clamp(origX, 0, _pointerCursor.width - 1);
+                    origY = Mathf.Clamp(origY, 0, _pointerCursor.height - 1);
+                    
+                    scaledPixels[y * newWidth + x] = originalPixels[origY * _pointerCursor.width + origX];
+                }
+            }
+            
+            _scaledCursorTexture.SetPixels(scaledPixels);
+            _scaledCursorTexture.Apply();
+            _lastCursorScale = _cursorScale;
         }
         
         private void ResetCursor()
@@ -744,6 +812,13 @@ namespace SkiResortTycoon.UnityBridge
         void OnDestroy()
         {
             ResetCursor();
+            
+            // Clean up scaled cursor texture
+            if (_scaledCursorTexture != null)
+            {
+                Destroy(_scaledCursorTexture);
+                _scaledCursorTexture = null;
+            }
             
             if (Instance == this)
             {

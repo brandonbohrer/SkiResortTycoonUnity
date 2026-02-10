@@ -111,6 +111,10 @@ namespace SkiResortTycoon.UnityBridge
                     lr.sortingOrder = 32767; // Maximum short value - highest possible
                     
                     _trailRenderers[trail.TrailId] = lr;
+                    
+                    // Add selectable structure component for management
+                    var selectable = trailObj.AddComponent<SelectableStructure>();
+                    selectable.InitializeAsTrail(trail, lr);
                 }
                 
                 // Update line - SET COLOR BASED ON ACTUAL DIFFICULTY

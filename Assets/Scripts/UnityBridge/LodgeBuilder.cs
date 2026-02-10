@@ -201,6 +201,10 @@ namespace SkiResortTycoon.UnityBridge
             LodgeFacility facility = lodgeObj.AddComponent<LodgeFacility>();
             facility.Initialize(_treeClearRadius);
 
+            // Add selectable structure component for management
+            var selectable = lodgeObj.AddComponent<SelectableStructure>();
+            selectable.InitializeAsLodge(facility);
+
             // Permanently clear trees
             TreeClearer.RestorePreviewTrees();
             TreeClearer.ClearTreesAroundPoint(pos, _treeClearRadius);

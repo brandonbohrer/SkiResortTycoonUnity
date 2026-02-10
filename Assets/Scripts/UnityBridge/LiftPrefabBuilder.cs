@@ -87,6 +87,11 @@ namespace SkiResortTycoon.UnityBridge
             if (mover == null) mover = inst.Root.AddComponent<LiftChairMover>();
             mover.Initialise(inst, basePos, topPos, _chairUpX, _chairDownX, _chairY);
 
+            // Attach selectable structure component for management
+            var selectable = inst.Root.GetComponent<SelectableStructure>();
+            if (selectable == null) selectable = inst.Root.AddComponent<SelectableStructure>();
+            selectable.InitializeAsLift(lift);
+
             return inst.Root;
         }
 

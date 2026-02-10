@@ -33,6 +33,7 @@ namespace SkiResortTycoon.UI
         // Current state
         private BaseTool _activeTool;
         private TimeController _timeController;
+        private bool _isChangingTool; // Re-entrancy guard to prevent recursive tool switching
         
         /// <summary>
         /// Currently active build/interaction tool
@@ -230,20 +231,41 @@ namespace SkiResortTycoon.UI
         /// </summary>
         public void ActivateTool(BaseTool tool)
         {
-            // Deactivate current tool if any
-            if (_activeTool != null)
+            // Re-entrancy guard: prevent recursive tool changes
+            if (_isChangingTool)
             {
-                _activeTool.OnDeactivate();
+                Debug.LogWarning("[UIManager] ActivateTool called recursively - ignoring to prevent stack overflow");
+                return;
             }
             
-            _activeTool = tool;
-            
-            if (_activeTool != null)
+            // Early return if tool is already active
+            if (_activeTool == tool)
             {
-                _activeTool.OnActivate();
+                return;
             }
             
-            OnToolChanged?.Invoke(_activeTool);
+            _isChangingTool = true;
+            try
+            {
+                // Deactivate current tool if any
+                if (_activeTool != null)
+                {
+                    _activeTool.OnDeactivate();
+                }
+                
+                _activeTool = tool;
+                
+                if (_activeTool != null)
+                {
+                    _activeTool.OnActivate();
+                }
+                
+                OnToolChanged?.Invoke(_activeTool);
+            }
+            finally
+            {
+                _isChangingTool = false;
+            }
         }
         
         /// <summary>
@@ -251,11 +273,28 @@ namespace SkiResortTycoon.UI
         /// </summary>
         public void DeactivateTool()
         {
-            if (_activeTool != null)
+            // Re-entrancy guard: prevent recursive tool changes
+            if (_isChangingTool)
+            {
+                Debug.LogWarning("[UIManager] DeactivateTool called recursively - ignoring to prevent stack overflow");
+                return;
+            }
+            
+            if (_activeTool == null)
+            {
+                return; // Nothing to deactivate
+            }
+            
+            _isChangingTool = true;
+            try
             {
                 _activeTool.OnDeactivate();
                 _activeTool = null;
                 OnToolChanged?.Invoke(null);
+            }
+            finally
+            {
+                _isChangingTool = false;
             }
         }
         
@@ -264,11 +303,28 @@ namespace SkiResortTycoon.UI
         /// </summary>
         public void CancelActiveTool()
         {
-            if (_activeTool != null)
+            // Re-entrancy guard: prevent recursive tool changes
+            if (_isChangingTool)
+            {
+                Debug.LogWarning("[UIManager] CancelActiveTool called recursively - ignoring to prevent stack overflow");
+                return;
+            }
+            
+            if (_activeTool == null)
+            {
+                return; // Nothing to cancel
+            }
+            
+            _isChangingTool = true;
+            try
             {
                 _activeTool.OnCancel();
                 _activeTool = null;
                 OnToolChanged?.Invoke(null);
+            }
+            finally
+            {
+                _isChangingTool = false;
             }
         }
         

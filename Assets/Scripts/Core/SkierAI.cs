@@ -18,7 +18,7 @@ namespace SkiResortTycoon.Core
         private List<LiftData> _allLifts;
         private Random _random;
         
-        // Tunable from SkierAITuning at runtime
+        // Tunable from SkierAIConfig at runtime
         public float PreferredDifficultyBoost { get; set; } = 1.5f;
         
         // Satisfaction impact values

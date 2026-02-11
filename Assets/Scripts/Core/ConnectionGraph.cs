@@ -40,8 +40,9 @@ namespace SkiResortTycoon.Core
         private Dictionary<int, List<int>> _liftToBuildings;  // LiftId -> List<BuildingId>
         
         // Trail connections
-        private Dictionary<int, List<int>> _trailToLifts;     // TrailId -> List<LiftId> (trails can be accessed by multiple lifts)
+        private Dictionary<int, List<int>> _trailToLifts;     // TrailId -> List<LiftId> (lift TOPS near trail START)
         private Dictionary<int, List<int>> _trailToBuildings; // TrailId -> List<BuildingId>
+        private Dictionary<int, List<int>> _trailEndToLiftBottoms; // TrailId -> List<LiftId> (lift BOTTOMS near trail END)
         
         // Base connections
         private Dictionary<int, bool> _liftsToBase;   // LiftId -> connected to base
@@ -50,8 +51,8 @@ namespace SkiResortTycoon.Core
         // All connections (for queries)
         private List<Connection> _allConnections;
         
-        public int SnapRadius { get; set; } = 20;  // Max 3D distance for lift-trail connections (increased from 10)
-        public int BaseSnapRadius { get; set; } = 40;  // Larger radius for forgiving base connections
+        public int SnapRadius { get; set; } = 40;  // Max 3D distance for lift-trail connections (generous for user-built resorts)
+        public int BaseSnapRadius { get; set; } = 60;  // Larger radius for forgiving base and trail-end connections
         
         public ConnectionGraph()
         {
@@ -59,6 +60,7 @@ namespace SkiResortTycoon.Core
             _liftToBuildings = new Dictionary<int, List<int>>();
             _trailToLifts = new Dictionary<int, List<int>>();
             _trailToBuildings = new Dictionary<int, List<int>>();
+            _trailEndToLiftBottoms = new Dictionary<int, List<int>>();
             _liftsToBase = new Dictionary<int, bool>();
             _trailsToBase = new Dictionary<int, bool>();
             _allConnections = new List<Connection>();
@@ -79,6 +81,9 @@ namespace SkiResortTycoon.Core
             
             // Connect trails to other trails (for smooth transitions)
             ConnectTrailsToTrails(registry);
+            
+            // Connect trail ends to lift bottoms (for trail-end → lift-bottom decisions)
+            ConnectTrailEndsToLiftBottoms(registry);
             
             // Connect trails to base
             ConnectTrailsToBase(registry);
@@ -188,6 +193,46 @@ namespace SkiResortTycoon.Core
             }
             
             UnityEngine.Debug.Log($"[ConnectionGraph] Created {totalConnections} lift→trail connections");
+        }
+        
+        private void ConnectTrailEndsToLiftBottoms(SnapRegistry registry)
+        {
+            var trailEnds = registry.GetByType(SnapPointType.TrailEnd);
+            var liftBottoms = registry.GetByType(SnapPointType.LiftBottom);
+            
+            // Use a generous radius: trail ends to lift bottoms need more slack
+            // because players may place lifts at varying distances from trail endings
+            int trailEndLiftRadius = BaseSnapRadius; // same generous radius as base connections
+            
+            UnityEngine.Debug.Log($"[ConnectionGraph] Connecting {trailEnds.Count} trail ends to {liftBottoms.Count} lift bottoms (radius: {trailEndLiftRadius})");
+            
+            int totalConnections = 0;
+            foreach (var trailEnd in trailEnds)
+            {
+                int trailId = trailEnd.OwnerId;
+                
+                foreach (var liftBottom in liftBottoms)
+                {
+                    float distance = trailEnd.Distance3D(liftBottom);
+                    
+                    if (distance <= trailEndLiftRadius)
+                    {
+                        int liftId = liftBottom.OwnerId;
+                        
+                        if (!_trailEndToLiftBottoms.ContainsKey(trailId))
+                            _trailEndToLiftBottoms[trailId] = new List<int>();
+                        
+                        if (!_trailEndToLiftBottoms[trailId].Contains(liftId))
+                        {
+                            _trailEndToLiftBottoms[trailId].Add(liftId);
+                            totalConnections++;
+                            UnityEngine.Debug.Log($"[ConnectionGraph] Trail {trailId} end → Lift {liftId} bottom (distance: {distance:F2})");
+                        }
+                    }
+                }
+            }
+            
+            UnityEngine.Debug.Log($"[ConnectionGraph] Created {totalConnections} trail-end → lift-bottom connections");
         }
         
         private void ConnectTrailsToTrails(SnapRegistry registry)
@@ -434,7 +479,19 @@ namespace SkiResortTycoon.Core
         }
         
         /// <summary>
-        /// Gets all lifts that access a trail.
+        /// Gets lift IDs whose BOTTOM is near a trail's END.
+        /// This is the correct mapping for "skier finished trail, which lifts can they walk to?"
+        /// </summary>
+        public List<int> GetLiftsAtTrailEnd(int trailId)
+        {
+            if (_trailEndToLiftBottoms.ContainsKey(trailId))
+                return new List<int>(_trailEndToLiftBottoms[trailId]);
+            return new List<int>();
+        }
+        
+        /// <summary>
+        /// Gets all lifts that access a trail (lift TOP near trail START).
+        /// Use GetLiftsAtTrailEnd for trail-end decisions instead.
         /// </summary>
         public List<int> GetLiftsToTrail(int trailId)
         {
@@ -526,6 +583,7 @@ namespace SkiResortTycoon.Core
             _liftToBuildings.Clear();
             _trailToLifts.Clear();
             _trailToBuildings.Clear();
+            _trailEndToLiftBottoms.Clear();
             _liftsToBase.Clear();
             _trailsToBase.Clear();
             _allConnections.Clear();

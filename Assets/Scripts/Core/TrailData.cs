@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace SkiResortTycoon.Core
@@ -40,6 +41,22 @@ namespace SkiResortTycoon.Core
         public float TotalElevationDrop { get; set; }
         public bool IsValid { get; set; }
         
+        /// <summary>
+        /// Total 3D arc-length of the trail in world units.
+        /// Computed from WorldPathPoints on first access, then cached.
+        /// Used by the traffic system to derive trail capacity (longer = more skiers).
+        /// </summary>
+        public float WorldLength
+        {
+            get
+            {
+                if (_worldLengthCached < 0f)
+                    _worldLengthCached = ComputeWorldLength();
+                return _worldLengthCached;
+            }
+        }
+        private float _worldLengthCached = -1f;
+        
         public TrailData(int trailId)
         {
             TrailId = trailId;
@@ -68,6 +85,7 @@ namespace SkiResortTycoon.Core
         {
             WorldPathPoints.Add(position);
             Length = WorldPathPoints.Count;
+            _worldLengthCached = -1f; // invalidate cache
         }
         
         /// <summary>
@@ -81,6 +99,7 @@ namespace SkiResortTycoon.Core
             PathPoints.Clear();
             Length = 0;
             IsValid = false;
+            _worldLengthCached = -1f;
         }
         
         /// <summary>
@@ -150,6 +169,22 @@ namespace SkiResortTycoon.Core
                 // but we just mirror the world-space decision to stay consistent
                 PathPoints.Reverse();
             }
+        }
+        
+        /// <summary>
+        /// Sums the 3D segment distances between consecutive WorldPathPoints.
+        /// </summary>
+        private float ComputeWorldLength()
+        {
+            if (WorldPathPoints == null || WorldPathPoints.Count < 2)
+                return 0f;
+            
+            float total = 0f;
+            for (int i = 0; i < WorldPathPoints.Count - 1; i++)
+            {
+                total += Vector3f.Distance(WorldPathPoints[i], WorldPathPoints[i + 1]);
+            }
+            return total;
         }
         
         /// <summary>

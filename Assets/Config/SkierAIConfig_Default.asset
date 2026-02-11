@@ -1,0 +1,78 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: db18ec6be24f84445808fb75c6a300bf, type: 3}
+  m_Name: SkierAIConfig_Default
+  m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.ScriptableObjects.SkierAIConfig
+  softmaxTemperature: 1.5
+  difficultyPreferenceStrength: 1
+  downstreamValueStrength: 1
+  deficitBonusStrength: 1.5
+  goalAlignmentStrength: 0.5
+  noveltyBonusStrength: 0.3
+  crowdingPenaltyStrength: 3
+  traversalWillingness: 0.8
+  beginnerGreen: 0.75
+  beginnerBlue: 0.25
+  beginnerBlack: 0
+  beginnerDoubleBlack: 0
+  intermediateGreen: 0.2
+  intermediateBlue: 0.6
+  intermediateBlack: 0.2
+  intermediateDoubleBlack: 0
+  advancedGreen: 0.05
+  advancedBlue: 0.25
+  advancedBlack: 0.55
+  advancedDoubleBlack: 0.15
+  expertGreen: 0.02
+  expertBlue: 0.1
+  expertBlack: 0.3
+  expertDoubleBlack: 0.58
+  trailCapacityPerMeter: 50
+  minimumTrailCapacity: 2
+  liftCapacityDivisor: 200
+  deficitResponsiveness: 1
+  downstreamDepth: 5
+  depthDiscount1Hop: 1
+  depthDiscount2Hop: 0.7
+  depthDiscount3Hop: 0.45
+  depthDiscountFarther: 0.3
+  deadEndScore: 0.02
+  transitFloorBase: 0.15
+  transitFloorGapBonus: 0.03
+  transitFloorStretch: 0.08
+  downstreamBonusMultiplier: 0.6
+  deadEndWeight: 0.02
+  replanAfterEveryRun: 1
+  replanAtLiftTop: 1
+  preferredDifficultyBoost: 1.5
+  junctionMajorSwitchChance: 0.5
+  junctionMajorThreshold: 0.25
+  junctionModerateSwitchChance: 0.25
+  junctionModerateThreshold: 0.1
+  junctionExplorationChance: 0.12
+  junctionExplorationMinValue: 0.2
+  trailStartSearchRadius: 25
+  liftSearchRadius: 25
+  goalLiftWalkRadius: 40
+  junctionDetectionRadius: 15
+  networkSnapRadius: 25
+  beginnerPercent: 0.2
+  intermediatePercent: 0.3
+  advancedPercent: 0.3
+  expertPercent: 0.2
+  jerryChance: 0.02
+  lodgeVisitChance: 0.15
+  enableDebugLogs: 0
+  debugSkierId: -1
+  logTrailScores: 0
+  logLiftScores: 0
+  logDeficitValues: 0

@@ -22,7 +22,7 @@ namespace SkiResortTycoon.Core
         // Hard caps: what difficulties each skill level is ALLOWED to ski
         private Dictionary<SkillLevel, HashSet<TrailDifficulty>> _allowedDifficulties;
         
-        // ── Runtime-tunable parameters (set by SkierAITuning) ──
+        // ── Runtime-tunable parameters (set by SkierAIConfig) ──
         public float TransitFloorBase { get; set; } = 0.15f;
         public float TransitFloorGapBonus { get; set; } = 0.03f;
         public float TransitFloorStretch { get; set; } = 0.08f;

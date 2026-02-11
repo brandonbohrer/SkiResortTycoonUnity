@@ -37,18 +37,22 @@ namespace SkiResortTycoon.UnityBridge
         private float _phase;
 
         private bool _initialised;
+        
+        // ── Time control ────────────────────────────────────────────────
+        private SimulationRunner _simulationRunner;
 
         /// <summary>
         /// Called by LiftPrefabBuilder after hierarchy is built.
         /// </summary>
         public void Initialise(LiftInstance inst, Vector3 basePos, Vector3 topPos,
-            float upX, float downX, float chairY)
+            float upX, float downX, float chairY, SimulationRunner simulationRunner)
         {
             _basePos = basePos;
             _topPos  = topPos;
             _upX     = upX;
             _downX   = downX;
             _chairY  = chairY;
+            _simulationRunner = simulationRunner;
 
             Vector3 delta = topPos - basePos;
             _length = delta.magnitude;
@@ -70,9 +74,16 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (!_initialised || _chairCount == 0) return;
 
+            // Get effective delta time (respects pause and game speed)
+            float effectiveDeltaTime = Time.deltaTime;
+            if (_simulationRunner != null && _simulationRunner.Sim != null && _simulationRunner.Sim.TimeController != null)
+            {
+                effectiveDeltaTime = _simulationRunner.Sim.TimeController.GetEffectiveDeltaTime(Time.deltaTime);
+            }
+
             // Advance conveyor phase
             float phaseSpeed = _speed / _length; // fraction of length per second
-            _phase += phaseSpeed * Time.deltaTime;
+            _phase += phaseSpeed * effectiveDeltaTime;
             if (_phase >= 1f) _phase -= 1f;
 
             Quaternion upRot = Quaternion.LookRotation(_dir, Vector3.up);

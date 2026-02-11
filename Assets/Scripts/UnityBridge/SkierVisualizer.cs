@@ -147,8 +147,20 @@ namespace SkiResortTycoon.UnityBridge
             // Sync config values to distribution
             SyncConfigIfNeeded();
 
+            // Get effective delta time (respects pause and game speed)
+            float effectiveDeltaTime = Time.deltaTime;
+            float speedMultiplier = 1f;
+            bool isPaused = false;
+            
+            if (_simRunner.Sim != null && _simRunner.Sim.TimeController != null)
+            {
+                effectiveDeltaTime = _simRunner.Sim.TimeController.GetEffectiveDeltaTime(Time.deltaTime);
+                speedMultiplier = _simRunner.Sim.TimeController.SpeedMultiplier;
+                isPaused = _simRunner.Sim.TimeController.IsPaused;
+            }
+
             // Spawn new skiers periodically
-            _spawnTimer += Time.deltaTime;
+            _spawnTimer += effectiveDeltaTime;
             if (_spawnTimer >= _spawnInterval && _activeSkiers.Count < _maxActiveSkiers)
             {
                 _spawnTimer = 0f;
@@ -159,7 +171,14 @@ namespace SkiResortTycoon.UnityBridge
             for (int i = _activeSkiers.Count - 1; i >= 0; i--)
             {
                 var skier = _activeSkiers[i];
-                UpdateSkier(skier, Time.deltaTime);
+                
+                // Control animator speed based on game speed and pause state
+                if (skier.Animator != null)
+                {
+                    skier.Animator.speed = isPaused ? 0f : speedMultiplier;
+                }
+                
+                UpdateSkier(skier, effectiveDeltaTime);
 
                 // Remove if finished
                 if (skier.IsFinished)

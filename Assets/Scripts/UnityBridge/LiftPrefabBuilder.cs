@@ -25,6 +25,10 @@ namespace SkiResortTycoon.UnityBridge
     /// </summary>
     public class LiftPrefabBuilder : MonoBehaviour
     {
+        // ── References ──────────────────────────────────────────────────
+        [Header("Core References")]
+        [SerializeField] private SimulationRunner _simulationRunner;
+        
         // ── Prefab references (assign in Inspector) ─────────────────────
         [Header("Lift Prefabs")]
         [SerializeField] private GameObject _turnPrefab;    // SM_Prop_Lift_Turn_01
@@ -85,7 +89,7 @@ namespace SkiResortTycoon.UnityBridge
             // Attach chair mover component
             var mover = inst.Root.GetComponent<LiftChairMover>();
             if (mover == null) mover = inst.Root.AddComponent<LiftChairMover>();
-            mover.Initialise(inst, basePos, topPos, _chairUpX, _chairDownX, _chairY);
+            mover.Initialise(inst, basePos, topPos, _chairUpX, _chairDownX, _chairY, _simulationRunner);
 
             // Attach selectable structure component for management
             var selectable = inst.Root.GetComponent<SelectableStructure>();

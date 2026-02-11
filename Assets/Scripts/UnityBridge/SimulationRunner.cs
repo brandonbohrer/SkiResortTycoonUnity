@@ -24,8 +24,9 @@ namespace SkiResortTycoon.UnityBridge
         
         void Awake()
         {
-            // Initialize the simulation with a time speed of 10 minutes per second
-            _sim = new Simulation(timeSpeedMinutesPerSecond: 10f);
+            // Initialize the simulation with new time speed
+            // At Speed1x: 1 day = 6 minutes (1.333 game minutes per real second)
+            _sim = new Simulation(timeSpeedMinutesPerSecond: 1.333f);
             
             Debug.Log($"Simulation started. Day {_sim.State.DayIndex}, Money: ${_sim.State.Money}");
         }

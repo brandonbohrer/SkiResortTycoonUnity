@@ -10,10 +10,12 @@ namespace SkiResortTycoon.Core
         private float _speedMultiplier = 1f;
         
         // Common speed presets
+        // Speed 1: 1 day = 6 minutes
+        // Speed 2: 1 day = 3 minutes (2x)
+        // Speed 3: 1 day = 30 seconds (12x)
         public const float Speed1x = 1f;
         public const float Speed2x = 2f;
-        public const float Speed5x = 5f;
-        public const float Speed10x = 10f;
+        public const float Speed3x = 12f;
         
         public bool IsPaused
         {

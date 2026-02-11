@@ -18,8 +18,7 @@ namespace SkiResortTycoon.UI
         [SerializeField] private Button _pauseButton;
         [SerializeField] private Button _speed1xButton;
         [SerializeField] private Button _speed2xButton;
-        [SerializeField] private Button _speed5xButton;
-        [SerializeField] private Button _speed10xButton;
+        [SerializeField] private Button _speed3xButton;
         [SerializeField] private TextMeshProUGUI _pauseButtonText;
         
         private TimeController _timeController;
@@ -48,14 +47,9 @@ namespace SkiResortTycoon.UI
                 _speed2xButton.onClick.AddListener(() => OnSpeedChange(TimeController.Speed2x));
             }
             
-            if (_speed5xButton != null)
+            if (_speed3xButton != null)
             {
-                _speed5xButton.onClick.AddListener(() => OnSpeedChange(TimeController.Speed5x));
-            }
-            
-            if (_speed10xButton != null)
-            {
-                _speed10xButton.onClick.AddListener(() => OnSpeedChange(TimeController.Speed10x));
+                _speed3xButton.onClick.AddListener(() => OnSpeedChange(TimeController.Speed3x));
             }
             
             UpdatePauseButtonText();
@@ -107,8 +101,7 @@ namespace SkiResortTycoon.UI
             // Highlight the active speed button
             HighlightButton(_speed1xButton, currentSpeed == TimeController.Speed1x);
             HighlightButton(_speed2xButton, currentSpeed == TimeController.Speed2x);
-            HighlightButton(_speed5xButton, currentSpeed == TimeController.Speed5x);
-            HighlightButton(_speed10xButton, currentSpeed == TimeController.Speed10x);
+            HighlightButton(_speed3xButton, currentSpeed == TimeController.Speed3x);
         }
         
         private void HighlightButton(Button button, bool isActive)

@@ -115,15 +115,11 @@ namespace SkiResortTycoon.UI
             }
             else if (Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3))
             {
-                SetGameSpeed(TimeController.Speed5x);
+                SetGameSpeed(TimeController.Speed3x);
             }
             else if (Input.GetKeyDown(KeyCode.Alpha4) || Input.GetKeyDown(KeyCode.Keypad4))
             {
-                SetGameSpeed(TimeController.Speed10x);
-            }
-            else if (Input.GetKeyDown(KeyCode.Alpha5) || Input.GetKeyDown(KeyCode.Keypad5))
-            {
-                // 5 = Pause
+                // 4 = Pause
                 if (_timeController != null && !_timeController.IsPaused)
                 {
                     _timeController.Pause();

@@ -12,7 +12,9 @@ namespace SkiResortTycoon.Core
         
         private float _speedMinutesPerSecond;
         
-        public TimeSystem(float speedMinutesPerSecond = 10f)
+        // At Speed1x: 1 day (480 game minutes) = 6 real minutes (360 seconds)
+        // 480 / 360 = 1.333 game minutes per real second
+        public TimeSystem(float speedMinutesPerSecond = 1.333f)
         {
             _speedMinutesPerSecond = speedMinutesPerSecond;
         }

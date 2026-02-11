@@ -23,7 +23,8 @@ namespace SkiResortTycoon.Core
         // Revenue configuration
         public int DollarsPerVisitor { get; set; } = 25;
         
-        public Simulation(float timeSpeedMinutesPerSecond = 10f)
+        // At Speed1x: 1 day = 6 minutes (1.333 game minutes per real second)
+        public Simulation(float timeSpeedMinutesPerSecond = 1.333f)
         {
             _state = new SimulationState();
             _timeSystem = new TimeSystem(timeSpeedMinutesPerSecond);

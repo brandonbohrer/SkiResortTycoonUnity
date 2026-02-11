@@ -30,7 +30,8 @@ namespace SkiResortTycoon.Core
         // Adjacency list: SnapPoint → List of connected SnapPoints
         private Dictionary<int, List<SnapPoint>> _adjacencyList;
         
-        public int SnapRadius { get; set; } = 2;  // Max distance for connections
+        public int SnapRadius { get; set; } = 2;  // Legacy: Max Manhattan tile distance
+        public float SnapRadius3D { get; set; } = 25f;  // Max 3D Euclidean distance for connections (matches spatial queries)
         
         public NetworkGraph(SnapRegistry registry, TerrainData terrain)
         {
@@ -55,10 +56,15 @@ namespace SkiResortTycoon.Core
             // 3. LiftTop → TrailStart connections
             ConnectLiftsToTrails();
             
-            // 4. TrailEnd → LiftBottom connections (back to lifts)
+            // 4. TrailStart → TrailEnd connections (skiing down a trail!)
+            //    CRITICAL: Without this, BFS cannot plan multi-hop routes.
+            //    e.g. "ride lift 1 → ski green → ride lift 2 → ski double-black"
+            ConnectTrailStartsToEnds();
+            
+            // 5. TrailEnd → LiftBottom connections (back to lifts)
             ConnectTrailsToLifts();
             
-            // 5. TrailEnd → TrailStart connections (trail branching)
+            // 6. TrailEnd → TrailStart connections (trail branching)
             ConnectTrailsToTrails();
         }
         
@@ -79,13 +85,16 @@ namespace SkiResortTycoon.Core
             
             int connectionsCreated = 0;
             
+            // Use generous radius for base connections (players expect base lifts to just work)
+            float baseRadius = SnapRadius3D * 1.5f;
+            
             foreach (var basePoint in basePoints)
             {
                 foreach (var liftBottom in liftBottoms)
                 {
-                    int distance = basePoint.DistanceTo(liftBottom);
+                    float distance = basePoint.Distance3D(liftBottom);
                     
-                    if (distance <= SnapRadius)
+                    if (distance <= baseRadius)
                     {
                         AddEdge(basePoint, liftBottom);
                         connectionsCreated++;
@@ -127,10 +136,35 @@ namespace SkiResortTycoon.Core
             {
                 foreach (var trailStart in trailStarts)
                 {
-                    int distance = liftTop.DistanceTo(trailStart);
-                    if (distance <= SnapRadius)
+                    float distance = liftTop.Distance3D(trailStart);
+                    if (distance <= SnapRadius3D)
                     {
                         AddEdge(liftTop, trailStart);
+                        connectionsCreated++;
+                    }
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Connects each trail's start to its end (same owner ID = same trail).
+        /// This represents "skiing down a trail" in the graph, enabling multi-hop
+        /// route planning: Base → Lift1 → TrailStart(A) → TrailEnd(A) → Lift2 → ...
+        /// </summary>
+        private void ConnectTrailStartsToEnds()
+        {
+            var trailStarts = _registry.GetByType(SnapPointType.TrailStart);
+            var trailEnds = _registry.GetByType(SnapPointType.TrailEnd);
+            
+            int connectionsCreated = 0;
+            
+            foreach (var start in trailStarts)
+            {
+                foreach (var end in trailEnds)
+                {
+                    if (start.OwnerId == end.OwnerId)
+                    {
+                        AddEdge(start, end);
                         connectionsCreated++;
                     }
                 }
@@ -148,8 +182,8 @@ namespace SkiResortTycoon.Core
             {
                 foreach (var liftBottom in liftBottoms)
                 {
-                    int distance = trailEnd.DistanceTo(liftBottom);
-                    if (distance <= SnapRadius)
+                    float distance = trailEnd.Distance3D(liftBottom);
+                    if (distance <= SnapRadius3D)
                     {
                         AddEdge(trailEnd, liftBottom);
                         connectionsCreated++;
@@ -173,8 +207,8 @@ namespace SkiResortTycoon.Core
                     if (trailEnd.OwnerId == trailStart.OwnerId)
                         continue;
                     
-                    int distance = trailEnd.DistanceTo(trailStart);
-                    if (distance <= SnapRadius)
+                    float distance = trailEnd.Distance3D(trailStart);
+                    if (distance <= SnapRadius3D)
                     {
                         AddEdge(trailEnd, trailStart);
                         connectionsCreated++;

@@ -22,6 +22,13 @@ namespace SkiResortTycoon.Core
         // Hard caps: what difficulties each skill level is ALLOWED to ski
         private Dictionary<SkillLevel, HashSet<TrailDifficulty>> _allowedDifficulties;
         
+        // ── Runtime-tunable parameters (set by SkierAITuning) ──
+        public float TransitFloorBase { get; set; } = 0.15f;
+        public float TransitFloorGapBonus { get; set; } = 0.03f;
+        public float TransitFloorStretch { get; set; } = 0.08f;
+        public float DownstreamBonusMultiplier { get; set; } = 0.6f;
+        public float DeadEndWeight { get; set; } = 0.02f;
+        
         public SkierDistribution()
         {
             InitializeDefaultPreferences();
@@ -198,19 +205,19 @@ namespace SkiResortTycoon.Core
             
             // Transit tolerance: trails at or below your skill level are easy to cruise through.
             // An expert doesn't love a green, but they'll happily cruise it to reach better terrain.
+            // Higher transit floors = more willingness to take connector trails.
             int skillLevel = (int)skill;
             int diffLevel = (int)difficulty;
             
             float transitFloor = 0f;
             if (diffLevel <= skillLevel)
             {
-                // Trail is at or below skill level - easy, low-effort transit
-                transitFloor = 0.12f;
+                int gap = skillLevel - diffLevel;
+                transitFloor = TransitFloorBase + gap * TransitFloorGapBonus;
             }
             else if (diffLevel == skillLevel + 1)
             {
-                // Trail is one step above skill level - manageable stretch
-                transitFloor = 0.05f;
+                transitFloor = TransitFloorStretch;
             }
             
             float weight = Math.Max(basePref, transitFloor);
@@ -220,21 +227,14 @@ namespace SkiResortTycoon.Core
             {
                 if (downstreamBestPreference > 0.01f)
                 {
-                    // Trail leads to reachable terrain for this skier
-                    if (downstreamBestPreference > 0.2f)
-                    {
-                        // Good terrain ahead - add downstream bonus
-                        float downstreamBonus = downstreamBestPreference * 0.5f;
-                        weight = Math.Max(weight, downstreamBonus);
-                    }
-                    // Moderate terrain ahead - keep base weight (no bonus, no penalty)
+                    // ADDITIVE bonus: weight = base + downstream contribution.
+                    float downstreamBonus = downstreamBestPreference * DownstreamBonusMultiplier;
+                    weight += downstreamBonus;
                 }
                 else
                 {
-                    // DEAD END: no allowed trails reachable for this skier after this trail.
-                    // A green trail into a double-black-only area is a dead end for beginners.
-                    // The trail itself might be fun, but getting stuck afterwards isn't worth it.
-                    weight = basePref * 0.4f;
+                    // DEAD END: no safe exit for this skier
+                    weight = DeadEndWeight;
                 }
             }
             // downstreamBestPreference == -1: not computed, keep base weight unchanged

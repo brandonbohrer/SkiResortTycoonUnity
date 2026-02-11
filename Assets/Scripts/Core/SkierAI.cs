@@ -18,6 +18,9 @@ namespace SkiResortTycoon.Core
         private List<LiftData> _allLifts;
         private Random _random;
         
+        // Tunable from SkierAITuning at runtime
+        public float PreferredDifficultyBoost { get; set; } = 1.5f;
+        
         // Satisfaction impact values
         public static class SatisfactionModifiers
         {
@@ -85,6 +88,10 @@ namespace SkiResortTycoon.Core
         
         /// <summary>
         /// Chooses a destination trail based on skier preferences and skill.
+        /// Strongly prefers trails matching the skier's preferred difficulty.
+        /// Only picks reachable trails (those with a valid BFS path from current position).
+        /// This ensures experts pick challenging destinations worth traversing to,
+        /// and beginners don't pick trails they can't safely reach.
         /// </summary>
         public TrailData ChooseDestinationTrail(Skier skier)
         {
@@ -96,7 +103,7 @@ namespace SkiResortTycoon.Core
             if (allowedTrails.Count == 0)
                 return null;
             
-            // Build weighted list based on preferences
+            // Build weighted list based on preferences, prioritizing strongly-preferred trails
             List<(TrailData trail, float weight)> weightedTrails = new List<(TrailData, float)>();
             float totalWeight = 0f;
             
@@ -104,8 +111,12 @@ namespace SkiResortTycoon.Core
             {
                 float weight = _distribution.GetPreference(skier.Skill, trail.Difficulty);
                 
-                // Slight penalty for trails already skied (encourage variety)
-                // Future enhancement: track per-skier trail history
+                // Boost weight for strongly preferred trails (makes experts target blacks/doubles,
+                // not randomly pick greens they'll have to ski through anyway)
+                if (weight >= 0.4f)
+                {
+                    weight *= PreferredDifficultyBoost;
+                }
                 
                 if (weight > 0)
                 {
@@ -117,21 +128,37 @@ namespace SkiResortTycoon.Core
             if (weightedTrails.Count == 0)
                 return null;
             
-            // Weighted random selection
-            float roll = (float)_random.NextDouble() * totalWeight;
-            float cumulative = 0f;
-            
-            foreach (var (trail, weight) in weightedTrails)
+            // Try up to 3 picks: pick a destination and verify it's reachable
+            // This prevents picking trails with no valid path (wastes a goal)
+            for (int attempt = 0; attempt < 3; attempt++)
             {
-                cumulative += weight;
-                if (roll <= cumulative)
+                float roll = (float)_random.NextDouble() * totalWeight;
+                float cumulative = 0f;
+                TrailData candidate = null;
+                
+                foreach (var (trail, weight) in weightedTrails)
                 {
-                    return trail;
+                    cumulative += weight;
+                    if (roll <= cumulative)
+                    {
+                        candidate = trail;
+                        break;
+                    }
+                }
+                
+                if (candidate == null)
+                    candidate = weightedTrails[weightedTrails.Count - 1].trail;
+                
+                // Verify reachability (BFS check)
+                var path = PlanRouteToTrail(skier, candidate);
+                if (path != null && path.Count > 0)
+                {
+                    return candidate;
                 }
             }
             
-            // Fallback
-            return weightedTrails[weightedTrails.Count - 1].trail;
+            // Fallback: return any trail (path planning will handle it)
+            return weightedTrails[_random.Next(weightedTrails.Count)].trail;
         }
         
         /// <summary>
@@ -160,8 +187,8 @@ namespace SkiResortTycoon.Core
             
             SnapPoint targetPoint = trailStarts[0];
             
-            // BFS to find path
-            var path = FindPathBFS(startPoint.Value, targetPoint);
+            // BFS to find path (skill-aware: won't route through trails skier can't ski)
+            var path = FindPathBFS(startPoint.Value, targetPoint, skier.Skill);
             
             if (path == null)
             {
@@ -215,11 +242,12 @@ namespace SkiResortTycoon.Core
         
         /// <summary>
         /// BFS pathfinding through the network graph.
+        /// When skillFilter is provided, the BFS will NOT traverse TrailStart→TrailEnd
+        /// edges for trails the skier isn't allowed to ski. This prevents routing
+        /// beginners through black diamond trails to reach a destination.
         /// </summary>
-        private List<SnapPoint> FindPathBFS(SnapPoint start, SnapPoint target)
+        private List<SnapPoint> FindPathBFS(SnapPoint start, SnapPoint target, SkillLevel? skillFilter = null)
         {
-            // Note: start and target are value types, so they're always valid
-            
             var visited = new HashSet<int>();
             var cameFrom = new Dictionary<int, SnapPoint?>();
             var queue = new Queue<SnapPoint>();
@@ -229,7 +257,7 @@ namespace SkiResortTycoon.Core
             
             queue.Enqueue(start);
             visited.Add(startHash);
-            cameFrom[startHash] = null; // Start has no predecessor
+            cameFrom[startHash] = null;
             
             while (queue.Count > 0)
             {
@@ -238,7 +266,6 @@ namespace SkiResortTycoon.Core
                 
                 if (currentHash == targetHash)
                 {
-                    // Found target, reconstruct path
                     return ReconstructPath(cameFrom, target);
                 }
                 
@@ -246,16 +273,29 @@ namespace SkiResortTycoon.Core
                 foreach (var neighbor in neighbors)
                 {
                     int neighborHash = GetSnapPointHash(neighbor);
-                    if (!visited.Contains(neighborHash))
+                    if (visited.Contains(neighborHash)) continue;
+                    
+                    // Skill-aware filtering: if we're at a TrailStart and the neighbor
+                    // is a TrailEnd (i.e., traversing a trail), check if the skier can
+                    // actually ski this trail's difficulty.
+                    if (skillFilter.HasValue && current.Type == SnapPointType.TrailStart 
+                        && neighbor.Type == SnapPointType.TrailEnd
+                        && current.OwnerId == neighbor.OwnerId)
                     {
-                        visited.Add(neighborHash);
-                        cameFrom[neighborHash] = current;
-                        queue.Enqueue(neighbor);
+                        // Look up the trail difficulty
+                        var trail = _allTrails.FirstOrDefault(t => t.TrailId == current.OwnerId);
+                        if (trail != null && !_distribution.IsAllowed(skillFilter.Value, trail.Difficulty))
+                        {
+                            continue; // Skip: this skier can't ski this trail
+                        }
                     }
+                    
+                    visited.Add(neighborHash);
+                    cameFrom[neighborHash] = current;
+                    queue.Enqueue(neighbor);
                 }
             }
             
-            // No path found
             return null;
         }
         

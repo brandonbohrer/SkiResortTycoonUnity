@@ -423,8 +423,185 @@ namespace SkiResortTycoon.UI
             Color statusColor = lodge.IsFull ? new Color(1f, 0.3f, 0.3f) : new Color(0.3f, 1f, 0.3f);
             AddStatRow("Status", lodge.IsFull ? "Full" : "Open", statusColor);
             
-            // TODO: Add more lodge stats when tracking is implemented
-            AddStatRow("Visitors Today", "—"); // Placeholder
+            // Amenities
+            string amenities = "";
+            if (lodge.HasBathroom) amenities += "Bathroom  ";
+            if (lodge.HasFood) amenities += "Food  ";
+            if (lodge.HasRest) amenities += "Rest";
+            AddStatRow("Amenities", amenities.Trim());
+            
+            // Revenue and visits
+            var pricing = lodge.Pricing;
+            AddStatRow("Total Visits", $"{pricing.TotalVisits}");
+            AddStatRow("Total Revenue", $"${pricing.TotalRevenue:F0}");
+            
+            // Pricing section header
+            AddStatRow("── Pricing ──", "");
+            
+            // Current prices with baseline comparison
+            AddPriceRow("Bathroom", pricing.BathroomPrice, LodgePricing.BathroomBaseline, 
+                LodgePricing.MinPrice, LodgePricing.MaxBathroomPrice,
+                (val) => pricing.BathroomPrice = val);
+            AddPriceRow("Food", pricing.FoodPrice, LodgePricing.FoodBaseline, 
+                LodgePricing.MinPrice, LodgePricing.MaxFoodPrice,
+                (val) => pricing.FoodPrice = val);
+        }
+        
+        /// <summary>
+        /// Creates a price row with a slider for adjusting lodge prices.
+        /// </summary>
+        private void AddPriceRow(string label, float currentPrice, float baseline, 
+            float minPrice, float maxPrice, System.Action<float> onValueChanged)
+        {
+            if (_statsContainer == null) return;
+            
+            var row = new GameObject($"PriceRow_{label}");
+            row.transform.SetParent(_statsContainer, false);
+            
+            var layout = row.AddComponent<HorizontalLayoutGroup>();
+            layout.spacing = 8f;
+            layout.childAlignment = TextAnchor.MiddleLeft;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+            layout.padding = new RectOffset(4, 4, 2, 2);
+            
+            var rowLayoutElem = row.AddComponent<LayoutElement>();
+            rowLayoutElem.minHeight = 34;
+            rowLayoutElem.preferredHeight = 34;
+            
+            var font = TMPro.TMP_Settings.defaultFontAsset;
+            
+            // Label
+            var labelObj = new GameObject("Label");
+            labelObj.transform.SetParent(row.transform, false);
+            var labelTmp = labelObj.AddComponent<TextMeshProUGUI>();
+            if (font != null) labelTmp.font = font;
+            labelTmp.text = label;
+            labelTmp.fontSize = 13;
+            labelTmp.color = new Color(0.85f, 0.85f, 0.85f);
+            labelTmp.alignment = TextAlignmentOptions.Left;
+            var labelLayout = labelObj.AddComponent<LayoutElement>();
+            labelLayout.preferredWidth = 70;
+            labelLayout.flexibleWidth = 0;
+            
+            // Slider
+            var sliderObj = CreateSlider(row.transform, minPrice, maxPrice, currentPrice);
+            var slider = sliderObj.GetComponent<Slider>();
+            var sliderLayout = sliderObj.AddComponent<LayoutElement>();
+            sliderLayout.flexibleWidth = 1;
+            sliderLayout.minHeight = 20;
+            
+            // Value display
+            var valueObj = new GameObject("Value");
+            valueObj.transform.SetParent(row.transform, false);
+            var valueTmp = valueObj.AddComponent<TextMeshProUGUI>();
+            if (font != null) valueTmp.font = font;
+            valueTmp.fontSize = 13;
+            valueTmp.fontStyle = FontStyles.Bold;
+            valueTmp.alignment = TextAlignmentOptions.Right;
+            valueTmp.enableWordWrapping = false;
+            var valueLayout = valueObj.AddComponent<LayoutElement>();
+            valueLayout.preferredWidth = 50;
+            valueLayout.flexibleWidth = 0;
+            
+            // Color based on price vs baseline
+            UpdatePriceColor(valueTmp, currentPrice, baseline);
+            valueTmp.text = $"${currentPrice:F0}";
+            
+            // Wire up slider change
+            slider.onValueChanged.AddListener((val) =>
+            {
+                float rounded = Mathf.Round(val);
+                onValueChanged(rounded);
+                valueTmp.text = $"${rounded:F0}";
+                UpdatePriceColor(valueTmp, rounded, baseline);
+            });
+        }
+        
+        private void UpdatePriceColor(TextMeshProUGUI text, float price, float baseline)
+        {
+            if (baseline <= 0f)
+            {
+                text.color = Color.white;
+                return;
+            }
+            
+            float ratio = price / baseline;
+            if (ratio <= 1f)
+                text.color = new Color(0.3f, 1f, 0.3f); // Green: at or below baseline
+            else if (ratio <= 2f)
+                text.color = new Color(1f, 1f, 0.3f); // Yellow: up to 2x
+            else
+                text.color = new Color(1f, 0.3f, 0.3f); // Red: above 2x
+        }
+        
+        private GameObject CreateSlider(Transform parent, float min, float max, float current)
+        {
+            var sliderObj = new GameObject("Slider");
+            sliderObj.transform.SetParent(parent, false);
+            
+            var sliderRect = sliderObj.AddComponent<RectTransform>();
+            sliderRect.sizeDelta = new Vector2(100, 20);
+            
+            // Background
+            var bgObj = new GameObject("Background");
+            bgObj.transform.SetParent(sliderObj.transform, false);
+            var bgRect = bgObj.AddComponent<RectTransform>();
+            bgRect.anchorMin = new Vector2(0, 0.25f);
+            bgRect.anchorMax = new Vector2(1, 0.75f);
+            bgRect.offsetMin = Vector2.zero;
+            bgRect.offsetMax = Vector2.zero;
+            var bgImg = bgObj.AddComponent<Image>();
+            bgImg.color = new Color(0.2f, 0.2f, 0.2f);
+            
+            // Fill area
+            var fillAreaObj = new GameObject("Fill Area");
+            fillAreaObj.transform.SetParent(sliderObj.transform, false);
+            var fillAreaRect = fillAreaObj.AddComponent<RectTransform>();
+            fillAreaRect.anchorMin = new Vector2(0, 0.25f);
+            fillAreaRect.anchorMax = new Vector2(1, 0.75f);
+            fillAreaRect.offsetMin = Vector2.zero;
+            fillAreaRect.offsetMax = Vector2.zero;
+            
+            var fillObj = new GameObject("Fill");
+            fillObj.transform.SetParent(fillAreaObj.transform, false);
+            var fillRect = fillObj.AddComponent<RectTransform>();
+            fillRect.anchorMin = Vector2.zero;
+            fillRect.anchorMax = Vector2.one;
+            fillRect.offsetMin = Vector2.zero;
+            fillRect.offsetMax = Vector2.zero;
+            var fillImg = fillObj.AddComponent<Image>();
+            fillImg.color = new Color(0f, 0.6f, 0.8f);
+            
+            // Handle slide area
+            var handleAreaObj = new GameObject("Handle Slide Area");
+            handleAreaObj.transform.SetParent(sliderObj.transform, false);
+            var handleAreaRect = handleAreaObj.AddComponent<RectTransform>();
+            handleAreaRect.anchorMin = Vector2.zero;
+            handleAreaRect.anchorMax = Vector2.one;
+            handleAreaRect.offsetMin = new Vector2(5, 0);
+            handleAreaRect.offsetMax = new Vector2(-5, 0);
+            
+            var handleObj = new GameObject("Handle");
+            handleObj.transform.SetParent(handleAreaObj.transform, false);
+            var handleRect = handleObj.AddComponent<RectTransform>();
+            handleRect.sizeDelta = new Vector2(14, 14);
+            var handleImg = handleObj.AddComponent<Image>();
+            handleImg.color = Color.white;
+            
+            // Setup slider component
+            var slider = sliderObj.AddComponent<Slider>();
+            slider.targetGraphic = handleImg;
+            slider.fillRect = fillRect;
+            slider.handleRect = handleRect;
+            slider.minValue = min;
+            slider.maxValue = max;
+            slider.value = current;
+            slider.wholeNumbers = true;
+            
+            return sliderObj;
         }
         
         private void OnRenameClicked()

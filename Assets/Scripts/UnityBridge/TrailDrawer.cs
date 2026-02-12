@@ -119,18 +119,31 @@ namespace SkiResortTycoon.UnityBridge
         
         private void StartDrawing(Vector3 startPosition)
         {
-            // TODO: Re-enable magnetic cursor after fixing trail building
-            // For now, use raw position to ensure trails work
+            // Use magnetic cursor to snap start point to lodge entrances or lift tops
+            Vector3 snappedStart = startPosition;
+            if (_magneticCursor != null)
+            {
+                SnapPointType[] validTypes = new[]
+                {
+                    SnapPointType.BuildingEntrance,
+                    SnapPointType.LiftTop,
+                    SnapPointType.TrailEnd
+                };
+                _magneticCursor.Update(startPosition, validTypes);
+                if (_magneticCursor.IsSnapped)
+                    snappedStart = _magneticCursor.SnappedPosition;
+            }
+            
             _isDrawing = true;
             _currentTrail = _trailSystem.CreateTrail();
-            _currentTrail.AddWorldPoint(MountainManager.ToVector3f(startPosition));
+            _currentTrail.AddWorldPoint(MountainManager.ToVector3f(snappedStart));
             
             // Also add legacy tile coord for backwards compatibility
-            int tileX = Mathf.RoundToInt(startPosition.x / _tileSize);
-            int tileY = Mathf.RoundToInt(startPosition.y / _tileSize);
+            int tileX = Mathf.RoundToInt(snappedStart.x / _tileSize);
+            int tileY = Mathf.RoundToInt(snappedStart.y / _tileSize);
             _currentTrail.AddPoint(new TileCoord(tileX, tileY));
             
-            _lastAddedWorldPoint = startPosition;
+            _lastAddedWorldPoint = snappedStart;
         }
         
         private void ContinueDrawing(Vector3 position)
@@ -158,6 +171,29 @@ namespace SkiResortTycoon.UnityBridge
             if (_currentTrail == null) return;
             
             _isDrawing = false;
+            
+            // Snap end point to lodge entrances, lift bottoms, or base spawn
+            if (_magneticCursor != null && _currentTrail.WorldPathPoints.Count >= 2)
+            {
+                Vector3f lastPoint = _currentTrail.WorldPathPoints[_currentTrail.WorldPathPoints.Count - 1];
+                Vector3 lastPointUnity = MountainManager.ToUnityVector3(lastPoint);
+                
+                SnapPointType[] validTypes = new[]
+                {
+                    SnapPointType.BuildingEntrance,
+                    SnapPointType.LiftBottom,
+                    SnapPointType.BaseSpawn,
+                    SnapPointType.TrailStart
+                };
+                _magneticCursor.Update(lastPointUnity, validTypes);
+                
+                if (_magneticCursor.IsSnapped)
+                {
+                    // Replace last point with snapped position
+                    Vector3f snappedEnd = MountainManager.ToVector3f(_magneticCursor.SnappedPosition);
+                    _currentTrail.WorldPathPoints[_currentTrail.WorldPathPoints.Count - 1] = snappedEnd;
+                }
+            }
             
             // Validate trail
             bool isValid = _trailSystem.ValidateTrail(_currentTrail);

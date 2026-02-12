@@ -158,12 +158,13 @@ namespace SkiResortTycoon.UnityBridge
 
             Vector3 targetPos = _smoothedPosition;
 
-            // 0 = WalkingToLift, 1 = RidingLift, 2 = SkiingTrail
+            // 0 = WalkingToLift, 1 = RidingLift, 2 = SkiingTrail, 3 = WalkingToLodge, 5 = ReturningToBase
             switch (phase)
             {
                 case 0: targetPos = TickWalkToLift(dt);   break;
                 case 1: targetPos = TickRideLift(dt);     break;
                 case 2: targetPos = TickSkiTrail(dt);     break;
+                case 3: targetPos = TickWalkToLift(dt);   break; // WalkingToLodge uses same walk logic
             }
 
             // ── Anti-teleport: cap per-frame movement ──────────────

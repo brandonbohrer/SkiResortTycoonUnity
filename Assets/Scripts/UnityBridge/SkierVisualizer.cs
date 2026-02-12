@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using SkiResortTycoon.Core;
+using SkiResortTycoon.Core.SatisfactionFactors;
 using SkiResortTycoon.ScriptableObjects;
 
 namespace SkiResortTycoon.UnityBridge
@@ -40,7 +41,7 @@ namespace SkiResortTycoon.UnityBridge
         
         [Header("Lodge Settings")]
         [SerializeField] private float _lodgeCheckRadius = 30f; // How far skiers look for lodges
-        [SerializeField] private float _lodgeVisitChance = 0.15f; // 15% chance to visit lodge after trail
+        [SerializeField] private float _lodgeVisitChance = 0.25f; // 25% chance to visit lodge after trail
 
         [Header("AI Config")]
         [SerializeField] private SkierAIConfig _aiConfig; // Assign a SkierAIConfig ScriptableObject asset
@@ -61,6 +62,10 @@ namespace SkiResortTycoon.UnityBridge
         private NetworkGraph _networkGraph;
         private SkierDistribution _distribution;
         
+        // Satisfaction update timer (update resort satisfaction every 2 seconds)
+        private float _satisfactionUpdateTimer = 0f;
+        private const float SATISFACTION_UPDATE_INTERVAL = 2f;
+        
         // Downstream value cache (cleared when mountain topology changes)
         private Dictionary<(SkillLevel, int), float> _downstreamCache = new Dictionary<(SkillLevel, int), float>();
         
@@ -72,6 +77,26 @@ namespace SkiResortTycoon.UnityBridge
         /// Number of skiers currently active on the mountain
         /// </summary>
         public int ActiveSkierCount => _activeSkiers?.Count ?? 0;
+
+        /// <summary>
+        /// Updates resort-level satisfaction from the average of all active skiers.
+        /// Called periodically from the update loop.
+        /// </summary>
+        private void UpdateResortSatisfaction()
+        {
+            if (_activeSkiers.Count == 0 || _simRunner?.Sim?.Satisfaction == null)
+                return;
+            
+            // Collect all active Skier objects
+            var skiers = new List<Skier>(_activeSkiers.Count);
+            foreach (var vs in _activeSkiers)
+            {
+                if (vs.Skier != null)
+                    skiers.Add(vs.Skier);
+            }
+            
+            _simRunner.Sim.Satisfaction.UpdateFromActiveSkiers(skiers);
+        }
 
         /// <summary>
         /// Invalidates all active skier goals, forcing them to re-plan on their next
@@ -167,6 +192,25 @@ namespace SkiResortTycoon.UnityBridge
                 TrySpawnSkier();
             }
 
+            // Convert effective delta time to game minutes for needs updates
+            float effectiveGameMinutes = 0f;
+            if (_simRunner.Sim != null && _simRunner.Sim.TimeSystem != null)
+            {
+                effectiveGameMinutes = effectiveDeltaTime * _simRunner.Sim.TimeSystem.SpeedMinutesPerSecond;
+            }
+
+            // Cache base position for returning-to-base proximity checks
+            Vector3 cachedBasePos = Vector3.zero;
+            bool hasBase = false;
+            {
+                var baseSpawns = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
+                if (baseSpawns.Count > 0)
+                {
+                    cachedBasePos = new Vector3(baseSpawns[0].Position.X, baseSpawns[0].Position.Y, baseSpawns[0].Position.Z);
+                    hasBase = true;
+                }
+            }
+
             // Update all active skiers
             for (int i = _activeSkiers.Count - 1; i >= 0; i--)
             {
@@ -178,20 +222,76 @@ namespace SkiResortTycoon.UnityBridge
                     skier.Animator.speed = isPaused ? 0f : speedMultiplier;
                 }
                 
+                // Update skier needs over time (hunger, bladder increase)
+                if (effectiveGameMinutes > 0f)
+                {
+                    skier.Skier.Needs.UpdateNeeds(effectiveGameMinutes);
+                    
+                    // Track walking distance during walk phases
+                    if (skier.Phase == SkierPhase.WalkingToLift || skier.Phase == SkierPhase.WalkingToLodge)
+                    {
+                        float walkDistance = skier.Motion.WalkSpeed * effectiveDeltaTime;
+                        skier.Skier.Needs.AddWalkingDistance(walkDistance);
+                    }
+                }
+                
                 UpdateSkier(skier, effectiveDeltaTime);
+
+                // Safety: if skier is in lodge phase but the lodge lost track of them,
+                // force them out to prevent invisible stuck skiers
+                if (skier.Phase == SkierPhase.InLodge && skier.TargetLodge != null 
+                    && !skier.TargetLodge.ContainsSkier(skier.Skier.SkierId))
+                {
+                    skier.GameObject.SetActive(true);
+                    skier.GameObject.transform.position = skier.TargetLodge.Position;
+                    skier.Motion.Teleport(skier.TargetLodge.Position);
+                    skier.TargetLodge = null;
+                    ChooseNewDestination(skier);
+                }
+
+                // Continuous base proximity check: returning skiers despawn when near base (any phase)
+                if (skier.IsReturningToBase && hasBase && skier.Phase != SkierPhase.InLodge)
+                {
+                    float distToBase = Vector3.Distance(skier.GameObject.transform.position, cachedBasePos);
+                    if (distToBase <= 80f) // Generous radius — if they're in the base area, let them leave
+                    {
+                        if (_enableDebugLogs) Debug.Log($"[Skier {skier.Skier.SkierId}] Near base lodge ({distToBase:F0}m), leaving resort!");
+                        skier.IsFinished = true;
+                    }
+                }
+
+                // Safety timeout: if returning-to-base skier can't reach base in 1 in-game day (480 game minutes), force despawn
+                if (skier.IsReturningToBase && effectiveGameMinutes > 0f)
+                {
+                    skier.ReturningToBaseTimer += effectiveGameMinutes; // Track in game minutes
+                    if (skier.ReturningToBaseTimer > 480f) // 1 in-game day = 480 game minutes
+                    {
+                        if (_enableDebugLogs) Debug.Log($"[Skier {skier.Skier.SkierId}] Returning-to-base timeout (1 day) — force despawn");
+                        skier.IsFinished = true;
+                    }
+                }
 
                 // Remove if finished
                 if (skier.IsFinished)
                 {
-                    // If skier was inside a lodge, free the slot
+                    // If skier was inside a lodge, free the slot and make visible before destroying
                     if (skier.TargetLodge != null)
                     {
                         skier.TargetLodge.ForceExitSkier(skier.Skier.SkierId);
                         skier.TargetLodge = null;
                     }
+                    skier.GameObject.SetActive(true); // Ensure visible before destroy
                     Destroy(skier.GameObject);
                     _activeSkiers.RemoveAt(i);
                 }
+            }
+            
+            // Periodically update resort satisfaction from active skiers
+            _satisfactionUpdateTimer += effectiveDeltaTime;
+            if (_satisfactionUpdateTimer >= SATISFACTION_UPDATE_INTERVAL && _simRunner.Sim != null)
+            {
+                _satisfactionUpdateTimer = 0f;
+                UpdateResortSatisfaction();
             }
         }
 
@@ -419,6 +519,12 @@ namespace SkiResortTycoon.UnityBridge
             skier.CurrentState = SkierState.WalkingToLift;
             skier.CurrentLiftId = startLift.LiftId;
             
+            // Register satisfaction factors
+            skier.SatisfactionTracker.AddFactor(new NeedsFulfillmentFactor());
+            skier.SatisfactionTracker.AddFactor(new LodgePricingFactor());
+            skier.SatisfactionTracker.AddFactor(new TraversalFrictionFactor());
+            skier.SatisfactionTracker.AddFactor(new ReturnToBaseFactor());
+            
             // Log spawning info
             if (_enableDebugLogs) Debug.Log($"[Skier {skier.SkierId}] {skier.Skill} spawned → Lift {startLift.LiftId} → Trail {targetTrail.TrailId} ({targetTrail.Difficulty})");
 
@@ -528,9 +634,9 @@ namespace SkiResortTycoon.UnityBridge
             // Fire traffic event: skier exited lift at top
             if (Traffic != null) Traffic.FireLiftExited(vs.Skier.SkierId, vs.CurrentLift.LiftId);
             
-            // Re-plan goal at lift top if enabled and goal is stale
+            // Re-plan goal at lift top if enabled and goal is stale (skip if returning to base)
             bool replanAtTop = Config != null ? Config.replanAtLiftTop : true;
-            if (replanAtTop && (vs.Skier.CurrentGoal == null || vs.Skier.CurrentGoal.IsComplete || vs.Skier.CurrentGoal.GetCurrentStep() == null))
+            if (!vs.IsReturningToBase && replanAtTop && (vs.Skier.CurrentGoal == null || vs.Skier.CurrentGoal.IsComplete || vs.Skier.CurrentGoal.GetCurrentStep() == null))
             {
                 var newGoal = _skierAI.PlanNewGoal(vs.Skier);
                 vs.Skier.CurrentGoal = newGoal;
@@ -575,33 +681,51 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
             
-            // ── UNIFIED DECISION ENGINE: Trail selection via softmax ──
-            var ctx = BuildContext(vs);
-            
-            chosenTrail = SkierDecisionEngine.ChooseTrail(
-                candidateTrails,
-                ctx,
-                Config,
-                Traffic?.State,
-                _distribution,
-                ComputeTrailDownstreamValue
-            );
+            // Returning skiers strongly prefer trails that end near the base
+            if (vs.IsReturningToBase)
+            {
+                var baseTrails = candidateTrails.FindAll(t => _liftBuilder.Connectivity.Connections.IsTrailConnectedToBase(t.TrailId));
+                if (baseTrails.Count > 0)
+                {
+                    chosenTrail = baseTrails[Random.Range(0, baseTrails.Count)];
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] [returning] Chose base-bound trail {chosenTrail.TrailId}");
+                }
+            }
             
             if (chosenTrail == null)
-                chosenTrail = candidateTrails[Random.Range(0, candidateTrails.Count)];
+            {
+                // ── UNIFIED DECISION ENGINE: Trail selection via softmax ──
+                var ctx = BuildContext(vs);
+                
+                chosenTrail = SkierDecisionEngine.ChooseTrail(
+                    candidateTrails,
+                    ctx,
+                    Config,
+                    Traffic?.State,
+                    _distribution,
+                    ComputeTrailDownstreamValue
+                );
+                
+                if (chosenTrail == null)
+                    chosenTrail = candidateTrails[Random.Range(0, candidateTrails.Count)];
+            }
             
             // IMMEDIATELY record intent so the next skier deciding this frame sees updated state
             if (Traffic != null) Traffic.FireTrailIntended(vs.Skier.SkierId, chosenTrail.TrailId);
             
             // Advance goal if we picked the goal's trail
-            int goalTrailId = ctx.GoalTrailId;
-            if (chosenTrail.TrailId == goalTrailId && vs.Skier.CurrentGoal != null)
+            if (!vs.IsReturningToBase && vs.Skier.CurrentGoal != null)
             {
-                vs.Skier.CurrentGoal.AdvanceToNextStep();
-            }
-            else if (goalTrailId >= 0)
-            {
-                vs.Skier.CurrentGoal = null;
+                var goalCtx = BuildContext(vs);
+                int goalTrailId = goalCtx.GoalTrailId;
+                if (chosenTrail.TrailId == goalTrailId)
+                {
+                    vs.Skier.CurrentGoal.AdvanceToNextStep();
+                }
+                else if (goalTrailId >= 0)
+                {
+                    vs.Skier.CurrentGoal = null;
+                }
             }
 
             vs.CurrentTrail = chosenTrail;
@@ -653,6 +777,24 @@ namespace SkiResortTycoon.UnityBridge
         {
             Vector3 pos = vs.GameObject.transform.position;
             float exitRadius = Config != null ? Config.junctionDetectionRadius : 15f;
+            
+            // ── Check for pending lodge visit — divert if close ──
+            if (vs.PendingLodgeVisit != null)
+            {
+                float distToLodge = Vector3.Distance(pos, vs.PendingLodgeVisit.Position);
+                if (distToLodge <= 30f)
+                {
+                    // Close enough to divert! Fire trail completed and walk the short distance
+                    if (Traffic != null) Traffic.FireTrailCompleted(vs.Skier.SkierId, vs.CurrentTrail.TrailId);
+                    
+                    vs.TargetLodge = vs.PendingLodgeVisit;
+                    vs.PendingLodgeVisit = null;
+                    vs.Phase = SkierPhase.WalkingToLodge;
+                    vs.Motion.SetWalkTarget(vs.TargetLodge.Position);
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Passing lodge — diverting! ({distToLodge:F0}m)");
+                    return;
+                }
+            }
             
             // ── Check for nearby LIFT BOTTOMS ──
             var allLifts = _liftBuilder.LiftSystem.GetAllLifts();
@@ -894,52 +1036,117 @@ namespace SkiResortTycoon.UnityBridge
             vs.Skier.CurrentState = SkierState.SkiingTrail;
             vs.Skier.CurrentTrailId = vs.CurrentTrail.TrailId;
 
-            // PRIORITY 1: Check for nearby lodges (random chance)
-            float lodgeChance = Config != null ? Config.lodgeVisitChance : _lodgeVisitChance;
-            if (Random.value < lodgeChance)
+            // ── PENDING LODGE: If skier has a queued lodge visit and is now close, divert ──
+            if (vs.PendingLodgeVisit != null)
             {
-                LodgeManager lodgeManager = LodgeManager.Instance;
-                if (lodgeManager != null)
+                float distToPending = Vector3.Distance(trailEndPos, vs.PendingLodgeVisit.Position);
+                if (distToPending <= 30f)
                 {
-                    var nearbyLodges = lodgeManager.FindLodgesInRadius(trailEndPos, _lodgeCheckRadius);
-                    var availableLodges = nearbyLodges.FindAll(l => !l.IsFull);
-                    
-                    if (availableLodges.Count > 0)
+                    vs.TargetLodge = vs.PendingLodgeVisit;
+                    vs.PendingLodgeVisit = null;
+                    vs.Phase = SkierPhase.WalkingToLodge;
+                    vs.Motion.SetWalkTarget(vs.TargetLodge.Position);
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Reached pending lodge at trail end ({distToPending:F0}m)");
+                    return;
+                }
+            }
+
+            // ── DONE CHECK: Always check after every trail ────────────────
+            // If the skier is done, check if near base to despawn, otherwise
+            // flag them as returning so they ski down toward the base lodge.
+            if (!vs.Skier.WantsToKeepSkiing() || vs.IsReturningToBase)
+            {
+                // Check if near the base lodge — if so, despawn
+                var baseSpawns = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
+                if (baseSpawns.Count > 0)
+                {
+                    Vector3 basePos = new Vector3(baseSpawns[0].Position.X, baseSpawns[0].Position.Y, baseSpawns[0].Position.Z);
+                    if (Vector3.Distance(trailEndPos, basePos) <= 80f)
                     {
-                        LodgeFacility targetLodge = availableLodges[Random.Range(0, availableLodges.Count)];
-                        vs.TargetLodge = targetLodge;
-                        vs.Phase = SkierPhase.WalkingToLodge;
-                        vs.Motion.SetWalkTarget(targetLodge.Position);
-                        
-                        if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Heading to lodge at {targetLodge.Position}");
+                        if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Reached base lodge, leaving resort! (runs: {vs.Skier.RunsCompleted}/{vs.Skier.DesiredRuns})");
+                        vs.IsFinished = true;
                         return;
+                    }
+                }
+                
+                // Not near base yet — mark as returning and fall through to
+                // the normal lift/trail routing below (skip lodges & replanning)
+                if (!vs.IsReturningToBase)
+                {
+                    vs.IsReturningToBase = true;
+                    vs.PendingLodgeVisit = null; // No more lodge visits when leaving
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Done skiing (runs: {vs.Skier.RunsCompleted}/{vs.Skier.DesiredRuns}), heading for base...");
+                }
+                
+                // Skip lodge visits and goal replanning — go straight to lift/trail routing
+            }
+            else
+            {
+                // ── LODGE VISITS: Only for skiers still actively skiing ──────
+                bool hasUrgentNeed = vs.Skier.Needs.HasUrgentNeed() && 
+                                     vs.Skier.Needs.GetMostUrgentNeed() != "Fatigue"; // Fatigue = keep skiing, just slower
+                float lodgeChance = Config != null ? Config.lodgeVisitChance : _lodgeVisitChance;
+                bool randomVisit = Random.value < lodgeChance;
+                
+                if (hasUrgentNeed || randomVisit)
+                {
+                    LodgeFacility targetLodge = FindBestLodge(trailEndPos);
+                    if (targetLodge != null)
+                    {
+                        float distToLodge = Vector3.Distance(trailEndPos, targetLodge.Position);
+                        string reason = hasUrgentNeed ? $"urgent {vs.Skier.Needs.GetMostUrgentNeed()}" : "random visit";
+                        
+                        if (distToLodge <= 30f)
+                        {
+                            // Close enough — walk directly (short distance, like crossing from trail to building)
+                            vs.TargetLodge = targetLodge;
+                            vs.Phase = SkierPhase.WalkingToLodge;
+                            vs.Motion.SetWalkTarget(targetLodge.Position);
+                            if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Walking to nearby lodge ({reason}, {distToLodge:F0}m)");
+                            return;
+                        }
+                        else
+                        {
+                            // Lodge is far away — set as pending and continue via lifts/trails
+                            // The skier will divert when they ski close to the lodge
+                            vs.PendingLodgeVisit = targetLodge;
+                            if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Lodge queued as pending ({reason}, {distToLodge:F0}m away) — will ski there");
+                            // Fall through to normal lift/trail routing
+                        }
+                    }
+                    else if (hasUrgentNeed)
+                    {
+                        // Needed a lodge but none available -- record unfulfilled need
+                        vs.Skier.Needs.RecordUnfulfilledNeed();
                     }
                 }
             }
 
-            // ── GOAL RE-PLANNING: The heart of mountain traversal ──────────
+            // ── GOAL RE-PLANNING (skip if returning to base) ──────────
             // After every run, re-plan if the goal is stale/complete/null.
             // This makes skiers TRAVERSE the mountain: an expert finishing a green
             // connector will now plan "ride lift X → ski trail Y → ride lift Z →
             // ski that amazing double-black" instead of just picking the nearest lift.
             
-            bool shouldReplan = Config != null ? Config.replanAfterEveryRun : true;
-            bool goalStale = vs.Skier.CurrentGoal == null || vs.Skier.CurrentGoal.IsComplete || vs.Skier.CurrentGoal.GetCurrentStep() == null;
-            
-            if (goalStale || shouldReplan)
+            if (!vs.IsReturningToBase)
             {
-                if (!vs.Skier.WantsToKeepSkiing())
-                {
-                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Done skiing (runs: {vs.Skier.RunsCompleted}/{vs.Skier.DesiredRuns})");
-                    vs.IsFinished = true;
-                    return;
-                }
+                bool shouldReplan = Config != null ? Config.replanAfterEveryRun : true;
+                bool goalStale = vs.Skier.CurrentGoal == null || vs.Skier.CurrentGoal.IsComplete || vs.Skier.CurrentGoal.GetCurrentStep() == null;
                 
-                var newGoal = _skierAI.PlanNewGoal(vs.Skier);
-                vs.Skier.CurrentGoal = newGoal;
-                vs.UseGoalBasedAI = (newGoal != null && newGoal.PlannedPath.Count > 0);
-                if (_enableDebugLogs && newGoal != null) 
-                    Debug.Log($"[Skier {vs.Skier.SkierId}] Re-planned goal after run: {newGoal.PlannedPath.Count} steps → destination trail {newGoal.DestinationTrailId}");
+                if (goalStale || shouldReplan)
+                {
+                    var newGoal = _skierAI.PlanNewGoal(vs.Skier);
+                    vs.Skier.CurrentGoal = newGoal;
+                    vs.UseGoalBasedAI = (newGoal != null && newGoal.PlannedPath.Count > 0);
+                    if (_enableDebugLogs && newGoal != null) 
+                        Debug.Log($"[Skier {vs.Skier.SkierId}] Re-planned goal after run: {newGoal.PlannedPath.Count} steps → destination trail {newGoal.DestinationTrailId}");
+                }
+            }
+            else
+            {
+                // Returning skier: clear goal so they just take the nearest route down
+                vs.Skier.CurrentGoal = null;
+                vs.UseGoalBasedAI = false;
             }
             
             // PRIORITY 2: Follow goal's next lift step
@@ -1062,14 +1269,29 @@ namespace SkiResortTycoon.UnityBridge
 
             if (nextTrails.Count > 0)
             {
-                // Use the decision engine for trail-to-trail choices too
-                var trailCtx = BuildContext(vs);
-                var nextTrail = SkierDecisionEngine.ChooseTrail(
-                    nextTrails, trailCtx, Config, Traffic?.State, _distribution, ComputeTrailDownstreamValue
-                );
-                if (nextTrail == null) nextTrail = nextTrails[Random.Range(0, nextTrails.Count)];
+                TrailData nextTrail = null;
                 
-                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Trail junction → trail {nextTrail.TrailId} (from {nextTrails.Count} options)");
+                // Returning skiers strongly prefer trails that end near the base
+                if (vs.IsReturningToBase)
+                {
+                    var baseTrails = nextTrails.FindAll(t => _liftBuilder.Connectivity.Connections.IsTrailConnectedToBase(t.TrailId));
+                    if (baseTrails.Count > 0)
+                    {
+                        nextTrail = baseTrails[Random.Range(0, baseTrails.Count)];
+                    }
+                }
+                
+                if (nextTrail == null)
+                {
+                    // Use the decision engine for trail-to-trail choices
+                    var trailCtx = BuildContext(vs);
+                    nextTrail = SkierDecisionEngine.ChooseTrail(
+                        nextTrails, trailCtx, Config, Traffic?.State, _distribution, ComputeTrailDownstreamValue
+                    );
+                    if (nextTrail == null) nextTrail = nextTrails[Random.Range(0, nextTrails.Count)];
+                }
+                
+                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Trail junction → trail {nextTrail.TrailId} (from {nextTrails.Count} options){(vs.IsReturningToBase ? " [returning]" : "")}");
                 vs.CurrentTrail = nextTrail;
                 vs.TrailsSkied.Add(nextTrail.TrailId);
                 vs.Skier.CurrentTrailId = nextTrail.TrailId;
@@ -1086,24 +1308,49 @@ namespace SkiResortTycoon.UnityBridge
             var validTrails = nearbyTrails.FindAll(t => t.TrailId != vs.CurrentTrail.TrailId);
             if (validTrails.Count > 0)
             {
-                var chosenTrail = ChooseTrailByPreference(vs.Skier, validTrails, true);
+                TrailData chosenTrail = null;
+                
+                // Returning skiers strongly prefer trails that end near the base
+                if (vs.IsReturningToBase)
+                {
+                    var baseTrails = validTrails.FindAll(t => _liftBuilder.Connectivity.Connections.IsTrailConnectedToBase(t.TrailId));
+                    if (baseTrails.Count > 0)
+                    {
+                        chosenTrail = baseTrails[Random.Range(0, baseTrails.Count)];
+                    }
+                }
+                
+                if (chosenTrail == null)
+                {
+                    chosenTrail = ChooseTrailByPreference(vs.Skier, validTrails, true);
+                }
+                
                 vs.CurrentTrail = chosenTrail;
                 vs.Skier.CurrentTrailId = chosenTrail.TrailId;
                 vs.Motion.SwitchTrail(chosenTrail, trailEndPos);
-                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Continuing to trail {chosenTrail.TrailId}");
+                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Continuing to trail {chosenTrail.TrailId}{(vs.IsReturningToBase ? " [returning]" : "")}");
                 return;
             }
 
             // PRIORITY 6: Near base?
-            var baseSpawns = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
-            if (baseSpawns.Count > 0)
             {
-                Vector3 basePos = new Vector3(baseSpawns[0].Position.X, baseSpawns[0].Position.Y, baseSpawns[0].Position.Z);
-                if (Vector3.Distance(trailEndPos, basePos) <= 50f)
+                var baseSpawnsP6 = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
+                if (baseSpawnsP6.Count > 0)
                 {
-                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Reached base! Run #{vs.Skier.RunsCompleted}");
-                    ChooseNewDestination(vs);
-                    return;
+                    Vector3 basePos = new Vector3(baseSpawnsP6[0].Position.X, baseSpawnsP6[0].Position.Y, baseSpawnsP6[0].Position.Z);
+                    if (Vector3.Distance(trailEndPos, basePos) <= 80f)
+                    {
+                        if (vs.IsReturningToBase)
+                        {
+                            // Returning skier reached base — despawn
+                            if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Reached base lodge, leaving resort!");
+                            vs.IsFinished = true;
+                            return;
+                        }
+                        if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Reached base! Run #{vs.Skier.RunsCompleted}");
+                        ChooseNewDestination(vs);
+                        return;
+                    }
                 }
             }
 
@@ -1263,9 +1510,24 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (!vs.Skier.WantsToKeepSkiing())
             {
-                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Done skiing (runs: {vs.Skier.RunsCompleted}/{vs.Skier.DesiredRuns})");
-                vs.IsFinished = true;
-                return;
+                // Check if already at the base
+                var baseSpawns = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
+                if (baseSpawns.Count > 0)
+                {
+                    Vector3 basePos = new Vector3(baseSpawns[0].Position.X, baseSpawns[0].Position.Y, baseSpawns[0].Position.Z);
+                    Vector3 skierPos = vs.GameObject.transform.position;
+                    if (Vector3.Distance(skierPos, basePos) <= 80f)
+                    {
+                        if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] At base and done skiing, leaving resort!");
+                        vs.IsFinished = true;
+                        return;
+                    }
+                }
+                
+                // Not at base — mark as returning; still needs a lift/trail to get down
+                vs.IsReturningToBase = true;
+                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Done skiing from ChooseNewDestination, heading for base...");
+                // Fall through to pick a lift/trail like normal
             }
 
             // Reset state to AtBase for proper pathfinding start point
@@ -1379,7 +1641,8 @@ namespace SkiResortTycoon.UnityBridge
                 }
                 else
                 {
-                    // Lodge is full, go somewhere else
+                    // Lodge is full -- record unfulfilled need attempt
+                    vs.Skier.Needs.RecordUnfulfilledNeed();
                     if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Lodge full, choosing new destination");
                     ChooseNewDestination(vs);
                 }
@@ -1401,7 +1664,53 @@ namespace SkiResortTycoon.UnityBridge
             // Check if rest time is complete (lodge handles timing)
             if (!vs.TargetLodge.ContainsSkier(vs.Skier.SkierId))
             {
-                // Rest complete! Respawn and continue skiing
+                // ── Fulfill needs based on lodge amenities ──────────────
+                bool usedBathroom = false;
+                bool usedFood = false;
+                bool usedRest = false;
+                
+                if (vs.TargetLodge.HasBathroom && vs.Skier.Needs.Bladder > 0.1f)
+                {
+                    vs.Skier.Needs.FulfillBladder();
+                    usedBathroom = true;
+                }
+                
+                if (vs.TargetLodge.HasFood && vs.Skier.Needs.Hunger > 0.1f)
+                {
+                    vs.Skier.Needs.FulfillHunger();
+                    usedFood = true;
+                }
+                
+                if (vs.TargetLodge.HasRest)
+                {
+                    vs.Skier.Needs.RecoverFatigue(30f); // Recover as if rested 30 game minutes
+                    usedRest = true;
+                }
+                
+                // ── Apply lodge pricing and revenue ─────────────────────
+                var pricing = vs.TargetLodge.Pricing;
+                if (pricing != null)
+                {
+                    float charge = pricing.CalculateCharge(usedBathroom, usedFood, usedRest);
+                    float satisfactionImpact = pricing.CalculateSatisfactionImpact(usedBathroom, usedFood, usedRest);
+                    
+                    // Record revenue
+                    pricing.RecordVisit(charge);
+                    
+                    // Add revenue to resort
+                    if (_simRunner?.Sim?.State != null)
+                    {
+                        _simRunner.Sim.State.Money += (int)charge;
+                    }
+                    
+                    // Apply satisfaction penalty from pricing
+                    vs.Skier.Needs.AddPricePenalty(satisfactionImpact);
+                    vs.Skier.Needs.LodgeVisitCount++;
+                    
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Lodge visit: charged ${charge:F0}, satisfaction impact {satisfactionImpact:F2}");
+                }
+                
+                // ── Respawn and continue ─────────────────────────────────
                 vs.GameObject.SetActive(true);
                 
                 // Position at lodge exit
@@ -1416,6 +1725,38 @@ namespace SkiResortTycoon.UnityBridge
                 // Choose new destination
                 ChooseNewDestination(vs);
             }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        //  Lodge queries
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Find the best available lodge on the mountain.
+        /// Searches ALL lodges (not proximity-limited) and picks the nearest
+        /// one that isn't full. Lodges can be at trail starts, ends, or anywhere.
+        /// </summary>
+        private LodgeFacility FindBestLodge(Vector3 skierPos)
+        {
+            LodgeManager lodgeManager = LodgeManager.Instance;
+            if (lodgeManager == null) return null;
+            
+            LodgeFacility best = null;
+            float bestDist = float.MaxValue;
+            
+            foreach (var lodge in lodgeManager.AllLodges)
+            {
+                if (lodge == null || lodge.IsFull) continue;
+                
+                float dist = Vector3.Distance(skierPos, lodge.Position);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    best = lodge;
+                }
+            }
+            
+            return best;
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -1935,6 +2276,13 @@ namespace SkiResortTycoon.UnityBridge
             // Lodge tracking
             public LodgeFacility TargetLodge;
             public float LodgeRestTimer;
+            
+            // Pending lodge visit: skier wants to visit this lodge but needs to ski there first
+            public LodgeFacility PendingLodgeVisit;
+            
+            // Returning to base: skier is done skiing and heading for the base lodge to leave
+            public bool IsReturningToBase;
+            public float ReturningToBaseTimer; // Safety timeout (game minutes, 480 = 1 in-game day)
         }
     }
 }

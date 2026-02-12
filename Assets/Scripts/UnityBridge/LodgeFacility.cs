@@ -1,11 +1,13 @@
 using UnityEngine;
 using System.Collections.Generic;
+using SkiResortTycoon.Core;
 
 namespace SkiResortTycoon.UnityBridge
 {
     /// <summary>
     /// Runtime component added automatically to placed lodges by LodgeBuilder.
-    /// Handles skier entry/exit, capacity, rest timers, and the snap-zone trigger.
+    /// Handles skier entry/exit, capacity, rest timers, amenities, pricing,
+    /// and the snap-zone trigger.
     /// You never need to put this on a prefab yourself.
     /// </summary>
     public class LodgeFacility : MonoBehaviour
@@ -14,8 +16,16 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private int _capacity = 10;
         [SerializeField] private float _restDurationSeconds = 30f; // real-time seconds skiers stay inside
 
+        [Header("Amenities")]
+        [SerializeField] private bool _hasBathroom = true;
+        [SerializeField] private bool _hasFood = true;
+        [SerializeField] private bool _hasRest = true;
+
         [Header("Snap Zone")]
         [SerializeField] private float _snapRadius = 20f;
+        
+        [Header("Footprint")]
+        [SerializeField] private float _footprintRadius = 15f; // Cleared area around lodge
 
         [Header("Debug")]
         [SerializeField] private bool _showDebugGizmos = true;
@@ -24,6 +34,7 @@ namespace SkiResortTycoon.UnityBridge
         private SphereCollider _snapZoneTrigger;
         private readonly HashSet<int> _occupiedSlots = new HashSet<int>();
         private readonly Dictionary<int, float> _restTimers = new Dictionary<int, float>();
+        private LodgePricing _pricing;
 
         // ── Public API ──────────────────────────────────────────────────
 
@@ -32,6 +43,23 @@ namespace SkiResortTycoon.UnityBridge
         public bool IsFull => CurrentOccupancy >= _capacity;
         public Vector3 Position => transform.position;
         public float SnapRadius => _snapRadius;
+        public float FootprintRadius => _footprintRadius;
+        
+        // ── Amenities ───────────────────────────────────────────────────
+        public bool HasBathroom => _hasBathroom;
+        public bool HasFood => _hasFood;
+        public bool HasRest => _hasRest;
+        
+        // ── Pricing ─────────────────────────────────────────────────────
+        public LodgePricing Pricing
+        {
+            get
+            {
+                if (_pricing == null)
+                    _pricing = new LodgePricing();
+                return _pricing;
+            }
+        }
 
         /// <summary>
         /// Called by LodgeBuilder right after instantiation.
@@ -85,6 +113,16 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (_restTimers.Count == 0) return;
 
+            // Use effective delta time so lodge timers respect pause and game speed
+            float dt = Time.deltaTime;
+            SimulationRunner simRunner = FindObjectOfType<SimulationRunner>();
+            if (simRunner?.Sim?.TimeController != null)
+            {
+                dt = simRunner.Sim.TimeController.GetEffectiveDeltaTime(Time.deltaTime);
+            }
+            
+            if (dt <= 0f) return; // Paused
+
             // Collect finished skiers first, THEN mutate -- avoids
             // InvalidOperationException from modifying dict during iteration.
             List<int> finished = null;
@@ -92,7 +130,7 @@ namespace SkiResortTycoon.UnityBridge
 
             foreach (var kvp in snapshot)
             {
-                float remaining = kvp.Value - Time.deltaTime;
+                float remaining = kvp.Value - dt;
                 if (remaining <= 0f)
                 {
                     if (finished == null) finished = new List<int>();

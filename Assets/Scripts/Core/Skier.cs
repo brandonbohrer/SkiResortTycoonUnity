@@ -44,6 +44,7 @@ namespace SkiResortTycoon.Core
         
         // Skier Intelligence System
         public SkierNeeds Needs { get; private set; }
+        public SkierSatisfaction SatisfactionTracker { get; private set; }
         public SkierGoal CurrentGoal { get; set; }
         public float TimeOnMountain { get; set; }  // Minutes since arrival
         public int DesiredRuns { get; set; }       // How many runs they want to complete today
@@ -62,6 +63,7 @@ namespace SkiResortTycoon.Core
             
             // Initialize intelligence systems
             Needs = new SkierNeeds();
+            SatisfactionTracker = new SkierSatisfaction();
             CurrentGoal = new SkierGoal();
             TimeOnMountain = 0f;
             DesiredRuns = GetRandomDesiredRuns(skill);
@@ -70,10 +72,12 @@ namespace SkiResortTycoon.Core
         
         /// <summary>
         /// Gets the skier's current individual satisfaction (0-1).
+        /// Uses the modular factor system if factors are registered,
+        /// falls back to raw Needs.Satisfaction otherwise.
         /// </summary>
         public float GetSatisfaction()
         {
-            return Needs.Satisfaction;
+            return SatisfactionTracker.Calculate(Needs);
         }
         
         /// <summary>

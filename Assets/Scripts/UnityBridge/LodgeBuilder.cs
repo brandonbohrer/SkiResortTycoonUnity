@@ -24,6 +24,10 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private float _treeClearRadius = 15f;
         [SerializeField] private int _buildCost = 25000;
 
+        [Header("Snapping")]
+        [SerializeField] private float _snapRadius = 10f;
+        [SerializeField] private Color _snapColor = new Color(0f, 1f, 1f, 0.8f);
+
         [Header("Visual Feedback")]
         [SerializeField] private Color _validColor = new Color(0f, 1f, 0f, 0.5f);
         [SerializeField] private Color _invalidColor = new Color(1f, 0f, 0f, 0.5f);
@@ -31,6 +35,8 @@ namespace SkiResortTycoon.UnityBridge
         private GameObject _previewInstance;
         private Renderer[] _previewRenderers;
         private bool _canPlace;
+        private MagneticCursor _magneticCursor;
+        private GameObject _footprintVisual; // Visual ring showing footprint
 
         public override string ToolName => "Lodge";
         public override string ToolDescription => "Place a lodge";
@@ -54,6 +60,12 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
 
+            // Create magnetic cursor for snapping to trails
+            if (_liftBuilder?.Connectivity != null)
+            {
+                _magneticCursor = new MagneticCursor(_liftBuilder.Connectivity.Registry, _snapRadius);
+            }
+
             NotificationManager.Instance?.ShowInfo("Click to place lodge (Right-click / ESC to cancel)");
         }
 
@@ -61,6 +73,7 @@ namespace SkiResortTycoon.UnityBridge
         {
             base.OnDeactivate();
             CleanupPreview();
+            _magneticCursor = null;
         }
 
         public override void OnCancel()
@@ -111,13 +124,43 @@ namespace SkiResortTycoon.UnityBridge
 
             if (hit.HasValue)
             {
-                _previewInstance.transform.position = hit.Value;
+                Vector3 placementPos = hit.Value;
+                
+                // Use magnetic cursor to snap to nearby trail endpoints
+                if (_magneticCursor != null)
+                {
+                    // Snap to trail start/end/point when placing lodge
+                    SnapPointType[] validTypes = new[]
+                    {
+                        SnapPointType.TrailStart,
+                        SnapPointType.TrailEnd,
+                        SnapPointType.TrailPoint
+                    };
+                    _magneticCursor.Update(hit.Value, validTypes);
+                    
+                    if (_magneticCursor.IsSnapped)
+                    {
+                        // Offset building center so the footprint edge touches the snap point
+                        Vector3 snapPos = _magneticCursor.SnappedPosition;
+                        Vector3 dirFromSnap = (hit.Value - snapPos).normalized;
+                        if (dirFromSnap.sqrMagnitude < 0.01f) dirFromSnap = Vector3.forward;
+                        placementPos = snapPos + dirFromSnap * _treeClearRadius;
+                        placementPos.y = hit.Value.y; // Keep terrain height
+                    }
+                }
+
+                _previewInstance.transform.position = placementPos;
                 _previewInstance.SetActive(true);
 
-                _canPlace = IsValidPlacement(hit.Value);
+                _canPlace = IsValidPlacement(placementPos);
 
-                // Tint preview green / red
-                Color tint = _canPlace ? _validColor : _invalidColor;
+                // Tint preview: cyan if snapped, green/red otherwise
+                Color tint;
+                if (_magneticCursor != null && _magneticCursor.IsSnapped)
+                    tint = _canPlace ? _snapColor : _invalidColor;
+                else
+                    tint = _canPlace ? _validColor : _invalidColor;
+                    
                 foreach (var r in _previewRenderers)
                 {
                     Color c = r.material.color;
@@ -125,9 +168,8 @@ namespace SkiResortTycoon.UnityBridge
                     r.material.color = c;
                 }
 
-                // Preview tree clearing -- ClearTreesForPreview needs >=2 points,
-                // so we pass two identical points to satisfy the polyline API.
-                var pts = new System.Collections.Generic.List<Vector3> { hit.Value, hit.Value };
+                // Preview tree clearing
+                var pts = new System.Collections.Generic.List<Vector3> { placementPos, placementPos };
                 TreeClearer.ClearTreesForPreview(pts, _treeClearRadius);
             }
             else
@@ -149,11 +191,14 @@ namespace SkiResortTycoon.UnityBridge
 
             if (Input.GetMouseButtonDown(0))
             {
-                Vector3? hit = _mountainManager?.RaycastMountain(_camera, Input.mousePosition);
-                if (hit.HasValue && _canPlace)
-                    PlaceLodge(hit.Value);
+                if (_previewInstance != null && _previewInstance.activeSelf && _canPlace)
+                {
+                    PlaceLodge(_previewInstance.transform.position);
+                }
                 else if (!_canPlace)
+                {
                     NotificationManager.Instance?.ShowWarning("Cannot place lodge here!");
+                }
             }
         }
 
@@ -209,16 +254,10 @@ namespace SkiResortTycoon.UnityBridge
             TreeClearer.RestorePreviewTrees();
             TreeClearer.ClearTreesAroundPoint(pos, _treeClearRadius);
 
-            // Register snap point so trails can connect
+            // Register footprint snap points around perimeter so trails can connect
             if (_liftBuilder?.Connectivity != null)
             {
-                var snap = new SnapPoint(
-                    SnapPointType.BuildingEntrance,
-                    MountainManager.ToVector3f(pos),
-                    facility.GetInstanceID(),
-                    $"Lodge_{facility.GetInstanceID()}"
-                );
-                _liftBuilder.Connectivity.Registry.Register(snap);
+                RegisterFootprintSnapPoints(pos, facility);
                 _liftBuilder.Connectivity.RebuildConnections();
             }
 
@@ -230,6 +269,48 @@ namespace SkiResortTycoon.UnityBridge
 
             NotificationManager.Instance?.ShowSuccess($"Lodge built! (${_buildCost})");
             Debug.Log($"[LodgeBuilder] Placed lodge at {pos}, cleared {_treeClearRadius}m radius");
+        }
+
+        // ── Footprint Snap Points ────────────────────────────────────────
+
+        /// <summary>
+        /// Registers 8 BuildingEntrance snap points around the lodge footprint perimeter
+        /// (N, NE, E, SE, S, SW, W, NW). Trails snap to these edge points,
+        /// not the building center, keeping trails off the building footprint.
+        /// </summary>
+        private void RegisterFootprintSnapPoints(Vector3 lodgeCenter, LodgeFacility facility)
+        {
+            float radius = facility.FootprintRadius;
+            int ownerId = facility.GetInstanceID();
+            string ownerName = $"Lodge_{ownerId}";
+            
+            // 8 compass directions
+            Vector3[] directions = new Vector3[]
+            {
+                Vector3.forward,                                          // N
+                (Vector3.forward + Vector3.right).normalized,             // NE
+                Vector3.right,                                            // E
+                (-Vector3.forward + Vector3.right).normalized,            // SE
+                -Vector3.forward,                                         // S
+                (-Vector3.forward - Vector3.right).normalized,            // SW
+                -Vector3.right,                                           // W
+                (Vector3.forward - Vector3.right).normalized              // NW
+            };
+            
+            foreach (var dir in directions)
+            {
+                Vector3 edgePos = lodgeCenter + dir * radius;
+                // Use lodge center Y for snap points (terrain is roughly level within footprint)
+                edgePos.y = lodgeCenter.y;
+                
+                var snap = new SnapPoint(
+                    SnapPointType.BuildingEntrance,
+                    MountainManager.ToVector3f(edgePos),
+                    ownerId,
+                    ownerName
+                );
+                _liftBuilder.Connectivity.Registry.Register(snap);
+            }
         }
 
         // ── Cleanup ─────────────────────────────────────────────────────

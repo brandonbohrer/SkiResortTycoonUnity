@@ -76,8 +76,6 @@ namespace SkiResortTycoon.UnityBridge
                     lr.endWidth = _lineWidth;
                     lr.useWorldSpace = true;
                     lr.textureMode = LineTextureMode.Tile;
-                    lr.sortingLayerName = "Default";
-                    lr.sortingOrder = 32766;
                     lr.startColor = _liftColor;
                     lr.endColor = _liftColor;
                     
@@ -109,7 +107,6 @@ namespace SkiResortTycoon.UnityBridge
                     _previewRenderer.startWidth = _lineWidth * 0.5f;
                     _previewRenderer.endWidth = _lineWidth * 0.5f;
                     _previewRenderer.useWorldSpace = true;
-                    _previewRenderer.sortingOrder = 32767;
                     _previewRenderer.startColor = _previewColor;
                     _previewRenderer.endColor = _previewColor;
                 }

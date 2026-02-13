@@ -131,7 +131,6 @@ namespace SkiResortTycoon.UnityBridge
                     lr.startColor = _connectionColor;
                     lr.endColor = _connectionColor;
                     lr.useWorldSpace = true;
-                    lr.sortingOrder = 32760;
                     
                     _connectionLines[key] = lr;
                 }
@@ -237,9 +236,26 @@ namespace SkiResortTycoon.UnityBridge
         
         private Vector3 TileToWorldPos(TileCoord coord)
         {
+            // Use MountainManager for proper 3D coordinates if available
+            if (_liftBuilder != null)
+            {
+                var mountainField = typeof(LiftBuilder).GetField("_mountainManager",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (mountainField != null)
+                {
+                    var mountain = mountainField.GetValue(_liftBuilder) as MountainManager;
+                    if (mountain != null)
+                    {
+                        Vector3 pos = mountain.TileToWorldPos(coord);
+                        pos.y += 0.5f; // Slight offset above terrain for visibility
+                        return pos;
+                    }
+                }
+            }
+            
             float worldX = coord.X * _tileSize;
-            float worldY = coord.Y * _tileSize;
-            return new Vector3(worldX, worldY, -6f); // Slightly in front
+            float worldZ = coord.Y * _tileSize;
+            return new Vector3(worldX, 0.5f, worldZ);
         }
         
         void OnGUI()

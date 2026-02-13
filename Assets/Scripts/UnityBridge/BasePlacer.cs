@@ -23,7 +23,6 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private KeyCode _placeKey = KeyCode.B;
         [SerializeField] private Vector3 _lodgeScale = new Vector3(10f, 10f, 10f); // Bigger for visibility
         [SerializeField] private Vector3 _lodgeOffset = new Vector3(0, 0, 0); // No offset
-        [SerializeField] private float _lodgeZPosition = -5f; // Same depth as trails (-5 works with camera at -10)
         
         private bool _basePlaced = false;
         private TileCoord _baseLocation;
@@ -159,42 +158,34 @@ namespace SkiResortTycoon.UnityBridge
         
         private Vector3 TileToWorldPos(TileCoord coord)
         {
-            float x = coord.X * _tileSize;
-            float y = coord.Y * _tileSize;
-            
-            // Add height offset if terrain data is available
-            if (_mountainManager != null && _mountainManager.TerrainData != null)
+            // Use MountainManager's proper 3D coordinate mapping
+            if (_mountainManager != null)
             {
-                float height = _mountainManager.TerrainData.GetHeight(coord);
-                y += height * 0.5f; // Match the 2.5D height offset
+                return _mountainManager.TileToWorldPos(coord);
             }
             
-            return new Vector3(x, y, _lodgeZPosition); // Use configurable Z position
+            float x = coord.X * _tileSize;
+            float z = coord.Y * _tileSize;
+            return new Vector3(x, 0f, z);
         }
         
         private TileCoord? GetTileUnderMouse()
         {
-            if (_camera == null) return null;
+            if (_camera == null || _mountainManager == null) return null;
             
-            // Create a ray from the camera through the mouse position
-            Ray ray = _camera.ScreenPointToRay(Input.mousePosition);
+            // Raycast onto the mountain mesh to get the 3D world position
+            Vector3? hitPos = _mountainManager.RaycastMountain(_camera, Input.mousePosition);
             
-            // Create a plane at Z=0 (where our grid is)
-            Plane gridPlane = new Plane(Vector3.forward, Vector3.zero);
-            
-            // Raycast against the plane
-            if (gridPlane.Raycast(ray, out float distance))
+            if (hitPos.HasValue)
             {
-                Vector3 worldPos = ray.GetPoint(distance);
-                
-                int tileX = Mathf.RoundToInt(worldPos.x / _tileSize);
-                int tileY = Mathf.RoundToInt(worldPos.y / _tileSize);
+                // Convert world XZ to tile coordinates (X maps to TileX, Z maps to TileY)
+                int tileX = Mathf.RoundToInt(hitPos.Value.x / _tileSize);
+                int tileY = Mathf.RoundToInt(hitPos.Value.z / _tileSize);
                 
                 TileCoord coord = new TileCoord(tileX, tileY);
                 
                 // Check if in bounds
-                if (_mountainManager != null && 
-                    _mountainManager.TerrainData != null && 
+                if (_mountainManager.TerrainData != null && 
                     _mountainManager.TerrainData.Grid.InBounds(coord))
                 {
                     return coord;

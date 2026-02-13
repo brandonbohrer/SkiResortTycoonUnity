@@ -32,20 +32,29 @@ namespace SkiResortTycoon.UnityBridge
         
         /// <summary>
         /// Converts a tile coordinate to world position.
+        /// Tile X maps to world X, Tile Y maps to world Z, height maps to world Y.
         /// </summary>
         public Vector3 TileToWorldPos(TileCoord coord)
         {
             float x = coord.X * _tileSize;
-            float y = coord.Y * _tileSize;
+            float z = coord.Y * _tileSize;
+            float y = 0f;
             
-            // Get height from terrain data
+            // Get height from terrain data (Y = up)
             if (_terrainData != null)
             {
                 float height = _terrainData.GetHeight(coord);
-                y += height * 0.1f; // Height offset (adjust as needed)
+                y = height * 0.1f;
             }
             
-            return new Vector3(x, y, 0f);
+            // Try to get accurate height from mountain mesh raycast
+            float? meshHeight = GetHeightAtWorldPos(new Vector3(x, 0f, z));
+            if (meshHeight.HasValue)
+            {
+                y = meshHeight.Value;
+            }
+            
+            return new Vector3(x, y, z);
         }
         
         /// <summary>

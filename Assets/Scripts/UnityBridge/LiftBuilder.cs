@@ -226,8 +226,9 @@ namespace SkiResortTycoon.UnityBridge
             _currentLift.StartPosition = MountainManager.ToVector3f(worldPosition);
             
             // Also set legacy tile coord for backwards compatibility (optional)
+            // Tile X = world X, Tile Y = world Z (not world Y which is height)
             int tileX = Mathf.RoundToInt(worldPosition.x / _tileSize);
-            int tileY = Mathf.RoundToInt(worldPosition.y / _tileSize);
+            int tileY = Mathf.RoundToInt(worldPosition.z / _tileSize);
             _bottomStation = new TileCoord(tileX, tileY);
             _currentLift.BottomStation = _bottomStation;
         }
@@ -236,9 +237,9 @@ namespace SkiResortTycoon.UnityBridge
         {
             _currentLift.EndPosition = MountainManager.ToVector3f(worldPosition);
             
-            // Set legacy tile coord
+            // Set legacy tile coord (Tile Y = world Z, not world Y which is height)
             int tileX = Mathf.RoundToInt(worldPosition.x / _tileSize);
-            int tileY = Mathf.RoundToInt(worldPosition.y / _tileSize);
+            int tileY = Mathf.RoundToInt(worldPosition.z / _tileSize);
             _currentLift.TopStation = new TileCoord(tileX, tileY);
             
             // Validate: lift must go uphill

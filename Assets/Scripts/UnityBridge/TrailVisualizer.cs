@@ -16,7 +16,7 @@ namespace SkiResortTycoon.UnityBridge
         [Header("Visual Settings")]
         [SerializeField] private float _tileSize = 1f;
         [SerializeField] private float _lineWidth = 0.8f; // Much wider for visibility!
-        [SerializeField] private float _lineZOffset = -1f; // Closer to camera than terrain
+        [SerializeField] private float _trailHeightOffset = 0.3f; // Small offset above terrain to avoid z-fighting
         
         [Header("Difficulty Colors")]
         [SerializeField] private Color _colorGreen = new Color(0.1f, 1f, 0.1f, 1f); // Bright green
@@ -112,16 +112,12 @@ namespace SkiResortTycoon.UnityBridge
                     trailObj.transform.SetParent(transform);
                     LineRenderer lr = trailObj.AddComponent<LineRenderer>();
                     
-                    // Configure line renderer - simpler approach
+                    // Configure line renderer for 3D
                     lr.material = new Material(Shader.Find("Sprites/Default"));
                     lr.startWidth = _lineWidth;
                     lr.endWidth = _lineWidth;
                     lr.useWorldSpace = true;
                     lr.textureMode = LineTextureMode.Tile;
-                    
-                    // Use VERY HIGH sorting order to be above ALL terrain
-                    lr.sortingLayerName = "Default";
-                    lr.sortingOrder = 32767; // Maximum short value - highest possible
                     
                     _trailRenderers[trail.TrailId] = lr;
                     
@@ -193,8 +189,6 @@ namespace SkiResortTycoon.UnityBridge
                     _currentTrailRenderer.endWidth = _lineWidth * 1.5f;
                     _currentTrailRenderer.useWorldSpace = true;
                     _currentTrailRenderer.textureMode = LineTextureMode.Tile;
-                    _currentTrailRenderer.sortingLayerName = "Default";
-                    _currentTrailRenderer.sortingOrder = 32767; // Max value
                 }
                 
                 _currentTrailRenderer.startColor = _colorDrawing;
@@ -224,6 +218,7 @@ namespace SkiResortTycoon.UnityBridge
         
         /// <summary>
         /// Updates line positions from world-space Vector3f points.
+        /// Adds a small height offset to avoid z-fighting with terrain.
         /// </summary>
         private void UpdateLinePositions(LineRenderer lineRenderer, List<Vector3f> points)
         {
@@ -231,24 +226,24 @@ namespace SkiResortTycoon.UnityBridge
             
             for (int i = 0; i < points.Count; i++)
             {
-                lineRenderer.SetPosition(i, MountainManager.ToUnityVector3(points[i]));
+                Vector3 pos = MountainManager.ToUnityVector3(points[i]);
+                pos.y += _trailHeightOffset;
+                lineRenderer.SetPosition(i, pos);
             }
         }
         
         private Vector3 TileToWorldPos(TileCoord coord)
         {
-            float worldX = coord.X * _tileSize;
-            float worldY = coord.Y * _tileSize;
-            
-            // Add height offset if terrain available
-            if (_gridRenderer != null && _gridRenderer.TerrainData != null)
+            if (_gridRenderer != null)
             {
-                int height = _gridRenderer.TerrainData.GetHeight(coord);
-                worldY += height * 0.1f; // Match heightScale
+                Vector3 pos = _gridRenderer.TileToWorldPos(coord);
+                pos.y += _trailHeightOffset; // Slight offset above terrain to avoid z-fighting
+                return pos;
             }
             
-            // Use Z = -5 to be in front of terrain (terrain is at z=0)
-            return new Vector3(worldX, worldY, -5f);
+            float worldX = coord.X * _tileSize;
+            float worldZ = coord.Y * _tileSize;
+            return new Vector3(worldX, _trailHeightOffset, worldZ);
         }
         
         private Color GetDifficultyColor(TrailDifficulty difficulty)
@@ -278,8 +273,6 @@ namespace SkiResortTycoon.UnityBridge
             lr.endWidth = _boundaryLineWidth;
             lr.useWorldSpace = true;
             lr.textureMode = LineTextureMode.Tile;
-            lr.sortingLayerName = "Default";
-            lr.sortingOrder = 32766; // Slightly below main trail line
             lr.startColor = _boundaryColor;
             lr.endColor = _boundaryColor;
         }

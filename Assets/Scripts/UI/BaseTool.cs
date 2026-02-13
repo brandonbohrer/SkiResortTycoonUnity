@@ -107,7 +107,7 @@ namespace SkiResortTycoon.UI
         {
             Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
             
-            // For isometric/orthographic camera, use a plane at y=0
+            // Raycast onto a horizontal ground plane at y=0
             Plane groundPlane = new Plane(Vector3.up, Vector3.zero);
             
             if (groundPlane.Raycast(ray, out float distance))

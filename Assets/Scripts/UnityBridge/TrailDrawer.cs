@@ -139,8 +139,9 @@ namespace SkiResortTycoon.UnityBridge
             _currentTrail.AddWorldPoint(MountainManager.ToVector3f(snappedStart));
             
             // Also add legacy tile coord for backwards compatibility
+            // Tile X = world X, Tile Y = world Z (not world Y which is height)
             int tileX = Mathf.RoundToInt(snappedStart.x / _tileSize);
-            int tileY = Mathf.RoundToInt(snappedStart.y / _tileSize);
+            int tileY = Mathf.RoundToInt(snappedStart.z / _tileSize);
             _currentTrail.AddPoint(new TileCoord(tileX, tileY));
             
             _lastAddedWorldPoint = snappedStart;
@@ -157,9 +158,9 @@ namespace SkiResortTycoon.UnityBridge
             {
                 _currentTrail.AddWorldPoint(MountainManager.ToVector3f(position));
                 
-                // Also add legacy tile coord
+                // Also add legacy tile coord (Tile Y = world Z)
                 int tileX = Mathf.RoundToInt(position.x / _tileSize);
-                int tileY = Mathf.RoundToInt(position.y / _tileSize);
+                int tileY = Mathf.RoundToInt(position.z / _tileSize);
                 _currentTrail.AddPoint(new TileCoord(tileX, tileY));
                 
                 _lastAddedWorldPoint = position;
@@ -309,17 +310,15 @@ namespace SkiResortTycoon.UnityBridge
         
         private Vector3 TileToWorldPos(TileCoord coord)
         {
-            float worldX = coord.X * _tileSize;
-            float worldY = coord.Y * _tileSize;
-            
-            // Add height offset if terrain available
-            if (_mountainManager != null && _mountainManager.TerrainData != null)
+            // Use MountainManager for proper 3D coordinates
+            if (_mountainManager != null)
             {
-                int height = _mountainManager.TerrainData.GetHeight(coord);
-                worldY += height * 0.1f; // Match heightScale from MountainManager
+                return _mountainManager.TileToWorldPos(coord);
             }
             
-            return new Vector3(worldX, worldY, 0f);
+            float worldX = coord.X * _tileSize;
+            float worldZ = coord.Y * _tileSize;
+            return new Vector3(worldX, 0f, worldZ);
         }
         
         void OnGUI()

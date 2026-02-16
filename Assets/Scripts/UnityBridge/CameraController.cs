@@ -5,6 +5,8 @@ namespace SkiResortTycoon.UnityBridge
     /// <summary>
     /// 3D perspective camera controller with orbit, pan, and zoom.
     /// Camera orbits a focus point on the terrain within bounded limits.
+    /// After orbiting, the focus point re-anchors to the mountain surface
+    /// at screen center so terrain collision and height tracking stay accurate.
     /// Controls:
     ///   - Right-click drag: Orbit (rotate around focus point)
     ///   - Middle-click drag / WASD: Pan
@@ -20,29 +22,29 @@ namespace SkiResortTycoon.UnityBridge
 
         [Header("Orbit Settings")]
         [SerializeField] private float _orbitSensitivity = 0.3f;
-        [SerializeField] private float _keyboardRotateSpeed = 90f; // degrees per second
-        [SerializeField] private float _minPitch = 10f;   // min angle above horizon
-        [SerializeField] private float _maxPitch = 80f;   // max angle (near top-down)
+        [SerializeField] private float _keyboardRotateSpeed = 90f;
+        [SerializeField] private float _minPitch = 10f;
+        [SerializeField] private float _maxPitch = 80f;
         [SerializeField] private float _defaultYaw = -45f;
         [SerializeField] private float _defaultPitch = 40f;
 
         [Header("Zoom Settings")]
         [SerializeField] private float _zoomSpeed = 15f;
-        [SerializeField] private float _minDistanceAboveTerrain = 5f; // Camera stops this far above the mountain surface
-        [SerializeField] private float _minDistanceFallback = 10f;    // Absolute min if no terrain hit
+        [SerializeField] private float _minDistanceAboveTerrain = 5f;
+        [SerializeField] private float _minDistanceFallback = 10f;
         [SerializeField] private float _maxDistance = 500f;
         [SerializeField] private float _defaultDistance = 150f;
         [SerializeField] private float _zoomSmoothing = 10f;
 
         [Header("Terrain Following")]
-        [SerializeField] private float _focusHeightSmoothing = 8f;   // How fast focus Y tracks terrain
-        [SerializeField] private float _focusHeightOffset = 2f;      // Focus sits this far above terrain surface
+        [SerializeField] private float _focusHeightSmoothing = 8f;
+        [SerializeField] private float _focusHeightOffset = 2f;
 
         [Header("Pan Settings")]
         [SerializeField] private float _panSpeedKeyboard = 40f;
         [SerializeField] private float _panSpeedMouse = 1f;
-        [SerializeField] private int _panMouseButton = 2;   // 0=Left, 1=Right, 2=Middle
-        [SerializeField] private int _orbitMouseButton = 1;  // Right-click to orbit
+        [SerializeField] private int _panMouseButton = 2;
+        [SerializeField] private int _orbitMouseButton = 1;
 
         [Header("Perspective Settings")]
         [SerializeField] private float _fieldOfView = 50f;
@@ -74,7 +76,6 @@ namespace SkiResortTycoon.UnityBridge
         private Collider[] _mountainColliders;
 
         // The actual distance used last frame (after terrain clamping).
-        // This is what pan speed should scale from — NOT _distance which ignores terrain.
         private float _effectiveDistance;
 
         // Drag state
@@ -86,13 +87,11 @@ namespace SkiResortTycoon.UnityBridge
         {
             _camera = GetComponent<Camera>();
 
-            // Switch to perspective
             _camera.orthographic = false;
             _camera.fieldOfView = _fieldOfView;
             _camera.nearClipPlane = _nearClip;
             _camera.farClipPlane = _farClip;
 
-            // Initialize orbit angles and distance
             _yaw = _defaultYaw;
             _pitch = _defaultPitch;
             _distance = _defaultDistance;
@@ -107,7 +106,6 @@ namespace SkiResortTycoon.UnityBridge
                 InitializeBoundsFromMountain();
             }
 
-            // Start focused on the center of the mountain
             _focusPoint = new Vector3(
                 (_boundsMinX + _boundsMaxX) / 2f,
                 (_boundsMinY + _boundsMaxY) / 2f,
@@ -117,9 +115,6 @@ namespace SkiResortTycoon.UnityBridge
             UpdateCameraTransform();
         }
 
-        /// <summary>
-        /// Auto-detect bounds from the mountain mesh renderer.
-        /// </summary>
         private void InitializeBoundsFromMountain()
         {
             if (_mountainManager == null)
@@ -128,7 +123,6 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
 
-            // Get the mountain mesh via reflection (same pattern as before)
             var mountainMeshField = typeof(MountainManager).GetField("_mountainMesh",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
@@ -137,7 +131,6 @@ namespace SkiResortTycoon.UnityBridge
             GameObject mountainMesh = mountainMeshField.GetValue(_mountainManager) as GameObject;
             if (mountainMesh == null) return;
 
-            // Cache mountain reference for per-frame terrain queries
             _mountainMeshObj = mountainMesh;
             _mountainColliders = mountainMesh.GetComponentsInChildren<Collider>();
 
@@ -147,7 +140,6 @@ namespace SkiResortTycoon.UnityBridge
 
             Bounds bounds = renderer.bounds;
 
-            // Set bounds with generous padding
             float padding = 50f;
             _boundsMinX = bounds.min.x - padding;
             _boundsMaxX = bounds.max.x + padding;
@@ -156,12 +148,7 @@ namespace SkiResortTycoon.UnityBridge
             _boundsMinZ = bounds.min.z - padding;
             _boundsMaxZ = bounds.max.z + padding;
 
-            // Start at the center of the mountain, at mid-height
-            _focusPoint = new Vector3(
-                bounds.center.x,
-                bounds.center.y,
-                bounds.center.z
-            );
+            _focusPoint = bounds.center;
 
             Debug.Log($"[CameraController] Detected mountain bounds: {bounds.min} to {bounds.max}");
             Debug.Log($"[CameraController] Camera bounds: X[{_boundsMinX:F0},{_boundsMaxX:F0}] Y[{_boundsMinY:F0},{_boundsMaxY:F0}] Z[{_boundsMinZ:F0},{_boundsMaxZ:F0}]");
@@ -170,10 +157,10 @@ namespace SkiResortTycoon.UnityBridge
         void Update()
         {
             HandleOrbit();
+            HandleKeyboardRotation();
             HandlePanKeyboard();
             HandlePanMouse();
             HandleZoom();
-            HandleKeyboardRotation();
             ClampFocusPoint();
             UpdateFocusHeight();
             SmoothZoom();
@@ -228,13 +215,9 @@ namespace SkiResortTycoon.UnityBridge
 
             if (input == Vector3.zero) return;
 
-            // Move in camera-relative XZ plane
             Vector3 forward = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
             Vector3 right = Vector3.ProjectOnPlane(transform.right, Vector3.up).normalized;
 
-            // Scale pan speed by the EFFECTIVE distance (after terrain clamping),
-            // not the raw target distance. This prevents teleporting when zoomed
-            // in tight against the terrain.
             float scaledSpeed = _panSpeedKeyboard * (_effectiveDistance / _defaultDistance);
             Vector3 panDelta = (forward * input.z + right * input.x) * scaledSpeed * Time.deltaTime;
             _focusPoint += panDelta;
@@ -258,11 +241,8 @@ namespace SkiResortTycoon.UnityBridge
             if (!_isPanning) return;
 
             Vector3 currentMouse = Input.mousePosition;
-            Vector3 screenDelta = currentMouse - _lastMousePosition;
 
-            // Project mouse delta onto the focus plane (Y = focus height)
             Plane focusPlane = new Plane(Vector3.up, _focusPoint);
-
             Ray rayLast = _camera.ScreenPointToRay(_lastMousePosition);
             Ray rayCurrent = _camera.ScreenPointToRay(currentMouse);
 
@@ -285,9 +265,7 @@ namespace SkiResortTycoon.UnityBridge
             float scroll = Input.mouseScrollDelta.y;
             if (scroll == 0f) return;
 
-            // Zoom as a percentage of current distance for a natural feel
             _targetDistance -= scroll * _zoomSpeed * (_targetDistance * 0.1f);
-            // Only clamp against the max here; the terrain-aware min is applied in UpdateCameraTransform
             _targetDistance = Mathf.Clamp(_targetDistance, _minDistanceFallback, _maxDistance);
         }
 
@@ -322,11 +300,6 @@ namespace SkiResortTycoon.UnityBridge
 
         // ─── Terrain-following focus point ───────────────────────────────
 
-        /// <summary>
-        /// Smoothly adjusts the focus point Y to sit on the terrain surface.
-        /// This means when you pan to the base, the focus drops to base elevation,
-        /// and at the peak it rises — so zoom always feels relative to the ground.
-        /// </summary>
         private void UpdateFocusHeight()
         {
             float? terrainY = GetTerrainHeightAt(_focusPoint);
@@ -341,28 +314,20 @@ namespace SkiResortTycoon.UnityBridge
 
         private void UpdateCameraTransform()
         {
-            // Convert yaw/pitch to a direction vector
             Quaternion rotation = Quaternion.Euler(_pitch, _yaw, 0f);
             Vector3 direction = rotation * Vector3.back;
 
-            // Start with the desired distance
             float usedDistance = _distance;
 
-            // ── Terrain collision: raycast from focus toward camera ──
-            // If the mountain is between the focus and where the camera wants to be,
-            // pull the camera in front of the mountain surface.
+            // Terrain collision — clamp distance so camera doesn't go through mountain.
+            // Does NOT modify _targetDistance — that's the user's zoom intent.
             float terrainMinDist = GetTerrainClampedDistance(direction, _distance);
             if (terrainMinDist < usedDistance)
             {
                 usedDistance = terrainMinDist;
-                // Also push the target distance back so zoom doesn't fight the clamp
-                _targetDistance = Mathf.Max(_targetDistance, usedDistance);
             }
 
-            // Never go below absolute minimum
             usedDistance = Mathf.Max(usedDistance, _minDistanceFallback);
-
-            // Store for pan speed scaling — this is the REAL distance after all clamping
             _effectiveDistance = usedDistance;
 
             Vector3 offset = direction * usedDistance;
@@ -370,13 +335,8 @@ namespace SkiResortTycoon.UnityBridge
             transform.LookAt(_focusPoint, Vector3.up);
         }
 
-        /// <summary>
-        /// Raycast from focus point outward in the camera direction.
-        /// If the terrain is hit, return a clamped distance so the camera stays
-        /// above the mountain surface by _minDistanceAboveTerrain.
-        /// Also raycasts straight down from the computed camera position to prevent
-        /// the camera from dipping below the terrain.
-        /// </summary>
+        // ─── Terrain collision ──────────────────────────────────────────
+
         private float GetTerrainClampedDistance(Vector3 cameraDirection, float desiredDistance)
         {
             if (_mountainColliders == null || _mountainColliders.Length == 0)
@@ -384,8 +344,7 @@ namespace SkiResortTycoon.UnityBridge
 
             float clampedDistance = desiredDistance;
 
-            // 1) Raycast FROM focus point TOWARD where the camera would be.
-            //    This catches the mountain blocking the line of sight.
+            // 1) Raycast from focus toward camera — catches mountain in line of sight
             Ray ray = new Ray(_focusPoint, cameraDirection);
             RaycastHit[] hits = Physics.RaycastAll(ray, desiredDistance);
             foreach (var hit in hits)
@@ -398,8 +357,7 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
 
-            // 2) Check the camera's final position — raycast down to see if
-            //    the camera would be BELOW the terrain surface.
+            // 2) Check if camera would be below terrain surface
             Vector3 candidatePos = _focusPoint + cameraDirection * clampedDistance;
             float? terrainBelow = GetTerrainHeightAt(candidatePos);
             if (terrainBelow.HasValue)
@@ -407,10 +365,8 @@ namespace SkiResortTycoon.UnityBridge
                 float minCamY = terrainBelow.Value + _minDistanceAboveTerrain;
                 if (candidatePos.y < minCamY)
                 {
-                    // Camera is underground — push it up by reducing distance
-                    // (moving camera closer to focus point raises it because of the pitch angle)
                     float deficit = minCamY - candidatePos.y;
-                    float yPerUnit = Mathf.Abs(cameraDirection.y); // how much Y changes per unit of distance
+                    float yPerUnit = Mathf.Abs(cameraDirection.y);
                     if (yPerUnit > 0.01f)
                     {
                         clampedDistance -= deficit / yPerUnit;
@@ -421,9 +377,6 @@ namespace SkiResortTycoon.UnityBridge
             return clampedDistance;
         }
 
-        /// <summary>
-        /// Raycasts straight down to find the mountain surface height at a given XZ position.
-        /// </summary>
         private float? GetTerrainHeightAt(Vector3 position)
         {
             if (_mountainColliders == null || _mountainColliders.Length == 0)
@@ -444,9 +397,6 @@ namespace SkiResortTycoon.UnityBridge
             return bestY;
         }
 
-        /// <summary>
-        /// Checks whether a collider belongs to the mountain mesh.
-        /// </summary>
         private bool IsMountainCollider(Collider col)
         {
             if (_mountainMeshObj == null) return false;
@@ -454,12 +404,8 @@ namespace SkiResortTycoon.UnityBridge
                    col.transform.IsChildOf(_mountainMeshObj.transform);
         }
 
-        // ─── Utility: world position under mouse ────────────────────────
+        // ─── Utility ────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Gets the world position under the mouse cursor by raycasting to a
-        /// horizontal plane at the focus point height.
-        /// </summary>
         private Vector3 GetMouseWorldPosition()
         {
             Plane focusPlane = new Plane(Vector3.up, _focusPoint);
@@ -472,9 +418,8 @@ namespace SkiResortTycoon.UnityBridge
             return _focusPoint;
         }
 
-        // ─── Public API (used by other systems) ─────────────────────────
+        // ─── Public API ─────────────────────────────────────────────────
 
-        /// <summary>Sets camera bounds from terrain size.</summary>
         public void SetBounds(float minX, float maxX, float minZ, float maxZ)
         {
             _boundsMinX = minX;
@@ -484,13 +429,11 @@ namespace SkiResortTycoon.UnityBridge
             _enableBounds = true;
         }
 
-        /// <summary>Sets the Y height the camera focuses on.</summary>
         public void SetFocusHeight(float height)
         {
             _focusPoint.y = height;
         }
 
-        /// <summary>Centers camera on a specific world XZ position.</summary>
         public void CenterOn(float x, float z)
         {
             _focusPoint.x = x;
@@ -498,7 +441,6 @@ namespace SkiResortTycoon.UnityBridge
             UpdateCameraTransform();
         }
 
-        /// <summary>The current focus point.</summary>
         public Vector3 FocusPoint => _focusPoint;
 
         // ─── Gizmos ─────────────────────────────────────────────────────
@@ -513,7 +455,6 @@ namespace SkiResortTycoon.UnityBridge
             Gizmos.color = Color.cyan;
             Gizmos.DrawLine(transform.position, _focusPoint);
 
-            // Draw bounds box
             if (_enableBounds)
             {
                 Gizmos.color = new Color(0f, 1f, 0f, 0.15f);

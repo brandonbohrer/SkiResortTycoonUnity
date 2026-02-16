@@ -28,10 +28,15 @@ namespace SkiResortTycoon.UnityBridge
 
         [Header("Zoom Settings")]
         [SerializeField] private float _zoomSpeed = 15f;
-        [SerializeField] private float _minDistance = 30f;
+        [SerializeField] private float _minDistanceAboveTerrain = 5f; // Camera stops this far above the mountain surface
+        [SerializeField] private float _minDistanceFallback = 10f;    // Absolute min if no terrain hit
         [SerializeField] private float _maxDistance = 500f;
         [SerializeField] private float _defaultDistance = 150f;
         [SerializeField] private float _zoomSmoothing = 10f;
+
+        [Header("Terrain Following")]
+        [SerializeField] private float _focusHeightSmoothing = 8f;   // How fast focus Y tracks terrain
+        [SerializeField] private float _focusHeightOffset = 2f;      // Focus sits this far above terrain surface
 
         [Header("Pan Settings")]
         [SerializeField] private float _panSpeedKeyboard = 40f;
@@ -64,6 +69,14 @@ namespace SkiResortTycoon.UnityBridge
         private float _distance;
         private float _targetDistance;
 
+        // Cached mountain reference for terrain queries
+        private GameObject _mountainMeshObj;
+        private Collider[] _mountainColliders;
+
+        // The actual distance used last frame (after terrain clamping).
+        // This is what pan speed should scale from — NOT _distance which ignores terrain.
+        private float _effectiveDistance;
+
         // Drag state
         private Vector3 _lastMousePosition;
         private bool _isOrbiting;
@@ -84,6 +97,7 @@ namespace SkiResortTycoon.UnityBridge
             _pitch = _defaultPitch;
             _distance = _defaultDistance;
             _targetDistance = _defaultDistance;
+            _effectiveDistance = _defaultDistance;
         }
 
         void Start()
@@ -123,6 +137,10 @@ namespace SkiResortTycoon.UnityBridge
             GameObject mountainMesh = mountainMeshField.GetValue(_mountainManager) as GameObject;
             if (mountainMesh == null) return;
 
+            // Cache mountain reference for per-frame terrain queries
+            _mountainMeshObj = mountainMesh;
+            _mountainColliders = mountainMesh.GetComponentsInChildren<Collider>();
+
             Renderer renderer = mountainMesh.GetComponent<Renderer>();
             if (renderer == null) renderer = mountainMesh.GetComponentInChildren<Renderer>();
             if (renderer == null) return;
@@ -157,6 +175,7 @@ namespace SkiResortTycoon.UnityBridge
             HandleZoom();
             HandleKeyboardRotation();
             ClampFocusPoint();
+            UpdateFocusHeight();
             SmoothZoom();
             UpdateCameraTransform();
         }
@@ -213,8 +232,10 @@ namespace SkiResortTycoon.UnityBridge
             Vector3 forward = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
             Vector3 right = Vector3.ProjectOnPlane(transform.right, Vector3.up).normalized;
 
-            // Scale pan speed by distance so it feels consistent at all zoom levels
-            float scaledSpeed = _panSpeedKeyboard * (_distance / _defaultDistance);
+            // Scale pan speed by the EFFECTIVE distance (after terrain clamping),
+            // not the raw target distance. This prevents teleporting when zoomed
+            // in tight against the terrain.
+            float scaledSpeed = _panSpeedKeyboard * (_effectiveDistance / _defaultDistance);
             Vector3 panDelta = (forward * input.z + right * input.x) * scaledSpeed * Time.deltaTime;
             _focusPoint += panDelta;
         }
@@ -266,7 +287,8 @@ namespace SkiResortTycoon.UnityBridge
 
             // Zoom as a percentage of current distance for a natural feel
             _targetDistance -= scroll * _zoomSpeed * (_targetDistance * 0.1f);
-            _targetDistance = Mathf.Clamp(_targetDistance, _minDistance, _maxDistance);
+            // Only clamp against the max here; the terrain-aware min is applied in UpdateCameraTransform
+            _targetDistance = Mathf.Clamp(_targetDistance, _minDistanceFallback, _maxDistance);
         }
 
         private void SmoothZoom()
@@ -298,16 +320,138 @@ namespace SkiResortTycoon.UnityBridge
                 _focusPoint.z = Mathf.Lerp(_focusPoint.z, _boundsMaxZ, s * Time.deltaTime);
         }
 
+        // ─── Terrain-following focus point ───────────────────────────────
+
+        /// <summary>
+        /// Smoothly adjusts the focus point Y to sit on the terrain surface.
+        /// This means when you pan to the base, the focus drops to base elevation,
+        /// and at the peak it rises — so zoom always feels relative to the ground.
+        /// </summary>
+        private void UpdateFocusHeight()
+        {
+            float? terrainY = GetTerrainHeightAt(_focusPoint);
+            if (terrainY.HasValue)
+            {
+                float targetY = terrainY.Value + _focusHeightOffset;
+                _focusPoint.y = Mathf.Lerp(_focusPoint.y, targetY, _focusHeightSmoothing * Time.deltaTime);
+            }
+        }
+
         // ─── Core: position camera from yaw/pitch/distance ──────────────
 
         private void UpdateCameraTransform()
         {
             // Convert yaw/pitch to a direction vector
             Quaternion rotation = Quaternion.Euler(_pitch, _yaw, 0f);
-            Vector3 offset = rotation * Vector3.back * _distance;
+            Vector3 direction = rotation * Vector3.back;
 
+            // Start with the desired distance
+            float usedDistance = _distance;
+
+            // ── Terrain collision: raycast from focus toward camera ──
+            // If the mountain is between the focus and where the camera wants to be,
+            // pull the camera in front of the mountain surface.
+            float terrainMinDist = GetTerrainClampedDistance(direction, _distance);
+            if (terrainMinDist < usedDistance)
+            {
+                usedDistance = terrainMinDist;
+                // Also push the target distance back so zoom doesn't fight the clamp
+                _targetDistance = Mathf.Max(_targetDistance, usedDistance);
+            }
+
+            // Never go below absolute minimum
+            usedDistance = Mathf.Max(usedDistance, _minDistanceFallback);
+
+            // Store for pan speed scaling — this is the REAL distance after all clamping
+            _effectiveDistance = usedDistance;
+
+            Vector3 offset = direction * usedDistance;
             transform.position = _focusPoint + offset;
             transform.LookAt(_focusPoint, Vector3.up);
+        }
+
+        /// <summary>
+        /// Raycast from focus point outward in the camera direction.
+        /// If the terrain is hit, return a clamped distance so the camera stays
+        /// above the mountain surface by _minDistanceAboveTerrain.
+        /// Also raycasts straight down from the computed camera position to prevent
+        /// the camera from dipping below the terrain.
+        /// </summary>
+        private float GetTerrainClampedDistance(Vector3 cameraDirection, float desiredDistance)
+        {
+            if (_mountainColliders == null || _mountainColliders.Length == 0)
+                return desiredDistance;
+
+            float clampedDistance = desiredDistance;
+
+            // 1) Raycast FROM focus point TOWARD where the camera would be.
+            //    This catches the mountain blocking the line of sight.
+            Ray ray = new Ray(_focusPoint, cameraDirection);
+            RaycastHit[] hits = Physics.RaycastAll(ray, desiredDistance);
+            foreach (var hit in hits)
+            {
+                if (IsMountainCollider(hit.collider))
+                {
+                    float safeDistance = hit.distance - _minDistanceAboveTerrain;
+                    if (safeDistance < clampedDistance)
+                        clampedDistance = safeDistance;
+                }
+            }
+
+            // 2) Check the camera's final position — raycast down to see if
+            //    the camera would be BELOW the terrain surface.
+            Vector3 candidatePos = _focusPoint + cameraDirection * clampedDistance;
+            float? terrainBelow = GetTerrainHeightAt(candidatePos);
+            if (terrainBelow.HasValue)
+            {
+                float minCamY = terrainBelow.Value + _minDistanceAboveTerrain;
+                if (candidatePos.y < minCamY)
+                {
+                    // Camera is underground — push it up by reducing distance
+                    // (moving camera closer to focus point raises it because of the pitch angle)
+                    float deficit = minCamY - candidatePos.y;
+                    float yPerUnit = Mathf.Abs(cameraDirection.y); // how much Y changes per unit of distance
+                    if (yPerUnit > 0.01f)
+                    {
+                        clampedDistance -= deficit / yPerUnit;
+                    }
+                }
+            }
+
+            return clampedDistance;
+        }
+
+        /// <summary>
+        /// Raycasts straight down to find the mountain surface height at a given XZ position.
+        /// </summary>
+        private float? GetTerrainHeightAt(Vector3 position)
+        {
+            if (_mountainColliders == null || _mountainColliders.Length == 0)
+                return null;
+
+            Ray downRay = new Ray(new Vector3(position.x, _boundsMaxY + 100f, position.z), Vector3.down);
+            RaycastHit[] hits = Physics.RaycastAll(downRay, _boundsMaxY + 200f);
+
+            float? bestY = null;
+            foreach (var hit in hits)
+            {
+                if (IsMountainCollider(hit.collider))
+                {
+                    if (!bestY.HasValue || hit.point.y > bestY.Value)
+                        bestY = hit.point.y;
+                }
+            }
+            return bestY;
+        }
+
+        /// <summary>
+        /// Checks whether a collider belongs to the mountain mesh.
+        /// </summary>
+        private bool IsMountainCollider(Collider col)
+        {
+            if (_mountainMeshObj == null) return false;
+            return col.transform == _mountainMeshObj.transform ||
+                   col.transform.IsChildOf(_mountainMeshObj.transform);
         }
 
         // ─── Utility: world position under mouse ────────────────────────

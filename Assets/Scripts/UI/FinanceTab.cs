@@ -8,7 +8,7 @@ namespace SkiResortTycoon.UI
 {
     /// <summary>
     /// Resort panel tab showing financial information.
-    /// Displays revenue, expenses, and income breakdown.
+    /// Reads real data from EconomySystem instead of placeholder estimates.
     /// </summary>
     public class FinanceTab : MonoBehaviour
     {
@@ -24,15 +24,15 @@ namespace SkiResortTycoon.UI
         [Header("Revenue Breakdown")]
         [SerializeField] private TextMeshProUGUI _ticketRevenueText;
         [SerializeField] private Image _ticketRevenueBar;
-        [SerializeField] private TextMeshProUGUI _foodRevenueText;
+        [SerializeField] private TextMeshProUGUI _foodRevenueText;  // Repurposed for lodge revenue
         [SerializeField] private Image _foodRevenueBar;
-        [SerializeField] private TextMeshProUGUI _rentalRevenueText;
+        [SerializeField] private TextMeshProUGUI _rentalRevenueText; // Unused for now
         [SerializeField] private Image _rentalRevenueBar;
         
         [Header("Expense Breakdown")]
-        [SerializeField] private TextMeshProUGUI _staffExpenseText;
-        [SerializeField] private TextMeshProUGUI _maintenanceExpenseText;
-        [SerializeField] private TextMeshProUGUI _utilityExpenseText;
+        [SerializeField] private TextMeshProUGUI _staffExpenseText;       // Repurposed for lift expenses
+        [SerializeField] private TextMeshProUGUI _maintenanceExpenseText; // Repurposed for lodge expenses
+        [SerializeField] private TextMeshProUGUI _utilityExpenseText;     // Repurposed for trail expenses
         
         [Header("Visual Settings")]
         [SerializeField] private Color _positiveColor = new Color(0.4f, 1f, 0.4f);
@@ -52,27 +52,46 @@ namespace SkiResortTycoon.UI
         private void UpdateSummary()
         {
             var state = _simulationRunner.Sim.State;
+            var economy = _simulationRunner.Sim.EconomySystem;
+            var record = economy.TodayRecord;
             
             if (_totalMoneyText != null)
             {
                 _totalMoneyText.text = $"${state.Money:N0}";
             }
             
-            // These would come from a proper financial tracking system
-            // For now, estimate based on visitor count
-            float estimatedRevenue = state.VisitorsToday * 75f; // $75 per visitor
-            float estimatedExpenses = state.VisitorsToday * 20f + 500f; // Variable + fixed
-            float netIncome = estimatedRevenue - estimatedExpenses;
+            // Use real data from EconomySystem if available, otherwise show live estimate
+            float ticketRevenue = 0f;
+            float lodgeRevenue = 0f;
+            float totalExpenses = 0f;
+            
+            if (record != null)
+            {
+                // We have a completed day's record
+                ticketRevenue = record.TicketRevenue;
+                lodgeRevenue = record.LodgeRevenue;
+                totalExpenses = record.TotalExpenses;
+            }
+            else
+            {
+                // Day in progress — show live estimate
+                ticketRevenue = state.VisitorsToday * economy.TicketPricing.TicketPrice;
+                // Lodge revenue is tracked live on LodgeFacility objects — we can't access it here
+                // so show ticket revenue only during the day
+            }
+            
+            float totalRevenue = ticketRevenue + lodgeRevenue;
+            float netIncome = totalRevenue - totalExpenses;
             
             if (_todayRevenueText != null)
             {
-                _todayRevenueText.text = $"${estimatedRevenue:N0}";
+                _todayRevenueText.text = $"${totalRevenue:N0}";
                 _todayRevenueText.color = _positiveColor;
             }
             
             if (_todayExpensesText != null)
             {
-                _todayExpensesText.text = $"${estimatedExpenses:N0}";
+                _todayExpensesText.text = $"${totalExpenses:N0}";
                 _todayExpensesText.color = _negativeColor;
             }
             
@@ -85,13 +104,25 @@ namespace SkiResortTycoon.UI
         
         private void UpdateRevenueBreakdown()
         {
-            var state = _simulationRunner.Sim.State;
+            var economy = _simulationRunner.Sim.EconomySystem;
+            var record = economy.TodayRecord;
             
-            // Estimate breakdowns
-            float totalRevenue = state.VisitorsToday * 75f;
-            float ticketRevenue = totalRevenue * 0.6f;   // 60% from tickets
-            float foodRevenue = totalRevenue * 0.25f;    // 25% from food
-            float rentalRevenue = totalRevenue * 0.15f;  // 15% from rentals
+            float ticketRevenue = 0f;
+            float lodgeRevenue = 0f;
+            float totalRevenue = 0f;
+            
+            if (record != null)
+            {
+                ticketRevenue = record.TicketRevenue;
+                lodgeRevenue = record.LodgeRevenue;
+                totalRevenue = record.TotalRevenue;
+            }
+            else
+            {
+                var state = _simulationRunner.Sim.State;
+                ticketRevenue = state.VisitorsToday * economy.TicketPricing.TicketPrice;
+                totalRevenue = ticketRevenue;
+            }
             
             if (_ticketRevenueText != null)
             {
@@ -102,48 +133,59 @@ namespace SkiResortTycoon.UI
                 _ticketRevenueBar.fillAmount = ticketRevenue / totalRevenue;
             }
             
+            // Lodge revenue (mapped to the "food revenue" UI field)
             if (_foodRevenueText != null)
             {
-                _foodRevenueText.text = $"${foodRevenue:N0}";
+                _foodRevenueText.text = $"${lodgeRevenue:N0}";
             }
             if (_foodRevenueBar != null && totalRevenue > 0)
             {
-                _foodRevenueBar.fillAmount = foodRevenue / totalRevenue;
+                _foodRevenueBar.fillAmount = lodgeRevenue / totalRevenue;
             }
             
+            // Rental revenue slot unused for now
             if (_rentalRevenueText != null)
             {
-                _rentalRevenueText.text = $"${rentalRevenue:N0}";
+                _rentalRevenueText.text = "$0";
             }
-            if (_rentalRevenueBar != null && totalRevenue > 0)
+            if (_rentalRevenueBar != null)
             {
-                _rentalRevenueBar.fillAmount = rentalRevenue / totalRevenue;
+                _rentalRevenueBar.fillAmount = 0f;
             }
         }
         
         private void UpdateExpenseBreakdown()
         {
-            var state = _simulationRunner.Sim.State;
+            var economy = _simulationRunner.Sim.EconomySystem;
+            var record = economy.TodayRecord;
             
-            // Estimate breakdowns
-            float totalExpenses = state.VisitorsToday * 20f + 500f;
-            float staffExpense = totalExpenses * 0.5f;
-            float maintenanceExpense = totalExpenses * 0.3f;
-            float utilityExpense = totalExpenses * 0.2f;
+            float liftExpenses = 0f;
+            float lodgeExpenses = 0f;
+            float trailExpenses = 0f;
             
+            if (record != null)
+            {
+                liftExpenses = record.LiftExpenses;
+                lodgeExpenses = record.LodgeExpenses;
+                trailExpenses = record.TrailExpenses;
+            }
+            
+            // Lift expenses (mapped to "staff" UI field)
             if (_staffExpenseText != null)
             {
-                _staffExpenseText.text = $"${staffExpense:N0}";
+                _staffExpenseText.text = $"${liftExpenses:N0}";
             }
             
+            // Lodge expenses (mapped to "maintenance" UI field)
             if (_maintenanceExpenseText != null)
             {
-                _maintenanceExpenseText.text = $"${maintenanceExpense:N0}";
+                _maintenanceExpenseText.text = $"${lodgeExpenses:N0}";
             }
             
+            // Trail expenses (mapped to "utility" UI field)
             if (_utilityExpenseText != null)
             {
-                _utilityExpenseText.text = $"${utilityExpense:N0}";
+                _utilityExpenseText.text = $"${trailExpenses:N0}";
             }
         }
     }

@@ -54,6 +54,17 @@ namespace SkiResortTycoon.Core
         /// <summary>Number of lodge visits this session.</summary>
         public int LodgeVisitCount { get; set; }
         
+        // ── Ticket value tracking (read by TicketValueFactor) ───────────
+        
+        /// <summary>Ticket price ratio (ticketPrice / fairPrice) at time of spawn.</summary>
+        public float TicketPriceRatio { get; set; }
+        
+        /// <summary>Runs completed this session (synced from Skier for factor access).</summary>
+        public int RunsCompleted { get; set; }
+        
+        /// <summary>Desired runs for this session (synced from Skier for factor access).</summary>
+        public int DesiredRuns { get; set; }
+        
         public SkierNeeds()
         {
             Hunger = 0f;
@@ -68,6 +79,11 @@ namespace SkiResortTycoon.Core
             TimeWithUrgentNeeds = 0f;
             CumulativePricePenalty = 0f;
             LodgeVisitCount = 0;
+            
+            // Ticket value tracking
+            TicketPriceRatio = 1.0f;
+            RunsCompleted = 0;
+            DesiredRuns = 5;
         }
         
         // ── Need updates ────────────────────────────────────────────────

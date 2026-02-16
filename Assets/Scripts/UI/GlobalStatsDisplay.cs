@@ -165,13 +165,13 @@ namespace SkiResortTycoon.UI
             
             if (_satisfactionText != null)
             {
-                _satisfactionText.text = $"{satisfaction:P0}";
+                _satisfactionText.text = $"{satisfaction:F0}/100";
                 _satisfactionText.color = satisfactionColor;
             }
             
             if (_satisfactionBar != null)
             {
-                _satisfactionBar.fillAmount = Mathf.Clamp01(satisfaction);
+                _satisfactionBar.fillAmount = Mathf.Clamp01(satisfaction / 100f);
                 _satisfactionBar.color = satisfactionColor;
             }
             
@@ -183,11 +183,12 @@ namespace SkiResortTycoon.UI
         
         private Color GetDefaultSatisfactionColor(float satisfaction)
         {
-            if (satisfaction >= 1.1f)
+            // satisfaction is 0-100 scale, baseline 50
+            if (satisfaction >= 65f)
                 return new Color(0.4f, 1f, 0.4f); // Green
-            else if (satisfaction >= 0.9f)
+            else if (satisfaction >= 45f)
                 return Color.white;
-            else if (satisfaction >= 0.7f)
+            else if (satisfaction >= 30f)
                 return new Color(1f, 0.6f, 0f); // Orange
             else
                 return new Color(1f, 0.2f, 0.2f); // Red

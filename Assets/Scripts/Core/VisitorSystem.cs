@@ -16,6 +16,9 @@ namespace SkiResortTycoon.Core
         // Satisfaction multiplier (set by Simulation)
         public float SatisfactionMultiplier { get; set; } = 1.0f;
         
+        // Price demand multiplier (set by Simulation from TicketPricing)
+        public float PriceMultiplier { get; set; } = 1.0f;
+        
         /// <summary>
         /// Accumulates visitors based on lifts and trails.
         /// Converts fractional visitors to whole visitors.
@@ -30,8 +33,8 @@ namespace SkiResortTycoon.Core
                 + (state.LiftsBuilt * _visitorsPerLift)
                 + (state.TrailsBuilt * _visitorsPerTrail);
             
-            // Apply satisfaction multiplier
-            visitorsPerMinute *= SatisfactionMultiplier;
+            // Apply satisfaction and price demand multipliers
+            visitorsPerMinute *= SatisfactionMultiplier * PriceMultiplier;
             
             // Accumulate fractional visitors
             _fractionalVisitors += visitorsPerMinute * minutesPassed;

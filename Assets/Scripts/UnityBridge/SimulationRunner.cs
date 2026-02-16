@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 using SkiResortTycoon.Core;
 
 namespace SkiResortTycoon.UnityBridge
@@ -14,20 +15,17 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private TrailDrawer _trailDrawer;
         
         private Simulation _sim;
-        private int _lastEndOfDayRevenue = 0;
+        private DailyFinancialRecord _lastFinancialRecord;
         private DayStats _lastDayStats;
         private bool _systemsWired = false;
         
         public Simulation Sim => _sim;
-        public int LastEndOfDayRevenue => _lastEndOfDayRevenue;
+        public DailyFinancialRecord LastFinancialRecord => _lastFinancialRecord;
         public DayStats LastDayStats => _lastDayStats;
         
         void Awake()
         {
-            // Initialize the simulation with new time speed
-            // At Speed1x: 1 day = 6 minutes (1.333 game minutes per real second)
             _sim = new Simulation(timeSpeedMinutesPerSecond: 1.333f);
-            
             Debug.Log($"Simulation started. Day {_sim.State.DayIndex}, Money: ${_sim.State.Money}");
         }
         
@@ -35,13 +33,10 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (_sim == null) return;
             
-            // Wire up systems once they're initialized (lazy)
             TryWireSystems();
             
-            // Advance the simulation
             bool dayEnded = _sim.Tick(Time.deltaTime);
             
-            // If the day just ended, handle end-of-day logic
             if (dayEnded)
             {
                 HandleEndOfDay();
@@ -52,24 +47,24 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (_systemsWired) return;
             
-            // Check if all systems are ready
             if (_liftBuilder != null && _liftBuilder.LiftSystem != null &&
                 _liftBuilder.Connectivity != null &&
                 _trailDrawer != null && _trailDrawer.TrailSystem != null &&
                 _trailDrawer.GridRenderer != null && _trailDrawer.GridRenderer.TerrainData != null)
             {
-                // Wire up the simulation with the systems
                 _sim.SetSystems(
                     _liftBuilder.LiftSystem,
                     _trailDrawer.TrailSystem,
                     _liftBuilder.Connectivity.Connections
                 );
                 
-                // Wire up registry and terrain for pathfinding
                 _sim.SetRegistryAndTerrain(
                     _liftBuilder.Connectivity.Registry,
                     _trailDrawer.GridRenderer.TerrainData
                 );
+                
+                // Do initial fair price calculation
+                UpdateFairPrice();
                 
                 _systemsWired = true;
                 Debug.Log("[SimulationRunner] Systems wired to Simulation!");
@@ -78,13 +73,46 @@ namespace SkiResortTycoon.UnityBridge
         
         private void HandleEndOfDay()
         {
-            // Store stats before ending day (visitor count is about to reset)
             int visitorsToday = _sim.State.VisitorsToday;
             
-            // End day and get revenue (this also calculates stats internally)
-            _lastEndOfDayRevenue = _sim.EndDay();
+            // Collect lodge data from the Unity layer
+            int lodgeCount = 0;
+            float lodgeRevenue = 0f;
+            var lodgeAmenities = new List<LodgeAmenityInfo>();
             
-            // Get detailed stats for logging (re-simulate to get stats)
+            if (LodgeManager.Instance != null)
+            {
+                foreach (var lodge in LodgeManager.Instance.AllLodges)
+                {
+                    if (lodge == null) continue;
+                    lodgeCount++;
+                    lodgeRevenue += lodge.Pricing.TotalRevenue;
+                    lodgeAmenities.Add(new LodgeAmenityInfo(
+                        lodge.HasFood, lodge.HasBathroom, lodge.HasRest));
+                }
+            }
+            
+            // Count distinct trail difficulties
+            int distinctDifficulties = CountDistinctDifficulties();
+            
+            // End day — EconomySystem handles all financial logic
+            _lastFinancialRecord = _sim.EndDay(
+                lodgeCount, lodgeRevenue, lodgeAmenities, distinctDifficulties);
+            
+            // Reset lodge daily revenue for next day
+            if (LodgeManager.Instance != null)
+            {
+                foreach (var lodge in LodgeManager.Instance.AllLodges)
+                {
+                    if (lodge != null)
+                    {
+                        lodge.Pricing.TotalRevenue = 0f;
+                        lodge.Pricing.TotalVisits = 0;
+                    }
+                }
+            }
+            
+            // Get detailed stats for logging
             if (_systemsWired)
             {
                 _lastDayStats = _sim.VisitorFlow.SimulateDay(
@@ -99,51 +127,91 @@ namespace SkiResortTycoon.UnityBridge
             }
             else
             {
-                // Simple fallback log
-                Debug.Log($"Day ended. Revenue: ${_lastEndOfDayRevenue}. Money now: ${_sim.State.Money}. Day: {_sim.State.DayIndex}");
+                Debug.Log($"Day ended. Net Income: ${_lastFinancialRecord.NetIncome:N0}. " +
+                          $"Money: ${_sim.State.Money:N0}. Day: {_sim.State.DayIndex}");
             }
+            
+            // Update fair price for next day (infrastructure may have changed)
+            UpdateFairPrice();
+        }
+        
+        /// <summary>
+        /// Recalculates fair price from current infrastructure.
+        /// Called at system wire-up and after each day ends.
+        /// </summary>
+        private void UpdateFairPrice()
+        {
+            int liftCount = _liftBuilder != null && _liftBuilder.LiftSystem != null
+                ? _liftBuilder.LiftSystem.Lifts.Count : 0;
+            int trailCount = _trailDrawer != null && _trailDrawer.TrailSystem != null
+                ? _trailDrawer.TrailSystem.Trails.Count : 0;
+            
+            var lodgeAmenities = new List<LodgeAmenityInfo>();
+            if (LodgeManager.Instance != null)
+            {
+                foreach (var lodge in LodgeManager.Instance.AllLodges)
+                {
+                    if (lodge != null)
+                    {
+                        lodgeAmenities.Add(new LodgeAmenityInfo(
+                            lodge.HasFood, lodge.HasBathroom, lodge.HasRest));
+                    }
+                }
+            }
+            
+            int distinctDifficulties = CountDistinctDifficulties();
+            
+            _sim.EconomySystem.UpdateFairPrice(
+                liftCount, trailCount, lodgeAmenities, distinctDifficulties);
+        }
+        
+        private int CountDistinctDifficulties()
+        {
+            if (_trailDrawer == null || _trailDrawer.TrailSystem == null)
+                return 0;
+            
+            var seen = new HashSet<TrailDifficulty>();
+            foreach (var trail in _trailDrawer.TrailSystem.Trails)
+            {
+                if (trail != null && trail.IsValid)
+                    seen.Add(trail.Difficulty);
+            }
+            return seen.Count;
         }
         
         private void LogDetailedDayStats()
         {
-            if (_lastDayStats == null) return;
+            if (_lastFinancialRecord == null) return;
+            
+            var r = _lastFinancialRecord;
             
             Debug.Log("========================================");
-            Debug.Log($"DAY {_sim.State.DayIndex - 1} ENDED");
+            Debug.Log($"DAY {r.DayIndex} ENDED");
             Debug.Log("========================================");
-            Debug.Log($"Total Visitors: {_lastDayStats.TotalVisitors}");
-            Debug.Log($"Served: {_lastDayStats.ServedVisitors} ({GetPercentage(_lastDayStats.ServedVisitors, _lastDayStats.TotalVisitors)}%)");
-            Debug.Log($"Unserved: {_lastDayStats.UnservedVisitors} ({GetPercentage(_lastDayStats.UnservedVisitors, _lastDayStats.TotalVisitors)}%)");
-            Debug.Log("----------------------------------------");
+            Debug.Log($"Visitors: {r.VisitorCount}");
+            Debug.Log($"Fair Price: ${r.FairPrice:N0}  |  Ticket Price: ${r.TicketPrice:N0}  |  Ratio: {r.TicketPrice / System.Math.Max(1f, r.FairPrice):F2}");
+            Debug.Log("────── Revenue ──────");
+            Debug.Log($"  Tickets:  ${r.TicketRevenue:N0}");
+            Debug.Log($"  Lodge:    ${r.LodgeRevenue:N0}");
+            Debug.Log($"  TOTAL:    ${r.TotalRevenue:N0}");
+            Debug.Log("────── Expenses ──────");
+            Debug.Log($"  Lifts:    ${r.LiftExpenses:N0}");
+            Debug.Log($"  Lodges:   ${r.LodgeExpenses:N0}");
+            Debug.Log($"  Trails:   ${r.TrailExpenses:N0}");
+            Debug.Log($"  TOTAL:    ${r.TotalExpenses:N0}");
+            Debug.Log("────── Bottom Line ──────");
+            Debug.Log($"  Net Income: ${r.NetIncome:N0}");
+            Debug.Log($"  Money:      ${_sim.State.Money:N0}");
+            Debug.Log($"  Satisfaction: {_sim.Satisfaction.Satisfaction:F1}/100 (multiplier: {_sim.Satisfaction.GetVisitorMultiplier():F2}x)");
+            Debug.Log($"  Demand: {_sim.EconomySystem.GetDemandMultiplier():F2}x");
+            Debug.Log("========================================");
             
-            // Breakdown by skill
-            Debug.Log("Visitors by Skill Level:");
-            foreach (SkillLevel skill in System.Enum.GetValues(typeof(SkillLevel)))
+            // Log visitor flow stats if available
+            if (_lastDayStats != null)
             {
-                int total = _lastDayStats.VisitorsBySkill[skill];
-                int served = _lastDayStats.ServedBySkill[skill];
-                int unserved = _lastDayStats.UnservedBySkill[skill];
-                Debug.Log($"  {skill}: {total} total, {served} served, {unserved} unserved");
+                Debug.Log($"Served: {_lastDayStats.ServedVisitors}/{_lastDayStats.TotalVisitors} " +
+                          $"({GetPercentage(_lastDayStats.ServedVisitors, _lastDayStats.TotalVisitors):F0}%)");
             }
-            Debug.Log("----------------------------------------");
-            
-            // Breakdown by difficulty
-            Debug.Log("Runs by Trail Difficulty:");
-            foreach (TrailDifficulty diff in System.Enum.GetValues(typeof(TrailDifficulty)))
-            {
-                int runs = _lastDayStats.RunsByDifficulty[diff];
-                if (runs > 0)
-                {
-                    Debug.Log($"  {diff}: {runs} runs");
-                }
-            }
-            Debug.Log("----------------------------------------");
-            
-            // Economics
-            Debug.Log($"Revenue: ${_lastEndOfDayRevenue} (${_sim.DollarsPerVisitor} per served visitor)");
-            Debug.Log($"Money: ${_sim.State.Money}");
-            Debug.Log($"Satisfaction: {_sim.Satisfaction.Satisfaction:F2}");
-            Debug.Log("========================================");
         }
         
         private float GetPercentage(int value, int total)

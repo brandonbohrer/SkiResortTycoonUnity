@@ -66,7 +66,7 @@ namespace SkiResortTycoon.UI
             if (_avgSatisfactionText != null)
             {
                 float satisfaction = _simulationRunner.Sim.Satisfaction.Satisfaction;
-                _avgSatisfactionText.text = $"{satisfaction:P0}";
+                _avgSatisfactionText.text = $"{satisfaction:F0}/100";
                 
                 // Color code
                 Color color = UIManager.Instance?.Theme?.GetSatisfactionColor(satisfaction) ?? Color.white;
@@ -132,13 +132,14 @@ namespace SkiResortTycoon.UI
         
         private void UpdateSatisfactionDistribution()
         {
-            // Would need aggregate satisfaction data from all skiers
-            // For now, use overall satisfaction as a proxy
-            float satisfaction = _simulationRunner?.Sim?.Satisfaction?.Satisfaction ?? 1f;
+            // satisfaction is 0-100, baseline 50
+            float satisfaction = _simulationRunner?.Sim?.Satisfaction?.Satisfaction ?? 50f;
+            float normalized = satisfaction / 100f; // 0-1 for bar fills
             
-            float satisfied = Mathf.Clamp01(satisfaction);
-            float neutral = Mathf.Clamp01(1f - Mathf.Abs(satisfaction - 1f));
-            float dissatisfied = Mathf.Clamp01(1f - satisfaction);
+            // Above 50 = satisfied portion, below 50 = dissatisfied portion
+            float satisfied = Mathf.Clamp01((satisfaction - 50f) / 50f);     // 0 at 50, 1 at 100
+            float dissatisfied = Mathf.Clamp01((50f - satisfaction) / 50f);   // 0 at 50, 1 at 0
+            float neutral = 1f - satisfied - dissatisfied;
             
             if (_satisfiedBar != null)
             {

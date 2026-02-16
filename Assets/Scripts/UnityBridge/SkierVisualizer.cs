@@ -524,6 +524,14 @@ namespace SkiResortTycoon.UnityBridge
             skier.SatisfactionTracker.AddFactor(new LodgePricingFactor());
             skier.SatisfactionTracker.AddFactor(new TraversalFrictionFactor());
             skier.SatisfactionTracker.AddFactor(new ReturnToBaseFactor());
+            skier.SatisfactionTracker.AddFactor(new TicketValueFactor());
+            
+            // Set ticket value tracking on needs (for TicketValueFactor)
+            if (_simRunner.Sim != null && _simRunner.Sim.EconomySystem != null)
+            {
+                skier.Needs.TicketPriceRatio = _simRunner.Sim.EconomySystem.GetPriceRatio();
+            }
+            skier.Needs.DesiredRuns = skier.DesiredRuns;
             
             // Log spawning info
             if (_enableDebugLogs) Debug.Log($"[Skier {skier.SkierId}] {skier.Skill} spawned → Lift {startLift.LiftId} → Trail {targetTrail.TrailId} ({targetTrail.Difficulty})");
@@ -735,6 +743,7 @@ namespace SkiResortTycoon.UnityBridge
             vs.EvaluatedLiftExits.Clear();
             vs.EvaluatedTrailExits.Clear();
             vs.Skier.RunsCompleted++;
+            vs.Skier.Needs.RunsCompleted = vs.Skier.RunsCompleted;
             
             // Update skier state
             vs.Skier.CurrentState = SkierState.SkiingTrail;

@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace SkiResortTycoon.Core
 {
     /// <summary>
@@ -19,9 +21,6 @@ namespace SkiResortTycoon.Core
         private LiftSystem _liftSystem;
         private TrailSystem _trailSystem;
         private ConnectionGraph _connections;
-        
-        // Revenue configuration
-        public int DollarsPerVisitor { get; set; } = 25;
         
         // At Speed1x: 1 day = 6 minutes (1.333 game minutes per real second)
         public Simulation(float timeSpeedMinutesPerSecond = 1.333f)
@@ -71,8 +70,9 @@ namespace SkiResortTycoon.Core
                 _state.TrailsBuilt = _trailSystem.Trails.Count;
             }
             
-            // Update visitor system with current satisfaction multiplier
+            // Update visitor system multipliers
             _visitorSystem.SatisfactionMultiplier = _satisfaction.GetVisitorMultiplier();
+            _visitorSystem.PriceMultiplier = _economySystem.GetDemandMultiplier();
             
             // Only advance time and visitors if the day is still active
             if (!_timeSystem.IsDayOver(_state))
@@ -86,30 +86,37 @@ namespace SkiResortTycoon.Core
         }
         
         /// <summary>
-        /// Handles end-of-day logic:
-        /// - Simulates visitor flow using individual skier pathfinding
-        /// - Computes revenue based on served visitors
-        /// - Updates satisfaction
-        /// - Applies money
-        /// - Increments day
-        /// - Resets visitors and time for next day
-        /// Returns the revenue earned.
+        /// Handles end-of-day logic using EconomySystem.
+        /// 
+        /// The caller (SimulationRunner) must provide lodge data because
+        /// lodge facilities live in the Unity bridge layer.
         /// </summary>
-        public int EndDay()
+        /// <param name="lodgeCount">Number of active lodges.</param>
+        /// <param name="lodgeRevenue">Total lodge revenue collected today.</param>
+        /// <param name="lodgeAmenities">Per-lodge amenity info for valuation.</param>
+        /// <param name="distinctDifficultyCount">Number of distinct trail difficulty types.</param>
+        /// <returns>The DailyFinancialRecord for this day.</returns>
+        public DailyFinancialRecord EndDay(
+            int lodgeCount,
+            float lodgeRevenue,
+            List<LodgeAmenityInfo> lodgeAmenities,
+            int distinctDifficultyCount)
         {
+            // Update fair price before processing financials
+            int liftCount = _liftSystem != null ? _liftSystem.Lifts.Count : 0;
+            int trailCount = _trailSystem != null ? _trailSystem.Trails.Count : 0;
+            _economySystem.UpdateFairPrice(liftCount, trailCount, lodgeAmenities, distinctDifficultyCount);
+            
             // Simulate visitor flow (if systems are initialized)
             DayStats dayStats = null;
-            int revenue = 0;
             
             if (_liftSystem != null && _trailSystem != null && _connections != null)
             {
-                // Get registry and terrain from systems
                 var registry = GetSnapRegistry();
                 var terrain = GetTerrainData();
                 
                 if (registry != null && terrain != null)
                 {
-                    // Simulate the day using visitor flow system
                     dayStats = _visitorFlow.SimulateDay(
                         _state.VisitorsToday,
                         _liftSystem.Lifts,
@@ -118,26 +125,24 @@ namespace SkiResortTycoon.Core
                         terrain
                     );
                     
-                    // Calculate revenue from served visitors only
-                    revenue = dayStats.ServedVisitors * DollarsPerVisitor;
-                    
                     // Update satisfaction based on performance
                     _satisfaction.UpdateSatisfaction(dayStats);
                 }
-                else
-                {
-                    // Fallback: use old system if not fully initialized
-                    revenue = _economySystem.ComputeEndOfDayRevenue(_state);
-                }
-            }
-            else
-            {
-                // Fallback: use old system if visitor flow not initialized
-                revenue = _economySystem.ComputeEndOfDayRevenue(_state);
             }
             
-            // Apply the revenue
-            _economySystem.ApplyRevenue(_state, revenue);
+            // Process all financials via EconomySystem
+            var record = _economySystem.ProcessEndOfDay(
+                _state, liftCount, trailCount, lodgeCount, lodgeRevenue);
+            
+            // Populate DayStats with financial data (if we have stats)
+            if (dayStats != null)
+            {
+                dayStats.TicketRevenue = record.TicketRevenue;
+                dayStats.LodgeRevenue = record.LodgeRevenue;
+                dayStats.TotalRevenue = record.TotalRevenue;
+                dayStats.TotalExpenses = record.TotalExpenses;
+                dayStats.NetIncome = record.NetIncome;
+            }
             
             // Increment day counter
             _state.DayIndex++;
@@ -147,7 +152,7 @@ namespace SkiResortTycoon.Core
             _visitorSystem.ResetDay();
             _timeSystem.ResetToOpen(_state);
             
-            return revenue;
+            return record;
         }
         
         // Helper to get registry (will be set by Unity bridge)
@@ -179,8 +184,6 @@ namespace SkiResortTycoon.Core
             if (_liftSystem != null && _trailSystem != null && _connections != null &&
                 _snapRegistry != null && _terrainData != null)
             {
-                // Re-simulate (this is a bit inefficient, but works for now)
-                // In production, we'd cache this
                 return _visitorFlow.SimulateDay(
                     _state.VisitorsToday,
                     _liftSystem.Lifts,
@@ -193,4 +196,3 @@ namespace SkiResortTycoon.Core
         }
     }
 }
-

@@ -42,18 +42,19 @@ namespace SkiResortTycoon.UI
         
         private string GetSatisfactionText(float satisfaction)
         {
+            // satisfaction is 0-100 scale, baseline 50
             string color = "white";
             
-            if (satisfaction >= 1.1f)
+            if (satisfaction >= 65f)
                 color = "#00ff00"; // Green - very satisfied
-            else if (satisfaction >= 0.9f)
+            else if (satisfaction >= 45f)
                 color = "white"; // Normal
-            else if (satisfaction >= 0.7f)
+            else if (satisfaction >= 30f)
                 color = "#ffaa00"; // Orange - warning
             else
                 color = "#ff0000"; // Red - unhappy
             
-            return $"<color={color}>{satisfaction:F2}</color>";
+            return $"<color={color}>{satisfaction:F0}/100</color>";
         }
         
         /// <summary>

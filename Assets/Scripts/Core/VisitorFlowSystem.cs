@@ -21,6 +21,13 @@ namespace SkiResortTycoon.Core
         // Breakdown by difficulty
         public Dictionary<TrailDifficulty, int> RunsByDifficulty { get; set; }
         
+        // ── Financial summary (populated by EconomySystem.ProcessEndOfDay) ──
+        public float TicketRevenue { get; set; }
+        public float LodgeRevenue { get; set; }
+        public float TotalRevenue { get; set; }
+        public float TotalExpenses { get; set; }
+        public float NetIncome { get; set; }
+        
         public DayStats()
         {
             VisitorsBySkill = new Dictionary<SkillLevel, int>();

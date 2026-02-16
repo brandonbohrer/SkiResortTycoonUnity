@@ -94,15 +94,15 @@ namespace SkiResortTycoon.UI
         public float ButtonHeight = 32f;
         
         /// <summary>
-        /// Returns the appropriate color for a satisfaction value
+        /// Returns the appropriate color for a satisfaction value (0-100 scale, baseline 50).
         /// </summary>
         public Color GetSatisfactionColor(float satisfaction)
         {
-            if (satisfaction >= 1.1f)
+            if (satisfaction >= 65f)
                 return SatisfactionHigh;
-            else if (satisfaction >= 0.9f)
+            else if (satisfaction >= 45f)
                 return SatisfactionNormal;
-            else if (satisfaction >= 0.7f)
+            else if (satisfaction >= 30f)
                 return SatisfactionLow;
             else
                 return SatisfactionCritical;

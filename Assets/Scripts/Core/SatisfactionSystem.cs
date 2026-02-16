@@ -4,42 +4,44 @@ using System.Collections.Generic;
 namespace SkiResortTycoon.Core
 {
     /// <summary>
-    /// Tracks resort-level satisfaction as the average of individual skier satisfaction.
+    /// Tracks resort-level satisfaction on a 0-100 scale.
+    /// Baseline is 50: below 50 = losing skiers, above 50 = gaining skiers.
     /// 
-    /// Each skier has a SkierSatisfaction aggregator with pluggable ISatisfactionFactor
-    /// instances. This system averages those scores to get the resort-level value,
-    /// which drives the visitor arrival multiplier.
+    /// Satisfaction is the average of individual skier satisfaction scores,
+    /// scaled to the 0-100 range and blended with historical value.
     /// 
-    /// Also retains legacy end-of-day unserved penalty as a supplementary signal.
+    /// The visitor multiplier is linear: satisfaction / 50.
+    /// So 50 → 1.0x (stable), 80 → 1.6x (growing), 30 → 0.6x (shrinking).
     /// </summary>
     public class SatisfactionSystem
     {
-        private float _satisfaction = 1.0f;
-        private float _realtimeSatisfaction = 1.0f; // Updated from active skier average
+        private float _satisfaction = 50f;
+        private float _realtimeSatisfaction = 50f;
         
         // Configuration
-        public float UnservedPenalty { get; set; } = 0.3f;  // k factor for end-of-day
-        public float MinSatisfaction { get; set; } = 0.2f;
-        public float MaxSatisfaction { get; set; } = 1.2f;
+        public float UnservedPenalty { get; set; } = 15f;   // Max penalty from unserved visitors (on 0-100 scale)
+        public float MinSatisfaction { get; set; } = 10f;
+        public float MaxSatisfaction { get; set; } = 100f;
+        public float Baseline { get; set; } = 50f;
         
         /// <summary>
-        /// Current resort satisfaction (blended from real-time + end-of-day).
+        /// Current resort satisfaction (0-100, baseline 50).
         /// </summary>
         public float Satisfaction => _satisfaction;
         
         /// <summary>
-        /// Real-time satisfaction from active skiers (updated each tick).
+        /// Real-time satisfaction from active skiers (0-100).
         /// </summary>
         public float RealtimeSatisfaction => _realtimeSatisfaction;
         
         /// <summary>
         /// Updates real-time satisfaction from active skiers.
-        /// Call periodically (e.g. every 1-2 seconds) from the simulation tick.
+        /// Skier satisfaction factors return 0-1; we scale to 0-100.
         /// </summary>
         public void UpdateFromActiveSkiers(IList<Skier> activeSkiers)
         {
             if (activeSkiers == null || activeSkiers.Count == 0)
-                return; // Keep previous value
+                return;
             
             float total = 0f;
             int count = 0;
@@ -48,7 +50,8 @@ namespace SkiResortTycoon.Core
             {
                 if (skier?.Needs != null)
                 {
-                    total += skier.GetSatisfaction();
+                    // Skier satisfaction is 0-1, scale to 0-100
+                    total += skier.GetSatisfaction() * 100f;
                     count++;
                 }
             }
@@ -57,8 +60,7 @@ namespace SkiResortTycoon.Core
             {
                 _realtimeSatisfaction = total / count;
                 
-                // Blend real-time into the main satisfaction value
-                // Use weighted blend: 70% real-time, 30% historical
+                // Blend real-time into main satisfaction: 70% real-time, 30% historical
                 _satisfaction = _realtimeSatisfaction * 0.7f + _satisfaction * 0.3f;
                 _satisfaction = Math.Max(MinSatisfaction, Math.Min(MaxSatisfaction, _satisfaction));
             }
@@ -66,7 +68,7 @@ namespace SkiResortTycoon.Core
         
         /// <summary>
         /// Updates satisfaction based on end-of-day statistics.
-        /// Supplements the real-time satisfaction with unserved visitor penalty.
+        /// Unserved visitors lower satisfaction.
         /// </summary>
         public void UpdateSatisfaction(DayStats stats)
         {
@@ -75,7 +77,7 @@ namespace SkiResortTycoon.Core
             
             float unservedRate = (float)stats.UnservedVisitors / stats.TotalVisitors;
             
-            // Unserved penalty still matters at end of day
+            // Unserved penalty on 0-100 scale
             float delta = -UnservedPenalty * unservedRate;
             _satisfaction += delta;
             
@@ -84,13 +86,14 @@ namespace SkiResortTycoon.Core
         
         /// <summary>
         /// Calculates visitor count modifier based on satisfaction.
-        /// satisfaction 1.0 = 1.0x multiplier
-        /// satisfaction 1.2 = 1.2x multiplier (20% more visitors)
-        /// satisfaction 0.2 = 0.2x multiplier (80% fewer visitors)
+        /// satisfaction 50 = 1.0x (stable, baseline)
+        /// satisfaction 80 = 1.6x (growing)
+        /// satisfaction 30 = 0.6x (shrinking)
+        /// satisfaction 10 = 0.2x (nearly dead)
         /// </summary>
         public float GetVisitorMultiplier()
         {
-            return _satisfaction;
+            return _satisfaction / Baseline;
         }
         
         /// <summary>
@@ -98,8 +101,8 @@ namespace SkiResortTycoon.Core
         /// </summary>
         public void Reset()
         {
-            _satisfaction = 1.0f;
-            _realtimeSatisfaction = 1.0f;
+            _satisfaction = Baseline;
+            _realtimeSatisfaction = Baseline;
         }
     }
 }

@@ -277451,6 +277451,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UnityBridge.LiftPrefabBuilder
   _simulationRunner: {fileID: 1670639974}
+  _mountainManager: {fileID: 1571617882}
   _turnPrefab: {fileID: 1415489641115764, guid: aba4a5f9155abe742b4ee285a651f9ac, type: 3}
   _pillarPrefab: {fileID: 1588594926649830, guid: ae255f9d2afb33a4abe1a08cafe505f1, type: 3}
   _cablePrefab: {fileID: 1513246832914934, guid: 98d515cd8a2ddec43a1c14d795351f20, type: 3}
@@ -284942,10 +284943,13 @@ MonoBehaviour:
   _defaultYaw: -45
   _defaultPitch: 40
   _zoomSpeed: 2
-  _minDistance: 30
+  _minDistanceAboveTerrain: 5
+  _minDistanceFallback: 10
   _maxDistance: 500
   _defaultDistance: 150
   _zoomSmoothing: 10
+  _focusHeightSmoothing: 8
+  _focusHeightOffset: 2
   _panSpeedKeyboard: 150
   _panSpeedMouse: 0.5
   _panMouseButton: 2
@@ -289661,7 +289665,7 @@ GameObject:
   - component: {fileID: 1571617882}
   - component: {fileID: 1571617884}
   m_Layer: 0
-  m_Name: WorldManager
+  m_Name: MountainManager
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

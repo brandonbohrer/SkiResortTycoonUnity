@@ -604,14 +604,38 @@ namespace SkiResortTycoon.UnityBridge
 
             if (vs.Motion.ReachedLiftBottom)
             {
-                // Track lift usage for mountain traversal variety
+                // Try to claim a chair BEFORE transitioning to RidingLift
+                LiftChairMover chairMover = null;
+                int chairIndex = -1;
+                if (_liftBuilder.PrefabBuilder != null)
+                {
+                    var liftInst = _liftBuilder.PrefabBuilder.GetLiftInstance(vs.CurrentLift.LiftId);
+                    if (liftInst != null && liftInst.Root != null)
+                    {
+                        chairMover = liftInst.Root.GetComponent<LiftChairMover>();
+                        if (chairMover != null)
+                        {
+                            chairIndex = chairMover.ClaimNearestUpChair(vs.GameObject.transform.position);
+                        }
+                    }
+                }
+
+                // No chair available → stay at bottom, wait in queue, retry next frame
+                if (chairMover == null || chairIndex < 0)
+                {
+                    // Keep ReachedLiftBottom true so we retry next frame
+                    // Skier stays at the lift base position, visually waiting
+                    return;
+                }
+
+                // Chair claimed — now transition to riding
                 vs.LiftsRidden.Add(vs.CurrentLift.LiftId);
                 
                 // Update skier state so PlanNewGoal knows where we are
                 vs.Skier.CurrentState = SkierState.RidingLift;
                 vs.Skier.CurrentLiftId = vs.CurrentLift.LiftId;
                 
-                // Advance goal past the RideLift step (critical fix: these were never consumed!)
+                // Advance goal past the RideLift step
                 if (vs.Skier.CurrentGoal != null && !vs.Skier.CurrentGoal.IsComplete)
                 {
                     var step = vs.Skier.CurrentGoal.GetCurrentStep();
@@ -622,14 +646,14 @@ namespace SkiResortTycoon.UnityBridge
                     }
                 }
                 
-                // Transition to riding the lift
+                // Transition to riding the lift with the claimed chair
                 vs.Phase = SkierPhase.RidingLift;
-                vs.Motion.SetLift(vs.CurrentLift);
+                vs.Motion.SetLift(vs.CurrentLift, chairMover, chairIndex);
                 
                 // Fire traffic event: skier entered lift
                 if (Traffic != null) Traffic.FireLiftEntered(vs.Skier.SkierId, vs.CurrentLift.LiftId);
                 
-                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Boarding lift {vs.CurrentLift.LiftId}");
+                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Boarding lift {vs.CurrentLift.LiftId}, chair {chairIndex}");
             }
         }
 

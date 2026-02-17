@@ -44,6 +44,10 @@ namespace SkiResortTycoon.UnityBridge
         private LiftData _currentLift;
         private float _liftProgress;              // 0-1 along lift
 
+        // ── Chair attachment (skier rides a specific chair) ──────────────
+        private LiftChairMover _chairMover;
+        private int _assignedChairIndex = -1;
+
         // ── Walk-to-lift target ─────────────────────────────────────────
         private Vector3 _walkTarget;
 
@@ -118,12 +122,27 @@ namespace SkiResortTycoon.UnityBridge
             ReachedTrailEnd = false;
         }
 
-        /// <summary>Assign the lift the skier is about to ride.</summary>
+        /// <summary>Assign the lift the skier is about to ride (no chair attachment).</summary>
         public void SetLift(LiftData lift)
         {
             _currentLift = lift;
             _liftProgress = 0f;
             ReachedLiftTop = false;
+            _chairMover = null;
+            _assignedChairIndex = -1;
+        }
+
+        /// <summary>
+        /// Assign the lift with a specific chair to ride.
+        /// The skier will snap to the chair's position each frame.
+        /// </summary>
+        public void SetLift(LiftData lift, LiftChairMover mover, int chairIndex)
+        {
+            _currentLift = lift;
+            _liftProgress = 0f;
+            ReachedLiftTop = false;
+            _chairMover = mover;
+            _assignedChairIndex = chairIndex;
         }
 
         /// <summary>Set the position the skier should walk toward (lift bottom).</summary>
@@ -221,6 +240,38 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (_currentLift == null) return _smoothedPosition;
 
+            // Offset to lower skier from chair pivot into the seat
+            const float SKIER_SEAT_Y_OFFSET = -3.25f;
+            const float SKIER_SEAT_FORWARD_OFFSET = 0.5f;
+
+            // ── Chair-attached mode: snap to chair position ──────────
+            if (_chairMover != null && _assignedChairIndex >= 0)
+            {
+                Vector3 chairPos = _chairMover.GetUpChairPosition(_assignedChairIndex);
+                float progress = _chairMover.GetUpChairProgress(_assignedChairIndex);
+
+                if (progress >= 0.95f)
+                {
+                    ReachedLiftTop = true;
+                    _chairMover.ReleaseChair(_assignedChairIndex);
+                    _chairMover = null;
+                    _assignedChairIndex = -1;
+                }
+
+                // Tangent is lift direction
+                Vector3 start = V3f(_currentLift.StartPosition);
+                Vector3 end = V3f(_currentLift.EndPosition);
+                Vector3 liftDir = (end - start);
+                liftDir.y = 0;
+                if (liftDir.sqrMagnitude > 0.001f) _currentTangent = liftDir.normalized;
+
+                // Sit in the chair: lower Y and nudge forward
+                chairPos.y += SKIER_SEAT_Y_OFFSET;
+                chairPos += _currentTangent * SKIER_SEAT_FORWARD_OFFSET;
+                return chairPos;
+            }
+
+            // ── Fallback: independent movement (no chair available) ──
             float liftLength = _currentLift.Length;
             if (liftLength <= 0f) liftLength = 1f;
 
@@ -232,21 +283,20 @@ namespace SkiResortTycoon.UnityBridge
                 ReachedLiftTop = true;
             }
 
-            Vector3 start = V3f(_currentLift.StartPosition);
-            Vector3 end   = V3f(_currentLift.EndPosition);
+            Vector3 startFb = V3f(_currentLift.StartPosition);
+            Vector3 endFb   = V3f(_currentLift.EndPosition);
             
             // Position along lift path
-            Vector3 pos = Vector3.Lerp(start, end, _liftProgress);
+            Vector3 pos = Vector3.Lerp(startFb, endFb, _liftProgress);
             
-            // Add chair height (7.825m) so skier rides at chair level
-            // This matches the chair spawn height from LiftPrefabBuilder
+            // Add chair height so skier rides at chair level
             const float CHAIR_HEIGHT = 7.825f;
-            pos.y += CHAIR_HEIGHT;
+            pos.y += CHAIR_HEIGHT + SKIER_SEAT_Y_OFFSET;
 
-            // Tangent is lift direction (projected to XZ for forward facing)
-            Vector3 liftDir = (end - start);
-            liftDir.y = 0;
-            if (liftDir.sqrMagnitude > 0.001f) _currentTangent = liftDir.normalized;
+            // Tangent is lift direction
+            Vector3 liftDirFb = (endFb - startFb);
+            liftDirFb.y = 0;
+            if (liftDirFb.sqrMagnitude > 0.001f) _currentTangent = liftDirFb.normalized;
 
             return pos;
         }

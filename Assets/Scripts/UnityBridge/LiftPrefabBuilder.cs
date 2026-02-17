@@ -28,6 +28,7 @@ namespace SkiResortTycoon.UnityBridge
         // ── References ──────────────────────────────────────────────────
         [Header("Core References")]
         [SerializeField] private SimulationRunner _simulationRunner;
+        [SerializeField] private MountainManager _mountainManager;
         
         // ── Prefab references (assign in Inspector) ─────────────────────
         [Header("Lift Prefabs")]
@@ -38,7 +39,7 @@ namespace SkiResortTycoon.UnityBridge
 
         [Header("Spacing")]
         [SerializeField] private float _pillarSpacing = 20f;   // metres between pillars
-        [SerializeField] private float _chairSpacing = 8f;     // metres between chairs per lane
+        [SerializeField] private float _chairSpacing = 16f;    // metres between chairs per lane (was 8)
         [SerializeField] private float _corridorWidth = 8f;    // tree-clearing width
 
         [Header("Lane Offsets (local-space, perpendicular to lift direction)")]
@@ -89,7 +90,7 @@ namespace SkiResortTycoon.UnityBridge
             // Attach chair mover component
             var mover = inst.Root.GetComponent<LiftChairMover>();
             if (mover == null) mover = inst.Root.AddComponent<LiftChairMover>();
-            mover.Initialise(inst, basePos, topPos, _chairUpX, _chairDownX, _chairY, _simulationRunner);
+            mover.Initialise(inst, basePos, topPos, _chairUpX, _chairDownX, _cableY, _simulationRunner);
 
             // Attach selectable structure component for management
             var selectable = inst.Root.GetComponent<SelectableStructure>();
@@ -196,20 +197,17 @@ namespace SkiResortTycoon.UnityBridge
                 inst.TopTurn.name = "TopTurn";
             }
 
-            // ── Cables parent ───────────────────────────────────────────
-            GameObject cablesParent = new GameObject("Cables");
-            cablesParent.transform.SetParent(inst.Root.transform, false);
+            // ── Build anchor points (base, pillars, top) ────────────────
+            // Anchor points define where supports stand. Cables run between them.
+            // Cable height at each pillar = ground + _cableY (the wheel/sheave height).
+            // NOTE: We use _cableY (manually tuned) instead of measuring the pillar mesh,
+            // because the mesh bounds include the spike/antenna above the wheel.
+            var anchorPoints = new List<Vector3>(); // world-space cable-level positions
+            var groundPoints = new List<Vector3>(); // world-space ground-level positions
 
-            if (_cablePrefab != null)
-            {
-                // Up cable
-                inst.CableUp = SpawnCable(cablesParent.transform, basePos, topPos,
-                    liftRot, dir, length, _cableUpX, _cableY, "CablesUp");
-
-                // Down cable (identical mesh, different lane offset)
-                inst.CableDown = SpawnCable(cablesParent.transform, basePos, topPos,
-                    liftRot, dir, length, _cableDownX, _cableY, "CablesDown");
-            }
+            // Base anchor (at turn wheel)
+            anchorPoints.Add(basePos + Vector3.up * _cableY);
+            groundPoints.Add(basePos);
 
             // ── Pillars ─────────────────────────────────────────────────
             GameObject pillarsParent = new GameObject("Pillars");
@@ -227,13 +225,76 @@ namespace SkiResortTycoon.UnityBridge
                 for (int i = 0; i <= pillarCount; i++)
                 {
                     float t = (inset + i * actualSpacing) / length;
-                    Vector3 pos = Vector3.Lerp(basePos, topPos, t);
+                    Vector3 liftLinePos = Vector3.Lerp(basePos, topPos, t);
 
-                    var pillar = Instantiate(_pillarPrefab, pos, liftRot, pillarsParent.transform);
+                    // Raycast to find ground height at this XZ position
+                    float groundY = liftLinePos.y; // fallback
+                    if (_mountainManager != null)
+                    {
+                        float? terrainY = _mountainManager.GetHeightAtWorldPos(liftLinePos);
+                        if (terrainY.HasValue)
+                            groundY = terrainY.Value;
+                    }
+
+                    // Place pillar at ground level — do NOT scale it
+                    Vector3 groundPos = new Vector3(liftLinePos.x, groundY, liftLinePos.z);
+                    var pillar = Instantiate(_pillarPrefab, groundPos, liftRot, pillarsParent.transform);
                     pillar.name = $"Pillar_{i}";
                     inst.Pillars.Add(pillar);
+
+                    // Cable anchor at pillar wheel height (_cableY above ground)
+                    float cableWorldY = groundY + _cableY;
+                    anchorPoints.Add(new Vector3(liftLinePos.x, cableWorldY, liftLinePos.z));
+                    groundPoints.Add(groundPos);
                 }
             }
+
+            // Top anchor (at turn wheel)
+            anchorPoints.Add(topPos + Vector3.up * _cableY);
+            groundPoints.Add(topPos);
+
+            // ── Cables (per-segment between anchors) ────────────────────
+            GameObject cablesParent = new GameObject("Cables");
+            cablesParent.transform.SetParent(inst.Root.transform, false);
+
+            inst.CableSegmentsUp = new List<GameObject>();
+            inst.CableSegmentsDown = new List<GameObject>();
+
+            if (_cablePrefab != null && anchorPoints.Count >= 2)
+            {
+                Vector3 right = Vector3.Cross(Vector3.up, dir).normalized;
+                if (right.sqrMagnitude < 0.001f) right = Vector3.right;
+
+                for (int i = 0; i < anchorPoints.Count - 1; i++)
+                {
+                    Vector3 segStart = anchorPoints[i];
+                    Vector3 segEnd = anchorPoints[i + 1];
+
+                    Vector3 segDelta = segEnd - segStart;
+                    float segLen = segDelta.magnitude;
+                    if (segLen < 0.01f) continue;
+                    Vector3 segDir = segDelta / segLen;
+                    Quaternion segRot = Quaternion.LookRotation(segDir, Vector3.up);
+
+                    // Up cable segment
+                    var upSeg = SpawnCableSegment(cablesParent.transform,
+                        segStart + right * _cableUpX,
+                        segEnd + right * _cableUpX,
+                        segRot, segLen, $"CableUp_{i}");
+                    inst.CableSegmentsUp.Add(upSeg);
+
+                    // Down cable segment
+                    var downSeg = SpawnCableSegment(cablesParent.transform,
+                        segStart + right * _cableDownX,
+                        segEnd + right * _cableDownX,
+                        segRot, segLen, $"CableDown_{i}");
+                    inst.CableSegmentsDown.Add(downSeg);
+                }
+            }
+
+            // Store anchor points and cable height for the chair mover
+            inst.CableAnchorPoints = new List<Vector3>(anchorPoints);
+            inst.PillarNativeHeight = _cableY;
 
             // ── Chairs ──────────────────────────────────────────────────
             inst.ChairsUpParent = new GameObject("ChairsUp");
@@ -250,27 +311,45 @@ namespace SkiResortTycoon.UnityBridge
                 int chairCount = Mathf.Max(1, Mathf.FloorToInt(length / _chairSpacing));
 
                 // Right perpendicular in world space (for lane offsets)
-                Vector3 right = Vector3.Cross(Vector3.up, dir).normalized;
-                if (right.sqrMagnitude < 0.001f) right = Vector3.right;
+                Vector3 right2 = Vector3.Cross(Vector3.up, dir).normalized;
+                if (right2.sqrMagnitude < 0.001f) right2 = Vector3.right;
+
+                // Pre-compute cumulative distances for polyline sampling
+                float totalPolyLen = 0f;
+                float[] segLens = new float[anchorPoints.Count - 1];
+                for (int s = 0; s < anchorPoints.Count - 1; s++)
+                {
+                    segLens[s] = Vector3.Distance(anchorPoints[s], anchorPoints[s + 1]);
+                    totalPolyLen += segLens[s];
+                }
+                float[] cumT = new float[anchorPoints.Count];
+                cumT[0] = 0f;
+                float cum = 0f;
+                for (int s = 0; s < segLens.Length; s++)
+                {
+                    cum += segLens[s];
+                    cumT[s + 1] = (totalPolyLen > 0.01f) ? cum / totalPolyLen : (float)(s + 1) / segLens.Length;
+                }
 
                 for (int i = 0; i < chairCount; i++)
                 {
                     float t = (float)i / chairCount;
 
+                    // Sample the polyline at t to match cable path
+                    Vector3 polyPos = SamplePolylineStatic(anchorPoints, cumT, t);
+
                     // Up lane: base → top
-                    Vector3 upPos = Vector3.Lerp(basePos, topPos, t)
-                                    + right * _chairUpX
-                                    + Vector3.up * _chairY;
-                    var chairUp = Instantiate(_chairPrefab, upPos, liftRot, inst.ChairsUpParent.transform);
+                    Vector3 upPos = polyPos + right2 * _chairUpX;
+                    Quaternion upSegRot = GetPolylineRotStatic(anchorPoints, cumT, t, liftRot);
+                    var chairUp = Instantiate(_chairPrefab, upPos, upSegRot, inst.ChairsUpParent.transform);
                     chairUp.name = $"Chair_{i}";
                     inst.ChairsUp.Add(chairUp);
 
-                    // Down lane: top → base (rotated 180° on Y)
-                    Vector3 downPos = Vector3.Lerp(topPos, basePos, t)
-                                      + right * _chairDownX
-                                      + Vector3.up * _chairY;
-                    Quaternion downRot = liftRot * Quaternion.Euler(0f, 180f, 0f);
-                    var chairDown = Instantiate(_chairPrefab, downPos, downRot, inst.ChairsDownParent.transform);
+                    // Down lane: top → base (reversed along polyline)
+                    Vector3 downPolyPos = SamplePolylineStatic(anchorPoints, cumT, 1f - t);
+                    Vector3 downPos = downPolyPos + right2 * _chairDownX;
+                    Quaternion downSegRot = GetPolylineRotStatic(anchorPoints, cumT, 1f - t, liftRot) * Quaternion.Euler(0f, 180f, 0f);
+                    var chairDown = Instantiate(_chairPrefab, downPos, downSegRot, inst.ChairsDownParent.transform);
                     chairDown.name = $"Chair_{i}";
                     inst.ChairsDown.Add(chairDown);
                 }
@@ -280,32 +359,20 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         /// <summary>
-        /// Spawn a single cable mesh scaled to span from base to top,
-        /// offset laterally and vertically.
+        /// Spawn a single cable segment between two anchor points.
+        /// The cable mesh is scaled along local Z to fit the segment length.
         /// </summary>
-        private GameObject SpawnCable(Transform parent, Vector3 basePos, Vector3 topPos,
-            Quaternion liftRot, Vector3 dir, float length, float lateralX, float verticalY, string name)
+        private GameObject SpawnCableSegment(Transform parent,
+            Vector3 startPos, Vector3 endPos, Quaternion segRot, float segLength, string name)
         {
-            // Cable parent (holds the offset)
-            GameObject cableParent = new GameObject(name);
-            cableParent.transform.SetParent(parent, false);
+            var cable = Instantiate(_cablePrefab, startPos, segRot, parent);
+            cable.name = name;
 
-            // World-space perpendicular
-            Vector3 right = Vector3.Cross(Vector3.up, dir).normalized;
-            if (right.sqrMagnitude < 0.001f) right = Vector3.right;
-
-            // Cable start point (at base) + offsets
-            Vector3 cableStart = basePos + right * lateralX + Vector3.up * verticalY;
-
-            var cable = Instantiate(_cablePrefab, cableStart, liftRot, cableParent.transform);
-            cable.name = "SM_Prop_Lift_Cable_01";
-
-            // Scale the cable along its local Z (forward) to span the full length.
-            // The cable mesh is positioned at its START (not center), so we scale from there.
+            // Scale the cable along its local Z (forward) to span the segment length.
             float meshLength = GetMeshZExtent(cable);
             if (meshLength > 0.001f)
             {
-                float zScale = length / meshLength;
+                float zScale = segLength / meshLength;
                 cable.transform.localScale = new Vector3(
                     cable.transform.localScale.x,
                     cable.transform.localScale.y,
@@ -314,17 +381,16 @@ namespace SkiResortTycoon.UnityBridge
             }
             else
             {
-                // Fallback: just set Z scale equal to length (assumes 1-unit mesh)
                 Vector3 ls = cable.transform.localScale;
-                cable.transform.localScale = new Vector3(ls.x, ls.y, length);
+                cable.transform.localScale = new Vector3(ls.x, ls.y, segLength);
             }
 
-            return cableParent;
+            return cable;
         }
 
         /// <summary>
         /// Measure the Z extent of a mesh (bounds.size.z) to know how much
-        /// to scale a cable to fill the lift span.
+        /// to scale a cable to fill a segment.
         /// </summary>
         private float GetMeshZExtent(GameObject obj)
         {
@@ -335,6 +401,65 @@ namespace SkiResortTycoon.UnityBridge
                 return mf.sharedMesh.bounds.size.z;
             }
             return 0f;
+        }
+
+        /// <summary>
+        /// Measure the Y extent of a mesh (bounds.size.y) for pillar height scaling.
+        /// </summary>
+        private float GetMeshYExtent(GameObject obj)
+        {
+            var mf = obj.GetComponent<MeshFilter>();
+            if (mf == null) mf = obj.GetComponentInChildren<MeshFilter>();
+            if (mf != null && mf.sharedMesh != null)
+            {
+                return mf.sharedMesh.bounds.size.y * obj.transform.localScale.y;
+            }
+            // Try renderer bounds as fallback
+            var r = obj.GetComponent<Renderer>();
+            if (r == null) r = obj.GetComponentInChildren<Renderer>();
+            if (r != null) return r.bounds.size.y;
+            return 1f;
+        }
+
+        // ── Static polyline helpers (used for initial chair placement) ────
+
+        /// <summary>
+        /// Sample a position along a polyline defined by anchor points.
+        /// cumT is the pre-computed cumulative normalised-distance array.
+        /// </summary>
+        private static Vector3 SamplePolylineStatic(List<Vector3> anchors, float[] cumT, float t)
+        {
+            t = Mathf.Clamp01(t);
+            for (int i = 0; i < anchors.Count - 1; i++)
+            {
+                float tEnd = cumT[i + 1];
+                if (t <= tEnd || i == anchors.Count - 2)
+                {
+                    float tStart = cumT[i];
+                    float segRange = tEnd - tStart;
+                    float localT = (segRange > 0.0001f) ? (t - tStart) / segRange : 0f;
+                    return Vector3.Lerp(anchors[i], anchors[i + 1], localT);
+                }
+            }
+            return anchors[anchors.Count - 1];
+        }
+
+        /// <summary>
+        /// Get forward rotation at a point along the polyline.
+        /// </summary>
+        private static Quaternion GetPolylineRotStatic(List<Vector3> anchors, float[] cumT, float t, Quaternion fallback)
+        {
+            t = Mathf.Clamp01(t);
+            for (int i = 0; i < anchors.Count - 1; i++)
+            {
+                if (t <= cumT[i + 1] || i == anchors.Count - 2)
+                {
+                    Vector3 segDir = (anchors[i + 1] - anchors[i]).normalized;
+                    if (segDir.sqrMagnitude < 0.001f) return fallback;
+                    return Quaternion.LookRotation(segDir, Vector3.up);
+                }
+            }
+            return fallback;
         }
     }
 
@@ -352,12 +477,14 @@ namespace SkiResortTycoon.UnityBridge
         public GameObject Root;
         public GameObject BaseTurn;
         public GameObject TopTurn;
-        public GameObject CableUp;
-        public GameObject CableDown;
+        public List<GameObject> CableSegmentsUp;
+        public List<GameObject> CableSegmentsDown;
         public List<GameObject> Pillars;
         public GameObject ChairsUpParent;
         public GameObject ChairsDownParent;
         public List<GameObject> ChairsUp;
         public List<GameObject> ChairsDown;
+        public float PillarNativeHeight; // cable/chair height above ground
+        public List<Vector3> CableAnchorPoints; // world-space cable-level positions (base → top)
     }
 }

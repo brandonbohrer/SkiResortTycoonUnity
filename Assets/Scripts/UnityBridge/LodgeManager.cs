@@ -29,6 +29,22 @@ namespace SkiResortTycoon.UnityBridge
         /// Total number of lodges
         /// </summary>
         public int LodgeCount => _allLodges.Count;
+
+        /// <summary>
+        /// Global buffet (food) price across all lodges.
+        /// Getting reads from the first lodge (or returns default 8).
+        /// Setting syncs to every registered lodge.
+        /// </summary>
+        public float GlobalFoodPrice
+        {
+            get => _allLodges.Count > 0 && _allLodges[0] != null
+                   ? _allLodges[0].Pricing.FoodPrice : 8f;
+            set
+            {
+                foreach (var lodge in _allLodges)
+                    if (lodge != null) lodge.Pricing.FoodPrice = value;
+            }
+        }
         
         void Awake()
         {

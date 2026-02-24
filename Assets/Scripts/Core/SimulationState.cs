@@ -17,9 +17,10 @@ namespace SkiResortTycoon.Core
         public int TrailsBuilt { get; set; } = 0;
 
         // Today's running financials (reset each day, updated by EconomySystem)
-        public float TodayRevenue  { get; set; } = 0f;
-        public float TodayExpenses { get; set; } = 0f;
-        public float TodayNetProfit => TodayRevenue - TodayExpenses;
+        public float TodayRevenue      { get; set; } = 0f;
+        public float TodayExpenses     { get; set; } = 0f;
+        public float TodayLodgeRevenue { get; set; } = 0f;  // accumulated by LodgeManager per visit
+        public float TodayNetProfit    => TodayRevenue - TodayExpenses;
     }
 }
 

@@ -148,9 +148,10 @@ namespace SkiResortTycoon.Core
             _state.DayIndex++;
 
             // Reset for next day
-            _state.VisitorsToday  = 0;
-            _state.TodayRevenue   = 0f;
-            _state.TodayExpenses  = 0f;
+            _state.VisitorsToday    = 0;
+            _state.TodayRevenue     = 0f;
+            _state.TodayExpenses    = 0f;
+            _state.TodayLodgeRevenue = 0f;
             _visitorSystem.ResetDay();
             _timeSystem.ResetToOpen(_state);
             

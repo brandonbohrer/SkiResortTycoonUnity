@@ -73069,6 +73069,7 @@ GameObject:
   - component: {fileID: 332640914}
   - component: {fileID: 332640913}
   - component: {fileID: 332640912}
+  - component: {fileID: 332640915}
   m_Layer: 5
   m_Name: LineChartBox
   m_TagString: Untagged
@@ -73154,6 +73155,26 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 332640910}
   m_CullTransparentMesh: 1
+--- !u!114 &332640915
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 332640910}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 15dde9f73a77e468d8a2c72a5860ed84, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UI.LineChartRenderer
+  _plotArea: {fileID: 327915257}
+  _greenLineParent: {fileID: 1873536641}
+  _redLineParent: {fileID: 1558977762}
+  _segmentThickness: 3
+  _showPoints: 1
+  _pointRadius: 5
+  _greenColor: {r: 0.2, g: 0.85, b: 0.4, a: 1}
+  _redColor: {r: 0.95, g: 0.3, b: 0.3, a: 1}
 --- !u!1001 &333308025
 PrefabInstance:
   m_ObjectHideFlags: 0

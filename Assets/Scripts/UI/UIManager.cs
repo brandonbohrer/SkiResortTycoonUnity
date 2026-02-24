@@ -111,6 +111,13 @@ namespace SkiResortTycoon.UI
         /// </summary>
         private void HandleGlobalInput()
         {
+            // Never fire keyboard shortcuts while the user is typing in a UI input field
+            if (UnityEngine.EventSystems.EventSystem.current != null &&
+                UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject != null &&
+                UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject
+                    .GetComponent<TMPro.TMP_InputField>() != null)
+                return;
+
             // ESC always works — even when overlays are open
             if (Input.GetKeyDown(KeyCode.Escape))
                 HandleEscape();

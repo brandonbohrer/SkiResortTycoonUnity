@@ -174,9 +174,13 @@ namespace SkiResortTycoon.UnityBridge
 
         // ─── Orbit (right-click drag) ───────────────────────────────────
 
+        private static bool IsPointerOverUI =>
+            UnityEngine.EventSystems.EventSystem.current != null &&
+            UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
+
         private void HandleOrbit()
         {
-            if (Input.GetMouseButtonDown(_orbitMouseButton))
+            if (Input.GetMouseButtonDown(_orbitMouseButton) && !IsPointerOverUI)
             {
                 _isOrbiting = true;
                 _lastMousePosition = Input.mousePosition;
@@ -201,6 +205,8 @@ namespace SkiResortTycoon.UnityBridge
 
         private void HandleKeyboardRotation()
         {
+            if (IsTypingInInputField) return;
+
             if (Input.GetKey(KeyCode.Q))
                 _yaw -= _keyboardRotateSpeed * Time.deltaTime;
             if (Input.GetKey(KeyCode.E))
@@ -209,8 +215,16 @@ namespace SkiResortTycoon.UnityBridge
 
         // ─── Pan with WASD / Arrow keys ────────────────────────────────
 
+        private static bool IsTypingInInputField =>
+            UnityEngine.EventSystems.EventSystem.current != null &&
+            UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject != null &&
+            UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject
+                .GetComponent<TMPro.TMP_InputField>() != null;
+
         private void HandlePanKeyboard()
         {
+            if (IsTypingInInputField) return;
+
             Vector3 input = Vector3.zero;
 
             if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))    input.z += 1f;
@@ -232,7 +246,7 @@ namespace SkiResortTycoon.UnityBridge
 
         private void HandlePanMouse()
         {
-            if (Input.GetMouseButtonDown(_panMouseButton))
+            if (Input.GetMouseButtonDown(_panMouseButton) && !IsPointerOverUI)
             {
                 _isPanning = true;
                 _lastMousePosition = Input.mousePosition;
@@ -267,6 +281,11 @@ namespace SkiResortTycoon.UnityBridge
 
         private void HandleZoom()
         {
+            // Don't zoom when the pointer is over any UI element (e.g. the context window scroll view)
+            if (UnityEngine.EventSystems.EventSystem.current != null &&
+                UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
+                return;
+
             float scroll = Input.mouseScrollDelta.y;
             if (scroll == 0f) return;
 

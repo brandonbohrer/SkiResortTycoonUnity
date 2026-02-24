@@ -194,12 +194,11 @@ namespace SkiResortTycoon.UI
             switch (_current.Type)
             {
                 case StructureType.Trail:
-                    var diff = _current.TrailData?.Difficulty ?? TrailDifficulty.Green;
-                    SetText(_subtitleText, DifficultyLabel(diff), DifficultyColor(diff));
+                    SetText(_subtitleText, "Trail");
                     SetIcon(_trailIcon);
                     break;
                 case StructureType.Lift:
-                    SetText(_subtitleText, "Chairlift");
+                    SetText(_subtitleText, "Lift");
                     SetIcon(_liftIcon);
                     break;
                 case StructureType.Lodge:

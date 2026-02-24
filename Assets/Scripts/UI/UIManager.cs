@@ -23,6 +23,8 @@ namespace SkiResortTycoon.UI
         [SerializeField] private Button     _menuButton;
         [SerializeField] private Button     _resumeButton;
         [SerializeField] private Button     _quitButton;
+        [SerializeField] private GameObject _managerScreen;
+        [SerializeField] private Button     _managerButton;
         [SerializeField] private BuildActionBar _buildActionBar;
 
         [Header("Input Blocking")]
@@ -31,6 +33,7 @@ namespace SkiResortTycoon.UI
         
         [Header("Settings")]
         [SerializeField] private bool _menuOpen = false;
+        [SerializeField] private bool _managerOpen = false;
         
         // Events
         public UnityEvent OnMenuOpened = new UnityEvent();
@@ -50,7 +53,9 @@ namespace SkiResortTycoon.UI
         /// <summary>
         /// Whether the main menu is currently open
         /// </summary>
-        public bool IsMenuOpen => _menuOpen;
+        public bool IsMenuOpen    => _menuOpen;
+        public bool IsManagerOpen => _managerOpen;
+        public bool IsAnyOverlayOpen => _menuOpen || _managerOpen;
         
         /// <summary>
         /// The current UI theme
@@ -87,11 +92,13 @@ namespace SkiResortTycoon.UI
             if (_menuButton   != null) _menuButton.onClick.AddListener(ToggleMenu);
             if (_resumeButton != null) _resumeButton.onClick.AddListener(CloseMenu);
             if (_quitButton   != null) _quitButton.onClick.AddListener(QuitGame);
+            if (_managerButton != null) _managerButton.onClick.AddListener(OpenManager);
 
-            // Ensure menu starts closed
-            if (_mainMenuOverlay != null)
-                _mainMenuOverlay.SetActive(false);
-            _menuOpen = false;
+            // Ensure overlays start closed
+            if (_mainMenuOverlay != null) _mainMenuOverlay.SetActive(false);
+            if (_managerScreen   != null) _managerScreen.SetActive(false);
+            _menuOpen    = false;
+            _managerOpen = false;
         }
         
         void Update()
@@ -104,12 +111,12 @@ namespace SkiResortTycoon.UI
         /// </summary>
         private void HandleGlobalInput()
         {
-            // ESC always works — even when menu is open
+            // ESC always works — even when overlays are open
             if (Input.GetKeyDown(KeyCode.Escape))
                 HandleEscape();
 
-            // All other keyboard input is blocked while the menu is open
-            if (_menuOpen) return;
+            // All other keyboard input is blocked while any overlay is open
+            if (_menuOpen || _managerOpen) return;
 
             // Space: Pause/Play toggle
             if (Input.GetKeyDown(KeyCode.Space))
@@ -145,6 +152,13 @@ namespace SkiResortTycoon.UI
         /// </summary>
         private void HandleEscape()
         {
+            // Close manager screen first if open
+            if (_managerOpen)
+            {
+                CloseManager();
+                return;
+            }
+
             // If tool is active, cancel it first
             if (_activeTool != null)
             {
@@ -174,6 +188,43 @@ namespace SkiResortTycoon.UI
         /// <summary>
         /// Opens the main menu overlay
         /// </summary>
+        // ── Manager Screen ───────────────────────────────────────────────
+
+        public void OpenManager()
+        {
+            _managerOpen = true;
+
+            if (_managerScreen != null)
+                _managerScreen.SetActive(true);
+
+            // Block game UI and pause
+            if (_gameUICanvasGroup != null)
+            {
+                _gameUICanvasGroup.interactable   = false;
+                _gameUICanvasGroup.blocksRaycasts = false;
+            }
+
+            if (_timeController != null && !_timeController.IsPaused)
+                _timeController.Pause();
+        }
+
+        public void CloseManager()
+        {
+            _managerOpen = false;
+
+            if (_managerScreen != null)
+                _managerScreen.SetActive(false);
+
+            // Restore game UI only if the menu is also closed
+            if (!_menuOpen && _gameUICanvasGroup != null)
+            {
+                _gameUICanvasGroup.interactable   = true;
+                _gameUICanvasGroup.blocksRaycasts = true;
+            }
+        }
+
+        // ── Game Menu ────────────────────────────────────────────────────
+
         public void OpenMenu()
         {
             _menuOpen = true;

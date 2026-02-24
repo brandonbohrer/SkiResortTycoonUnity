@@ -106,10 +106,14 @@ namespace SkiResortTycoon.Core
             
             // 5. Apply net income to state money
             state.Money += (int)_todayRecord.NetIncome;
-            
-            // 6. Store in history
+
+            // 6. Write today's totals to state for live display, reset for next day
+            state.TodayRevenue  = _todayRecord.TotalRevenue;
+            state.TodayExpenses = _todayRecord.TotalExpenses;
+
+            // 7. Store in history
             _history.Add(_todayRecord);
-            
+
             return _todayRecord;
         }
         

@@ -156,9 +156,9 @@ namespace SkiResortTycoon.UnityBridge
 
         void Update()
         {
-            // Freeze all camera input while the menu is open
+            // Freeze all camera input while any overlay (menu or manager) is open
             if (SkiResortTycoon.UI.UIManager.Instance != null &&
-                SkiResortTycoon.UI.UIManager.Instance.IsMenuOpen)
+                SkiResortTycoon.UI.UIManager.Instance.IsAnyOverlayOpen)
                 return;
 
             HandleOrbit();

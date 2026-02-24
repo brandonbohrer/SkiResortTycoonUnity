@@ -15,6 +15,11 @@ namespace SkiResortTycoon.Core
         // Infrastructure counts (updated by systems)
         public int LiftsBuilt { get; set; } = 0;
         public int TrailsBuilt { get; set; } = 0;
+
+        // Today's running financials (reset each day, updated by EconomySystem)
+        public float TodayRevenue  { get; set; } = 0f;
+        public float TodayExpenses { get; set; } = 0f;
+        public float TodayNetProfit => TodayRevenue - TodayExpenses;
     }
 }
 

@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 using UnityEngine.Events;
 using SkiResortTycoon.Core;
 using SkiResortTycoon.UnityBridge;
@@ -19,7 +20,14 @@ namespace SkiResortTycoon.UI
         
         [Header("Panels")]
         [SerializeField] private GameObject _mainMenuOverlay;
+        [SerializeField] private Button     _menuButton;
+        [SerializeField] private Button     _resumeButton;
+        [SerializeField] private Button     _quitButton;
         [SerializeField] private BuildActionBar _buildActionBar;
+
+        [Header("Input Blocking")]
+        [Tooltip("CanvasGroup on the root game UI (TopHUD, build bar, etc.) — set interactable=false when menu opens")]
+        [SerializeField] private CanvasGroup _gameUICanvasGroup;
         
         [Header("Settings")]
         [SerializeField] private bool _menuOpen = false;
@@ -67,17 +75,22 @@ namespace SkiResortTycoon.UI
         
         void Start()
         {
+            // Auto-find SimulationRunner if not wired
+            if (_simulationRunner == null)
+                _simulationRunner = FindObjectOfType<SimulationRunner>();
+
             // Get time controller reference
             if (_simulationRunner != null && _simulationRunner.Sim != null)
-            {
                 _timeController = _simulationRunner.Sim.TimeController;
-            }
-            
+
+            // Wire menu / resume / quit buttons
+            if (_menuButton   != null) _menuButton.onClick.AddListener(ToggleMenu);
+            if (_resumeButton != null) _resumeButton.onClick.AddListener(CloseMenu);
+            if (_quitButton   != null) _quitButton.onClick.AddListener(QuitGame);
+
             // Ensure menu starts closed
             if (_mainMenuOverlay != null)
-            {
                 _mainMenuOverlay.SetActive(false);
-            }
             _menuOpen = false;
         }
         
@@ -91,12 +104,13 @@ namespace SkiResortTycoon.UI
         /// </summary>
         private void HandleGlobalInput()
         {
-            // ESC: Cancel tool or open menu
+            // ESC always works — even when menu is open
             if (Input.GetKeyDown(KeyCode.Escape))
-            {
                 HandleEscape();
-            }
-            
+
+            // All other keyboard input is blocked while the menu is open
+            if (_menuOpen) return;
+
             // Space: Pause/Play toggle
             if (Input.GetKeyDown(KeyCode.Space))
             {
@@ -163,18 +177,21 @@ namespace SkiResortTycoon.UI
         public void OpenMenu()
         {
             _menuOpen = true;
-            
+
             if (_mainMenuOverlay != null)
-            {
                 _mainMenuOverlay.SetActive(true);
+
+            // Block all game UI interaction
+            if (_gameUICanvasGroup != null)
+            {
+                _gameUICanvasGroup.interactable   = false;
+                _gameUICanvasGroup.blocksRaycasts = false;
             }
-            
+
             // Pause the game when menu opens
             if (_timeController != null && !_timeController.IsPaused)
-            {
                 _timeController.Pause();
-            }
-            
+
             OnMenuOpened?.Invoke();
         }
         
@@ -184,13 +201,27 @@ namespace SkiResortTycoon.UI
         public void CloseMenu()
         {
             _menuOpen = false;
-            
+
             if (_mainMenuOverlay != null)
-            {
                 _mainMenuOverlay.SetActive(false);
+
+            // Restore game UI interaction
+            if (_gameUICanvasGroup != null)
+            {
+                _gameUICanvasGroup.interactable   = true;
+                _gameUICanvasGroup.blocksRaycasts = true;
             }
-            
+
             OnMenuClosed?.Invoke();
+        }
+
+        private void QuitGame()
+        {
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
         }
         
         /// <summary>

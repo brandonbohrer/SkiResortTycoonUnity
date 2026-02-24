@@ -7,202 +7,157 @@ using SkiResortTycoon.UnityBridge;
 namespace SkiResortTycoon.UI
 {
     /// <summary>
-    /// Displays high-level game stats in the top bar.
-    /// Shows time, money (with animation), visitors, and satisfaction.
+    /// Drives all top-bar stats pills: day/time, money, visitors,
+    /// trails, lifts, lodges, and satisfaction percentage.
+    /// Auto-finds SimulationRunner and LodgeManager if not wired.
     /// </summary>
     public class GlobalStatsDisplay : MonoBehaviour
     {
-        [Header("References")]
+        [Header("References (auto-found if null)")]
         [SerializeField] private SimulationRunner _simulationRunner;
-        
-        [Header("Time Display")]
+        [SerializeField] private LodgeManager     _lodgeManager;
+
+        [Header("Day / Time Pill")]
         [SerializeField] private TextMeshProUGUI _dayText;
         [SerializeField] private TextMeshProUGUI _timeText;
-        
-        [Header("Money Display")]
+
+        [Header("Money Pill")]
         [SerializeField] private TextMeshProUGUI _moneyText;
         [SerializeField] private float _moneyAnimationSpeed = 500f;
-        
-        [Header("Visitor Display")]
+
+        [Header("Visitor Pill")]
         [SerializeField] private TextMeshProUGUI _visitorText;
-        [SerializeField] private Image _visitorTrendIcon;
-        [SerializeField] private Sprite _trendUpSprite;
-        [SerializeField] private Sprite _trendDownSprite;
-        [SerializeField] private Sprite _trendFlatSprite;
-        
-        [Header("Satisfaction Display")]
+
+        [Header("Trails / Lifts / Lodges Pills")]
+        [SerializeField] private TextMeshProUGUI _trailsText;
+        [SerializeField] private TextMeshProUGUI _liftsText;
+        [SerializeField] private TextMeshProUGUI _lodgesText;
+
+        [Header("Satisfaction Pill")]
         [SerializeField] private TextMeshProUGUI _satisfactionText;
-        [SerializeField] private Image _satisfactionBar;
-        [SerializeField] private Image _satisfactionIcon;
-        
+
         // Animation state
         private float _displayedMoney = 0f;
-        private int _lastVisitorCount = 0;
-        private float _lastVisitorCheckTime = 0f;
-        private int _visitorTrend = 0; // -1, 0, 1
-        
+
         void Start()
         {
-            // Auto-find SimulationRunner if not wired in Inspector
             if (_simulationRunner == null)
                 _simulationRunner = FindObjectOfType<SimulationRunner>();
+            if (_lodgeManager == null)
+                _lodgeManager = FindObjectOfType<LodgeManager>();
 
-            // Initialize displayed money to current value
             if (_simulationRunner != null && _simulationRunner.Sim != null)
                 _displayedMoney = _simulationRunner.Sim.State.Money;
         }
-        
+
         void Update()
         {
-            if (_simulationRunner == null || _simulationRunner.Sim == null)
-                return;
-            
+            if (_simulationRunner == null || _simulationRunner.Sim == null) return;
+
             var state = _simulationRunner.Sim.State;
             var satisfaction = _simulationRunner.Sim.Satisfaction;
-            
+
             UpdateTimeDisplay(state);
             UpdateMoneyDisplay(state);
             UpdateVisitorDisplay(state);
+            UpdateStructureCounts(state);
             UpdateSatisfactionDisplay(satisfaction.Satisfaction);
         }
-        
+
+        // ── Time ──────────────────────────────────────────────────────────
+
         private void UpdateTimeDisplay(SimulationState state)
         {
             if (_dayText != null)
-            {
                 _dayText.text = $"Day {state.DayIndex}";
-            }
-            
+
             if (_timeText != null)
-            {
-                // Format time with proper spacing - don't run into money
                 _timeText.text = FormatTime(state.TimeMinutes);
-            }
         }
-        
+
+        // ── Money ─────────────────────────────────────────────────────────
+
         private void UpdateMoneyDisplay(SimulationState state)
         {
             if (_moneyText == null) return;
-            
-            float targetMoney = state.Money;
-            
+
+            float target = state.Money;
+
             // Animate toward target
-            if (Mathf.Abs(_displayedMoney - targetMoney) > 1f)
+            if (Mathf.Abs(_displayedMoney - target) > 1f)
             {
-                float direction = targetMoney > _displayedMoney ? 1f : -1f;
-                float speed = Mathf.Max(_moneyAnimationSpeed, Mathf.Abs(targetMoney - _displayedMoney) * 2f);
-                _displayedMoney += direction * speed * Time.deltaTime;
-                
-                // Clamp to prevent overshooting
-                if ((direction > 0 && _displayedMoney > targetMoney) ||
-                    (direction < 0 && _displayedMoney < targetMoney))
-                {
-                    _displayedMoney = targetMoney;
-                }
+                float speed = Mathf.Max(_moneyAnimationSpeed, Mathf.Abs(target - _displayedMoney) * 2f);
+                _displayedMoney = Mathf.MoveTowards(_displayedMoney, target, speed * Time.deltaTime);
             }
             else
             {
-                _displayedMoney = targetMoney;
+                _displayedMoney = target;
             }
-            
-            // Color based on change
-            Color textColor = Color.white;
-            if (targetMoney > _displayedMoney + 10)
-            {
-                textColor = new Color(0.4f, 1f, 0.4f); // Green - gaining money
-            }
-            else if (targetMoney < _displayedMoney - 10)
-            {
-                textColor = new Color(1f, 0.4f, 0.4f); // Red - losing money
-            }
-            
-            _moneyText.text = $"${Mathf.RoundToInt(_displayedMoney):N0}";
-            _moneyText.color = textColor;
+
+            _moneyText.text = FormatMoney(Mathf.RoundToInt(_displayedMoney));
         }
-        
+
+        /// <summary>
+        /// Compact 3-significant-figure format: 1.07k, 10.7k, 107k, 1.07M, etc.
+        /// </summary>
+        private static string FormatMoney(int amount)
+        {
+            if (amount < 0)
+                return "-" + FormatMoney(-amount);
+            if (amount >= 1_000_000)
+                return (amount / 1_000_000f).ToString("G3") + "M";
+            if (amount >= 1_000)
+                return (amount / 1_000f).ToString("G3") + "k";
+            return amount.ToString();
+        }
+
+        // ── Visitors ──────────────────────────────────────────────────────
+
         private void UpdateVisitorDisplay(SimulationState state)
         {
             if (_visitorText != null)
-            {
-                _visitorText.text = $"{state.VisitorsToday}";
-            }
-            
-            // Update trend every 5 seconds
-            if (Time.time - _lastVisitorCheckTime > 5f)
-            {
-                int delta = state.VisitorsToday - _lastVisitorCount;
-                _visitorTrend = delta > 0 ? 1 : (delta < 0 ? -1 : 0);
-                _lastVisitorCount = state.VisitorsToday;
-                _lastVisitorCheckTime = Time.time;
-                
-                // Update trend icon
-                if (_visitorTrendIcon != null)
-                {
-                    if (_visitorTrend > 0 && _trendUpSprite != null)
-                    {
-                        _visitorTrendIcon.sprite = _trendUpSprite;
-                        _visitorTrendIcon.color = new Color(0.4f, 1f, 0.4f);
-                    }
-                    else if (_visitorTrend < 0 && _trendDownSprite != null)
-                    {
-                        _visitorTrendIcon.sprite = _trendDownSprite;
-                        _visitorTrendIcon.color = new Color(1f, 0.4f, 0.4f);
-                    }
-                    else if (_trendFlatSprite != null)
-                    {
-                        _visitorTrendIcon.sprite = _trendFlatSprite;
-                        _visitorTrendIcon.color = Color.white;
-                    }
-                }
-            }
+                _visitorText.text = state.VisitorsToday.ToString();
         }
-        
+
+        // ── Trails / Lifts / Lodges ───────────────────────────────────────
+
+        private void UpdateStructureCounts(SimulationState state)
+        {
+            if (_trailsText != null)
+                _trailsText.text = state.TrailsBuilt.ToString();
+
+            if (_liftsText != null)
+                _liftsText.text = state.LiftsBuilt.ToString();
+
+            if (_lodgesText != null)
+                _lodgesText.text = (_lodgeManager != null ? _lodgeManager.LodgeCount : 0).ToString();
+        }
+
+        // ── Satisfaction ──────────────────────────────────────────────────
+
         private void UpdateSatisfactionDisplay(float satisfaction)
         {
-            Color satisfactionColor = GetDefaultSatisfactionColor(satisfaction);
-            
             if (_satisfactionText != null)
-            {
-                _satisfactionText.text = $"{satisfaction:F0}/100";
-                _satisfactionText.color = satisfactionColor;
-            }
-            
-            if (_satisfactionBar != null)
-            {
-                _satisfactionBar.fillAmount = Mathf.Clamp01(satisfaction / 100f);
-                _satisfactionBar.color = satisfactionColor;
-            }
-            
-            if (_satisfactionIcon != null)
-            {
-                _satisfactionIcon.color = satisfactionColor;
-            }
+                _satisfactionText.text = $"{Mathf.RoundToInt(satisfaction)}%";
         }
-        
-        private Color GetDefaultSatisfactionColor(float satisfaction)
+
+        // ── Helpers ───────────────────────────────────────────────────────
+
+        private static string FormatTime(float totalMinutes)
         {
-            // satisfaction is 0-100 scale, baseline 50
-            if (satisfaction >= 65f)
-                return new Color(0.4f, 1f, 0.4f); // Green
-            else if (satisfaction >= 45f)
-                return Color.white;
-            else if (satisfaction >= 30f)
-                return new Color(1f, 0.6f, 0f); // Orange
-            else
-                return new Color(1f, 0.2f, 0.2f); // Red
+            int h24  = (int)(totalMinutes / 60f);
+            int mins = (int)(totalMinutes % 60f);
+            int h12  = h24 % 12;
+            if (h12 == 0) h12 = 12;
+            return $"{h12}:{mins:D2} {(h24 >= 12 ? "PM" : "AM")}";
         }
-        
-        private string FormatTime(float totalMinutes)
+
+        private static Color GetDefaultSatisfactionColor(float satisfaction)
         {
-            int hours24 = (int)(totalMinutes / 60f);
-            int minutes = (int)(totalMinutes % 60f);
-            
-            int hours12 = hours24 % 12;
-            if (hours12 == 0) hours12 = 12;
-            
-            string amPm = hours24 >= 12 ? "PM" : "AM";
-            
-            return $"{hours12}:{minutes:D2} {amPm}";
+            if (satisfaction >= 65f) return new Color(0.4f, 1f, 0.4f);
+            if (satisfaction >= 45f) return Color.white;
+            if (satisfaction >= 30f) return new Color(1f, 0.6f, 0f);
+            return new Color(1f, 0.2f, 0.2f);
         }
     }
 }

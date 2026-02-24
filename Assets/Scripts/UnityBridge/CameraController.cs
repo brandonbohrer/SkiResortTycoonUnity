@@ -156,6 +156,11 @@ namespace SkiResortTycoon.UnityBridge
 
         void Update()
         {
+            // Freeze all camera input while the menu is open
+            if (SkiResortTycoon.UI.UIManager.Instance != null &&
+                SkiResortTycoon.UI.UIManager.Instance.IsMenuOpen)
+                return;
+
             HandleOrbit();
             HandleKeyboardRotation();
             HandlePanKeyboard();

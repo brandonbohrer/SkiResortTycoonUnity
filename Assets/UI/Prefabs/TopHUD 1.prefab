@@ -2875,18 +2875,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UI.GlobalStatsDisplay
   _simulationRunner: {fileID: 0}
-  _dayText: {fileID: 3453422826082155001}
-  _timeText: {fileID: 5872003580568411589}
-  _moneyText: {fileID: 7357844580376231550}
+  _lodgeManager: {fileID: 0}
+  _dayText: {fileID: 0}
+  _timeText: {fileID: 0}
+  _moneyText: {fileID: 0}
   _moneyAnimationSpeed: 500
-  _visitorText: {fileID: 3864930531538425238}
-  _visitorTrendIcon: {fileID: 0}
-  _trendUpSprite: {fileID: 0}
-  _trendDownSprite: {fileID: 0}
-  _trendFlatSprite: {fileID: 0}
-  _satisfactionText: {fileID: 5227875072478202631}
-  _satisfactionBar: {fileID: 0}
-  _satisfactionIcon: {fileID: 0}
+  _visitorText: {fileID: 0}
+  _trailsText: {fileID: 0}
+  _liftsText: {fileID: 0}
+  _lodgesText: {fileID: 0}
+  _satisfactionText: {fileID: 0}
 --- !u!1 &7163080581417000302
 GameObject:
   m_ObjectHideFlags: 0

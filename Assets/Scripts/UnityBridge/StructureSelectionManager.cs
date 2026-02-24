@@ -17,6 +17,7 @@ namespace SkiResortTycoon.UnityBridge
         [Header("References")]
         [SerializeField] private Camera _camera;
         [SerializeField] private StructureDetailsPanel _detailsPanel;
+        [SerializeField] private SkiResortTycoon.UI.ContextWindowController _contextWindow;
         
         [Header("Cursor Textures")]
         [SerializeField] private Texture2D _pointerCursor;
@@ -72,8 +73,8 @@ namespace SkiResortTycoon.UnityBridge
             // Users can manually call ScanAndSetupExistingStructures() if needed
             // Invoke(nameof(ScanAndSetupExistingStructures), 0.5f);
             
-            // Create details panel if not assigned (wrap in try-catch to prevent crashes)
-            if (_detailsPanel == null)
+            // Only fall back to the old programmatic panel if no ContextWindowController exists in the scene.
+            if (_contextWindow == null && SkiResortTycoon.UI.ContextWindowController.Instance == null && _detailsPanel == null)
             {
                 try
                 {
@@ -596,11 +597,12 @@ namespace SkiResortTycoon.UnityBridge
             _selectedStructure = structure;
             _selectedStructure.OnSelect();
             
-            // Open details panel
-            if (_detailsPanel != null)
-            {
+            // Prefer ContextWindowController (inspector slot, then scene singleton, then legacy panel)
+            var ctxWindow = _contextWindow ?? SkiResortTycoon.UI.ContextWindowController.Instance;
+            if (ctxWindow != null)
+                ctxWindow.ShowStructure(_selectedStructure);
+            else if (_detailsPanel != null)
                 _detailsPanel.ShowStructure(_selectedStructure);
-            }
             
             Debug.Log($"[Selection] Selected {structure.Type}: {structure.StructureName}");
         }
@@ -625,10 +627,11 @@ namespace SkiResortTycoon.UnityBridge
         private System.Collections.IEnumerator HidePanelNextFrame()
         {
             yield return null;
-            if (_detailsPanel != null)
-            {
+            var ctxWindow = _contextWindow ?? SkiResortTycoon.UI.ContextWindowController.Instance;
+            if (ctxWindow != null)
+                ctxWindow.Hide();
+            else if (_detailsPanel != null)
                 _detailsPanel.Hide();
-            }
         }
         
         private void SetPointerCursor()

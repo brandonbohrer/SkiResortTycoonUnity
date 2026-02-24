@@ -209,5 +209,18 @@ namespace SkiResortTycoon.UnityBridge
         {
             State.OnLiftExited(skierId, liftId);
         }
+        
+        // ─────────────────────────────────────────────────────────────
+        //  Per-trail stat queries (used by StructureDetailsPanel)
+        // ─────────────────────────────────────────────────────────────
+        
+        public int GetTrailRunsToday(int trailId) => State?.GetTrailRunsToday(trailId) ?? 0;
+        public int GetTrailRunsAllTime(int trailId) => State?.GetTrailRunsAllTime(trailId) ?? 0;
+        public float GetTrailCapacity(int trailId) => State?.GetTrailCapacity(trailId) ?? 0f;
+        
+        /// <summary>
+        /// Resets per-trail RunsToday counters. Call at the start of each new in-game day.
+        /// </summary>
+        public void ResetDailyRunCounts() => State?.ResetDailyRunCounts();
     }
 }

@@ -385,30 +385,43 @@ namespace SkiResortTycoon.UI
             var trail = _currentStructure?.TrailData;
             if (trail == null) return;
             
-            AddStatRow("Difficulty", GetTrailDifficultyString(), GetDifficultyColor(trail.Difficulty));
-            AddStatRow("Length", $"{CalculateTrailLength(trail):F0}m");
-            AddStatRow("Elevation Drop", $"{trail.TotalElevationDrop:F0}m");
-            AddStatRow("Average Grade", $"{trail.AverageSlope * 100:F0}%");
-            AddStatRow("Max Grade", $"{trail.MaxSlope * 100:F0}%");
-            
-            // TODO: Add real-time stats when tracking is implemented
-            AddStatRow("Runs Today", "—"); // Placeholder
-            AddStatRow("Popularity", "—"); // Placeholder
-        }
-        
-        private float CalculateTrailLength(TrailData trail)
-        {
-            if (trail.WorldPathPoints == null || trail.WorldPathPoints.Count < 2)
-                return 0f;
-            
-            float length = 0f;
-            for (int i = 0; i < trail.WorldPathPoints.Count - 1; i++)
+            // Live run counts from traffic manager
+            int runsToday = 0;
+            int runsAllTime = 0;
+            float capacity = 0f;
+            if (ResortTrafficManager.Instance != null)
             {
-                var p1 = trail.WorldPathPoints[i];
-                var p2 = trail.WorldPathPoints[i + 1];
-                length += Vector3f.Distance(p1, p2);
+                runsToday = ResortTrafficManager.Instance.GetTrailRunsToday(trail.TrailId);
+                runsAllTime = ResortTrafficManager.Instance.GetTrailRunsAllTime(trail.TrailId);
+                capacity = ResortTrafficManager.Instance.GetTrailCapacity(trail.TrailId);
             }
-            return length;
+            
+            AddStatRow("Runs Today", runsToday.ToString("N0"));
+            AddStatRow("Runs All Time", runsAllTime.ToString("N0"));
+            
+            // Upkeep cost per trail per day (matches ExpenseTracker.CostPerTrail)
+            AddStatRow("Upkeep", "$100 / day");
+            
+            // Length in feet (1 world unit ≈ 1 meter; 1 m = 3.28084 ft)
+            float worldLength = trail.WorldLength;
+            if (worldLength > 1f)
+                AddStatRow("Length", $"{worldLength * 3.28084f:N0} ft");
+            else
+                AddStatRow("Length", "—");
+            
+            // Vertical drop in feet
+            if (trail.TotalElevationDrop > 0.1f)
+                AddStatRow("Vertical Drop", $"{trail.TotalElevationDrop * 3.28084f:N0} ft");
+            else
+                AddStatRow("Vertical Drop", "—");
+            
+            AddStatRow("Avg. Slope", $"{trail.AverageSlope * 100f:F0}%");
+            AddStatRow("Max Slope", $"{trail.MaxSlope * 100f:F0}%");
+            
+            if (capacity > 0f)
+                AddStatRow("Capacity", $"{Mathf.RoundToInt(capacity)} skiers");
+            else
+                AddStatRow("Capacity", "—");
         }
         
         private void PopulateLodgeStats()

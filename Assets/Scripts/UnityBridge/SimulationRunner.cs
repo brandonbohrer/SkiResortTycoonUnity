@@ -99,6 +99,12 @@ namespace SkiResortTycoon.UnityBridge
             _lastFinancialRecord = _sim.EndDay(
                 lodgeCount, lodgeRevenue, lodgeAmenities, distinctDifficulties);
             
+            // Reset per-trail daily run counts for the new day
+            if (ResortTrafficManager.Instance != null)
+            {
+                ResortTrafficManager.Instance.ResetDailyRunCounts();
+            }
+            
             // Reset lodge daily revenue for next day
             if (LodgeManager.Instance != null)
             {

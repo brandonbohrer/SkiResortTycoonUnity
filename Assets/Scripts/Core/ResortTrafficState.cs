@@ -33,6 +33,8 @@ namespace SkiResortTycoon.Core
             public int Occupancy;    // current skier count
             public int PendingIntent; // skiers who have DECIDED to come here but haven't started yet
             public float Deficit;    // targetShare - currentShare, updated on every event
+            public int RunsToday;    // completed runs on this trail since last day reset
+            public int RunsAllTime;  // total completed runs on this trail ever
             
             /// <summary>
             /// Effective load including both active skiers and pending intents.
@@ -183,6 +185,8 @@ namespace SkiResortTycoon.Core
             {
                 info.Occupancy = Math.Max(0, info.Occupancy - 1);
                 _totalSkiersOnTrails = Math.Max(0, _totalSkiersOnTrails - 1);
+                info.RunsToday++;
+                info.RunsAllTime++;
                 ComputeAllDeficits();
             }
         }
@@ -279,6 +283,45 @@ namespace SkiResortTycoon.Core
             foreach (var id in _recentLiftChoices)
                 if (id == liftId) count++;
             return (float)count / _recentLiftChoices.Count;
+        }
+        
+        /// <summary>
+        /// Returns how many times this trail was completed today.
+        /// </summary>
+        public int GetTrailRunsToday(int trailId)
+        {
+            if (_trailTraffic.TryGetValue(trailId, out var info))
+                return info.RunsToday;
+            return 0;
+        }
+        
+        /// <summary>
+        /// Returns the total number of times this trail has ever been completed.
+        /// </summary>
+        public int GetTrailRunsAllTime(int trailId)
+        {
+            if (_trailTraffic.TryGetValue(trailId, out var info))
+                return info.RunsAllTime;
+            return 0;
+        }
+        
+        /// <summary>
+        /// Returns the capacity (skier slots) registered for this trail.
+        /// </summary>
+        public float GetTrailCapacity(int trailId)
+        {
+            if (_trailTraffic.TryGetValue(trailId, out var info))
+                return info.Capacity;
+            return 0f;
+        }
+        
+        /// <summary>
+        /// Resets RunsToday for all trails. Call at the start of each new in-game day.
+        /// </summary>
+        public void ResetDailyRunCounts()
+        {
+            foreach (var info in _trailTraffic.Values)
+                info.RunsToday = 0;
         }
         
         /// <summary>

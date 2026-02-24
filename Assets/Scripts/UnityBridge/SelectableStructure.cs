@@ -55,6 +55,17 @@ namespace SkiResortTycoon.UnityBridge
         public StructureType Type => _structureType;
         public int StructureId => _structureId;
         public string StructureName => _structureName;
+        
+        /// <summary>
+        /// Renames this structure, writing back to the underlying data object as well.
+        /// </summary>
+        public void Rename(string newName)
+        {
+            if (string.IsNullOrWhiteSpace(newName)) return;
+            _structureName = newName;
+            if (_trailData  != null) _trailData.Name  = newName;
+            if (_liftData   != null) _liftData.Name   = newName;
+        }
         public LiftData LiftData => _liftData;
         public TrailData TrailData => _trailData;
         public LodgeFacility Lodge => _lodgeFacility;

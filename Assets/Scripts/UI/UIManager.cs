@@ -19,7 +19,6 @@ namespace SkiResortTycoon.UI
         
         [Header("Panels")]
         [SerializeField] private GameObject _mainMenuOverlay;
-        [SerializeField] private ResortPanel _resortPanel;
         [SerializeField] private BuildActionBar _buildActionBar;
         
         [Header("Settings")]

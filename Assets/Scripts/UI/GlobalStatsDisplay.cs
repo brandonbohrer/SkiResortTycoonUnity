@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using System.Collections;
 using SkiResortTycoon.Core;
 using SkiResortTycoon.UnityBridge;
 
@@ -44,11 +43,13 @@ namespace SkiResortTycoon.UI
         
         void Start()
         {
+            // Auto-find SimulationRunner if not wired in Inspector
+            if (_simulationRunner == null)
+                _simulationRunner = FindObjectOfType<SimulationRunner>();
+
             // Initialize displayed money to current value
             if (_simulationRunner != null && _simulationRunner.Sim != null)
-            {
                 _displayedMoney = _simulationRunner.Sim.State.Money;
-            }
         }
         
         void Update()
@@ -158,10 +159,7 @@ namespace SkiResortTycoon.UI
         
         private void UpdateSatisfactionDisplay(float satisfaction)
         {
-            UITheme theme = UIManager.Instance?.Theme;
-            Color satisfactionColor = theme != null ? 
-                theme.GetSatisfactionColor(satisfaction) : 
-                GetDefaultSatisfactionColor(satisfaction);
+            Color satisfactionColor = GetDefaultSatisfactionColor(satisfaction);
             
             if (_satisfactionText != null)
             {

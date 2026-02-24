@@ -79,6 +79,29 @@ namespace SkiResortTycoon.UnityBridge
         public int ActiveSkierCount => _activeSkiers?.Count ?? 0;
 
         /// <summary>
+        /// Returns the count of active skiers per skill level.
+        /// Used by the Guests tab skill distribution bars.
+        /// </summary>
+        public Dictionary<SkillLevel, int> GetSkillCounts()
+        {
+            var counts = new Dictionary<SkillLevel, int>
+            {
+                { SkillLevel.Beginner,     0 },
+                { SkillLevel.Intermediate, 0 },
+                { SkillLevel.Advanced,     0 },
+                { SkillLevel.Expert,       0 },
+            };
+
+            if (_activeSkiers == null) return counts;
+
+            foreach (var vs in _activeSkiers)
+                if (vs?.Skier != null && counts.ContainsKey(vs.Skier.Skill))
+                    counts[vs.Skier.Skill]++;
+
+            return counts;
+        }
+
+        /// <summary>
         /// Updates resort-level satisfaction from the average of all active skiers.
         /// Called periodically from the update loop.
         /// </summary>

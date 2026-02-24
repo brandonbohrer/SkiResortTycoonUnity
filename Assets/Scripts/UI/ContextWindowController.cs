@@ -63,6 +63,21 @@ namespace SkiResortTycoon.UI
         [SerializeField] private Button _diffBlackButton;
         [SerializeField] private Button _diffDoubleBlackButton;
 
+        // ── Lift section ─────────────────────────────────────────────
+        [Header("Lift Section")]
+        [SerializeField] private GameObject _liftSection;
+
+        [Header("Lift — Top Row")]
+        [SerializeField] private TextMeshProUGUI _liftStatusText;   // "Open" / "Closed"
+        [SerializeField] private Toggle          _liftOpenToggle;
+        [SerializeField] private TextMeshProUGUI _liftTypeText;     // e.g. "Chairlift", "Gondola"
+
+        [Header("Lift — Stats (value text of each KeyVal row)")]
+        [SerializeField] private TextMeshProUGUI _ridesTodayValue;
+        [SerializeField] private TextMeshProUGUI _ridesAllTimeValue;
+        [SerializeField] private TextMeshProUGUI _avgWaitTimeValue;
+        [SerializeField] private TextMeshProUGUI _liftUpkeepValue;
+
         // Usage stats — drag the VALUE text of each KeyVal row here
         [Header("Trail — Usage Stats (value text of each KeyVal row)")]
         [SerializeField] private TextMeshProUGUI _runsTodayValue;
@@ -112,6 +127,9 @@ namespace SkiResortTycoon.UI
 
             if (_trailOpenToggle != null)
                 _trailOpenToggle.onValueChanged.AddListener(OnOpenToggleChanged);
+
+            if (_liftOpenToggle != null)
+                _liftOpenToggle.onValueChanged.AddListener(OnLiftOpenToggleChanged);
 
             // Title input — rename structure when user finishes editing
             if (_titleInput != null)
@@ -164,11 +182,12 @@ namespace SkiResortTycoon.UI
             PopulateHeader();
 
             SetSectionActive(_trailSection, structure.Type == StructureType.Trail);
-            // add lift/lodge section toggles here when those sections are built
+            SetSectionActive(_liftSection,  structure.Type == StructureType.Lift);
 
             switch (structure.Type)
             {
                 case StructureType.Trail: PopulateTrail(); break;
+                case StructureType.Lift:  PopulateLift();  break;
             }
         }
 
@@ -193,18 +212,29 @@ namespace SkiResortTycoon.UI
 
             switch (_current.Type)
             {
-                case StructureType.Trail:
-                    SetText(_subtitleText, "Trail");
-                    SetIcon(_trailIcon);
-                    break;
-                case StructureType.Lift:
-                    SetText(_subtitleText, "Lift");
-                    SetIcon(_liftIcon);
-                    break;
-                case StructureType.Lodge:
-                    SetText(_subtitleText, "Lodge");
-                    SetIcon(_lodgeIcon);
-                    break;
+                case StructureType.Trail: SetIcon(_trailIcon); break;
+                case StructureType.Lift:  SetIcon(_liftIcon);  break;
+                case StructureType.Lodge: SetIcon(_lodgeIcon); break;
+            }
+
+            // Subtitle: always white, all-caps, 15pt
+            if (_subtitleText != null)
+            {
+                _subtitleText.text      = SubtitleLabel(_current.Type);
+                _subtitleText.color     = Color.white;
+                _subtitleText.fontSize  = 15f;
+                _subtitleText.fontStyle = TMPro.FontStyles.UpperCase;
+            }
+        }
+
+        private string SubtitleLabel(StructureType type)
+        {
+            switch (type)
+            {
+                case StructureType.Trail: return "Trail";
+                case StructureType.Lift:  return "Lift";
+                case StructureType.Lodge: return "Lodge";
+                default:                  return "";
             }
         }
 
@@ -259,6 +289,46 @@ namespace SkiResortTycoon.UI
 
             SetText(_capacityValue,
                 capacity > 0f ? $"{Mathf.RoundToInt(capacity)}" : "—");
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        //  Lift section
+        // ─────────────────────────────────────────────────────────────
+
+        private void PopulateLift()
+        {
+            var lift = _current?.LiftData;
+            if (lift == null) return;
+
+            SetText(_liftStatusText, "Open");
+            if (_liftOpenToggle != null)
+                _liftOpenToggle.SetIsOnWithoutNotify(true);
+
+            SetText(_liftTypeText, LiftTypeLabel(lift.Type));
+
+            int ridesToday   = 0;
+            int ridesAllTime = 0;
+            if (ResortTrafficManager.Instance != null)
+            {
+                ridesToday   = ResortTrafficManager.Instance.GetLiftRidesToday(lift.LiftId);
+                ridesAllTime = ResortTrafficManager.Instance.GetLiftRidesAllTime(lift.LiftId);
+            }
+
+            SetText(_ridesTodayValue,   ridesToday.ToString("N0"));
+            SetText(_ridesAllTimeValue, ridesAllTime.ToString("N0"));
+            SetText(_avgWaitTimeValue,  "—");           // not yet implemented
+            SetText(_liftUpkeepValue,   "$500 / day");  // matches ExpenseTracker.CostPerLift
+        }
+
+        private string LiftTypeLabel(LiftType type)
+        {
+            switch (type)
+            {
+                case LiftType.ChairLift: return "Chairlift";
+                case LiftType.Gondola:   return "Gondola";
+                case LiftType.TSBar:     return "T-Bar";
+                default:                 return "Lift";
+            }
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -412,6 +482,11 @@ namespace SkiResortTycoon.UI
         private void OnOpenToggleChanged(bool isOn)
         {
             SetText(_trailStatusText, isOn ? "Open" : "Closed");
+        }
+
+        private void OnLiftOpenToggleChanged(bool isOn)
+        {
+            SetText(_liftStatusText, isOn ? "Open" : "Closed");
         }
 
         private void OnToolChanged(BaseTool tool)

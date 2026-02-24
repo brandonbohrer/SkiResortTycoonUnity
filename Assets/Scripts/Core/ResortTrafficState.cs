@@ -35,6 +35,8 @@ namespace SkiResortTycoon.Core
             public float Deficit;    // targetShare - currentShare, updated on every event
             public int RunsToday;    // completed runs on this trail since last day reset
             public int RunsAllTime;  // total completed runs on this trail ever
+            public int RidesToday;   // completed lift rides since last day reset
+            public int RidesAllTime; // total completed lift rides ever
             
             /// <summary>
             /// Effective load including both active skiers and pending intents.
@@ -209,6 +211,8 @@ namespace SkiResortTycoon.Core
             {
                 info.Occupancy = Math.Max(0, info.Occupancy - 1);
                 _totalSkiersOnLifts = Math.Max(0, _totalSkiersOnLifts - 1);
+                info.RidesToday++;
+                info.RidesAllTime++;
                 ComputeAllDeficits();
             }
         }
@@ -316,12 +320,34 @@ namespace SkiResortTycoon.Core
         }
         
         /// <summary>
-        /// Resets RunsToday for all trails. Call at the start of each new in-game day.
+        /// Returns how many times this lift was ridden today.
+        /// </summary>
+        public int GetLiftRidesToday(int liftId)
+        {
+            if (_liftTraffic.TryGetValue(liftId, out var info))
+                return info.RidesToday;
+            return 0;
+        }
+        
+        /// <summary>
+        /// Returns the total number of times this lift has ever been ridden.
+        /// </summary>
+        public int GetLiftRidesAllTime(int liftId)
+        {
+            if (_liftTraffic.TryGetValue(liftId, out var info))
+                return info.RidesAllTime;
+            return 0;
+        }
+        
+        /// <summary>
+        /// Resets daily counters for all trails and lifts. Call at the start of each new in-game day.
         /// </summary>
         public void ResetDailyRunCounts()
         {
             foreach (var info in _trailTraffic.Values)
                 info.RunsToday = 0;
+            foreach (var info in _liftTraffic.Values)
+                info.RidesToday = 0;
         }
         
         /// <summary>

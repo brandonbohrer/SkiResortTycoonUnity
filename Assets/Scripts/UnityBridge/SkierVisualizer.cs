@@ -303,6 +303,17 @@ namespace SkiResortTycoon.UnityBridge
                         skier.TargetLodge.ForceExitSkier(skier.Skier.SkierId);
                         skier.TargetLodge = null;
                     }
+                    
+                    // Deselect if this skier was selected in the context window
+                    if (StructureSelectionManager.Instance != null)
+                    {
+                        var sel = skier.GameObject.GetComponent<SelectableStructure>();
+                        if (sel != null && StructureSelectionManager.Instance.SelectedStructure == sel)
+                            StructureSelectionManager.Instance.DeselectStructure();
+                        if (sel != null)
+                            StructureSelectionManager.Instance.UnregisterSelectable(sel);
+                    }
+                    
                     skier.GameObject.SetActive(true); // Ensure visible before destroy
                     Destroy(skier.GameObject);
                     _activeSkiers.RemoveAt(i);
@@ -579,6 +590,11 @@ namespace SkiResortTycoon.UnityBridge
             };
 
             _activeSkiers.Add(visualSkier);
+            
+            // Make the skier clickable
+            var selectable = skierObj.GetComponent<SelectableStructure>()
+                          ?? skierObj.AddComponent<SelectableStructure>();
+            selectable.InitializeAsSkier(skier);
         }
 
         // ─────────────────────────────────────────────────────────────────

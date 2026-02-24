@@ -34,7 +34,8 @@ namespace SkiResortTycoon.Core
         
         // ── Revenue tracking ────────────────────────────────────────────
         public float TotalRevenue { get; set; }
-        public int TotalVisits { get; set; }
+        public int TotalVisits { get; set; }       // resets each day
+        public int TotalVisitsAllTime { get; set; } // never resets
         
         /// <summary>
         /// Calculate the charge for a lodge visit based on which services were used.
@@ -101,6 +102,7 @@ namespace SkiResortTycoon.Core
         {
             TotalRevenue += charge;
             TotalVisits++;
+            TotalVisitsAllTime++;
         }
     }
 }

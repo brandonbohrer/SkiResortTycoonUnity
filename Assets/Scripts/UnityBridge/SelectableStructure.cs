@@ -11,7 +11,8 @@ namespace SkiResortTycoon.UnityBridge
     {
         Lift,
         Trail,
-        Lodge
+        Lodge,
+        Skier
     }
     
     /// <summary>
@@ -36,6 +37,7 @@ namespace SkiResortTycoon.UnityBridge
         private LiftData _liftData;
         private TrailData _trailData;
         private LodgeFacility _lodgeFacility;
+        private SkiResortTycoon.Core.Skier _skierData;
         
         // State
         private bool _isHovered;
@@ -69,6 +71,7 @@ namespace SkiResortTycoon.UnityBridge
         public LiftData LiftData => _liftData;
         public TrailData TrailData => _trailData;
         public LodgeFacility Lodge => _lodgeFacility;
+        public SkiResortTycoon.Core.Skier SkierData => _skierData;
         public bool IsHovered => _isHovered;
         public bool IsSelected => _isSelected;
         
@@ -150,6 +153,34 @@ namespace SkiResortTycoon.UnityBridge
             
             CacheRenderers();
             AddCollidersIfNeeded();
+        }
+        
+        /// <summary>
+        /// Initialize this selectable as a skier.
+        /// A small sphere collider is added so the skier can be raycasted.
+        /// </summary>
+        public void InitializeAsSkier(SkiResortTycoon.Core.Skier skier)
+        {
+            _structureType = StructureType.Skier;
+            _structureId   = skier.SkierId;
+            _structureName = $"Skier {skier.SkierId}";
+            _skierData     = skier;
+            
+            // Add a small sphere collider so the raycast can hit this skier
+            if (GetComponent<SphereCollider>() == null)
+            {
+                var col = gameObject.AddComponent<SphereCollider>();
+                col.radius = 1.2f;
+                col.center = Vector3.up * 1f;
+            }
+        }
+        
+        /// <summary>
+        /// Updates the live skier reference each frame (skier data mutates in place).
+        /// </summary>
+        public void UpdateSkierData(SkiResortTycoon.Core.Skier skier)
+        {
+            _skierData = skier;
         }
         
         void Start()

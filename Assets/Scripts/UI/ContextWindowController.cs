@@ -92,6 +92,36 @@ namespace SkiResortTycoon.UI
         [SerializeField] private TextMeshProUGUI _maxSlopeValue;
         [SerializeField] private TextMeshProUGUI _capacityValue;
 
+        // ── Lodge section ────────────────────────────────────────────
+        [Header("Lodge Section")]
+        [SerializeField] private GameObject _lodgeSection;
+
+        [Header("Lodge — Top Row")]
+        [SerializeField] private TextMeshProUGUI _lodgeStatusText;
+        [SerializeField] private Toggle          _lodgeOpenToggle;
+
+        [Header("Lodge — Buffet Price")]
+        [SerializeField] private TextMeshProUGUI _buffetPriceValue;
+        [SerializeField] private Button          _buffetDecrementButton;
+        [SerializeField] private Button          _buffetIncrementButton;
+
+        [Header("Lodge — Stats (value text of each KeyVal row)")]
+        [SerializeField] private TextMeshProUGUI _lodgeVisitsTodayValue;
+        [SerializeField] private TextMeshProUGUI _lodgeVisitsAllTimeValue;
+        [SerializeField] private TextMeshProUGUI _lodgeUpkeepValue;
+
+        // ── Skier section ────────────────────────────────────────────
+        [Header("Skier Section")]
+        [SerializeField] private GameObject _skierSection;
+
+        [Header("Skier — Stats (value text of each KeyVal row)")]
+        [SerializeField] private TextMeshProUGUI _skierStatusValue;
+        [SerializeField] private TextMeshProUGUI _skierSkillValue;
+        [SerializeField] private TextMeshProUGUI _skierFavoriteRunValue;
+        [SerializeField] private TextMeshProUGUI _skierSatisfactionValue;
+        [SerializeField] private TextMeshProUGUI _skierRunsTodayValue;
+        [SerializeField] private TextMeshProUGUI _skierRunsAllTimeValue;
+
         // ── Difficulty subtitle colors ────────────────────────────────
         [Header("Difficulty Colors (subtitle text tint)")]
         [SerializeField] private Color _greenColor       = new Color(0.18f, 0.80f, 0.18f);
@@ -108,6 +138,7 @@ namespace SkiResortTycoon.UI
         [SerializeField] private Sprite _trailIcon;
         [SerializeField] private Sprite _liftIcon;
         [SerializeField] private Sprite _lodgeIcon;
+        [SerializeField] private Sprite _skierIcon;
 
         // ── Internal state ────────────────────────────────────────────
         private SelectableStructure _current;
@@ -130,6 +161,14 @@ namespace SkiResortTycoon.UI
 
             if (_liftOpenToggle != null)
                 _liftOpenToggle.onValueChanged.AddListener(OnLiftOpenToggleChanged);
+
+            if (_lodgeOpenToggle != null)
+                _lodgeOpenToggle.onValueChanged.AddListener(OnLodgeOpenToggleChanged);
+
+            if (_buffetDecrementButton != null)
+                _buffetDecrementButton.onClick.AddListener(OnBuffetDecrement);
+            if (_buffetIncrementButton != null)
+                _buffetIncrementButton.onClick.AddListener(OnBuffetIncrement);
 
             // Title input — rename structure when user finishes editing
             if (_titleInput != null)
@@ -183,11 +222,15 @@ namespace SkiResortTycoon.UI
 
             SetSectionActive(_trailSection, structure.Type == StructureType.Trail);
             SetSectionActive(_liftSection,  structure.Type == StructureType.Lift);
+            SetSectionActive(_lodgeSection, structure.Type == StructureType.Lodge);
+            SetSectionActive(_skierSection, structure.Type == StructureType.Skier);
 
             switch (structure.Type)
             {
                 case StructureType.Trail: PopulateTrail(); break;
                 case StructureType.Lift:  PopulateLift();  break;
+                case StructureType.Lodge: PopulateLodge(); break;
+                case StructureType.Skier: PopulateSkier(); break;
             }
         }
 
@@ -212,9 +255,10 @@ namespace SkiResortTycoon.UI
 
             switch (_current.Type)
             {
-                case StructureType.Trail: SetIcon(_trailIcon); break;
-                case StructureType.Lift:  SetIcon(_liftIcon);  break;
-                case StructureType.Lodge: SetIcon(_lodgeIcon); break;
+                case StructureType.Trail: SetIcon(_trailIcon);  break;
+                case StructureType.Lift:  SetIcon(_liftIcon);   break;
+                case StructureType.Lodge: SetIcon(_lodgeIcon);  break;
+                case StructureType.Skier: SetIcon(_skierIcon);  break;
             }
 
             // Subtitle: always white, all-caps, 15pt
@@ -234,6 +278,7 @@ namespace SkiResortTycoon.UI
                 case StructureType.Trail: return "Trail";
                 case StructureType.Lift:  return "Lift";
                 case StructureType.Lodge: return "Lodge";
+                case StructureType.Skier: return "Skier";
                 default:                  return "";
             }
         }
@@ -328,6 +373,77 @@ namespace SkiResortTycoon.UI
                 case LiftType.Gondola:   return "Gondola";
                 case LiftType.TSBar:     return "T-Bar";
                 default:                 return "Lift";
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        //  Lodge section
+        // ─────────────────────────────────────────────────────────────
+
+        private void PopulateLodge()
+        {
+            var lodge = _current?.Lodge;
+            if (lodge == null) return;
+
+            SetText(_lodgeStatusText, "Open");
+            if (_lodgeOpenToggle != null)
+                _lodgeOpenToggle.SetIsOnWithoutNotify(true);
+
+            RefreshBuffetPrice(lodge.Pricing.FoodPrice);
+
+            SetText(_lodgeVisitsTodayValue,   lodge.Pricing.TotalVisits.ToString("N0"));
+            SetText(_lodgeVisitsAllTimeValue, lodge.Pricing.TotalVisitsAllTime.ToString("N0"));
+            SetText(_lodgeUpkeepValue,        "$300 / day");  // matches ExpenseTracker.CostPerLodge
+        }
+
+        private void RefreshBuffetPrice(float price)
+        {
+            SetText(_buffetPriceValue, $"${price:F0}");
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        //  Skier section
+        // ─────────────────────────────────────────────────────────────
+
+        private void PopulateSkier()
+        {
+            var skier = _current?.SkierData;
+            if (skier == null) return;
+
+            SetText(_skierStatusValue,      SkierStateLabel(skier.CurrentState));
+            SetText(_skierSkillValue,       SkillLabel(skier.Skill));
+            SetText(_skierFavoriteRunValue, "—");   // not yet implemented
+            
+            float satisfaction = skier.GetSatisfaction() * 100f;
+            SetText(_skierSatisfactionValue, $"{satisfaction:F0}%");
+            
+            SetText(_skierRunsTodayValue,   skier.RunsCompleted.ToString("N0"));
+            SetText(_skierRunsAllTimeValue, skier.RunsCompleted.ToString("N0"));
+        }
+
+        private string SkierStateLabel(SkierState state)
+        {
+            switch (state)
+            {
+                case SkierState.AtBase:         return "At Base";
+                case SkierState.WalkingToLift:  return "Walking to Lift";
+                case SkierState.InQueue:        return "In Queue";
+                case SkierState.RidingLift:     return "On Lift";
+                case SkierState.SkiingTrail:    return "Skiing";
+                case SkierState.AtAmenity:      return "In Lodge";
+                default:                        return "—";
+            }
+        }
+
+        private string SkillLabel(SkillLevel skill)
+        {
+            switch (skill)
+            {
+                case SkillLevel.Beginner:     return "Beginner";
+                case SkillLevel.Intermediate: return "Intermediate";
+                case SkillLevel.Advanced:     return "Advanced";
+                case SkillLevel.Expert:       return "Expert";
+                default:                      return "—";
             }
         }
 
@@ -487,6 +603,29 @@ namespace SkiResortTycoon.UI
         private void OnLiftOpenToggleChanged(bool isOn)
         {
             SetText(_liftStatusText, isOn ? "Open" : "Closed");
+        }
+
+        private void OnLodgeOpenToggleChanged(bool isOn)
+        {
+            SetText(_lodgeStatusText, isOn ? "Open" : "Closed");
+        }
+
+        private void OnBuffetDecrement()
+        {
+            var lodge = _current?.Lodge;
+            if (lodge == null) return;
+            lodge.Pricing.FoodPrice = UnityEngine.Mathf.Max(
+                LodgePricing.MinPrice, lodge.Pricing.FoodPrice - 1f);
+            RefreshBuffetPrice(lodge.Pricing.FoodPrice);
+        }
+
+        private void OnBuffetIncrement()
+        {
+            var lodge = _current?.Lodge;
+            if (lodge == null) return;
+            lodge.Pricing.FoodPrice = UnityEngine.Mathf.Min(
+                LodgePricing.MaxFoodPrice, lodge.Pricing.FoodPrice + 1f);
+            RefreshBuffetPrice(lodge.Pricing.FoodPrice);
         }
 
         private void OnToolChanged(BaseTool tool)

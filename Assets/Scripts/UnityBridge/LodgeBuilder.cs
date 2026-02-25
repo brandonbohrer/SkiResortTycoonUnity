@@ -269,6 +269,9 @@ namespace SkiResortTycoon.UnityBridge
 
             NotificationManager.Instance?.ShowSuccess($"Lodge built! (${_buildCost})");
             Debug.Log($"[LodgeBuilder] Placed lodge at {pos}, cleared {_treeClearRadius}m radius");
+
+            // Exit build mode — one lodge placed, back to base
+            UIManager.Instance?.DeactivateTool();
         }
 
         // ── Footprint Snap Points ────────────────────────────────────────

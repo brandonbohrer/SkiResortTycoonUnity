@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using SkiResortTycoon.Core;
 using System.Collections.Generic;
@@ -37,6 +38,9 @@ namespace SkiResortTycoon.UnityBridge
         private LiftData _currentLift;
         private GameObject _cursorVisual;
         
+        /// <summary>Fired after a lift is successfully placed. Subscribers (e.g. LiftBuildTool) use this to exit build mode.</summary>
+        public event Action OnLiftPlaced;
+
         public LiftSystem LiftSystem => _liftSystem;
         public WorldConnectivity Connectivity => _connectivity;
         public bool IsBuildMode => _isBuildMode;
@@ -256,6 +260,8 @@ namespace SkiResortTycoon.UnityBridge
             _currentLift.Length = Vector3f.Distance(_currentLift.StartPosition, _currentLift.EndPosition);
             _currentLift.ElevationGain = elevationGain;
             
+            bool placedSuccessfully = false;
+
             // Try to build the lift
             if (_simulationRunner != null && _simulationRunner.Sim != null)
             {
@@ -264,6 +270,8 @@ namespace SkiResortTycoon.UnityBridge
                 
                 if (success)
                 {
+                    placedSuccessfully = true;
+
                     // Register snap points for this lift (top and bottom only)
                     var bottomSnap = new SnapPoint(SnapPointType.LiftBottom, _currentLift.StartPosition, _currentLift.LiftId, $"Lift{_currentLift.LiftId}_Bottom");
                     var topSnap = new SnapPoint(SnapPointType.LiftTop, _currentLift.EndPosition, _currentLift.LiftId, $"Lift{_currentLift.LiftId}_Top");
@@ -327,6 +335,14 @@ namespace SkiResortTycoon.UnityBridge
             // Clean up preview visuals
             if (_prefabBuilder != null) _prefabBuilder.DestroyPreview();
             TreeClearer.RestorePreviewTrees();
+
+            // Notify listeners (e.g. LiftBuildTool) that placement is done so they can exit build mode
+            if (placedSuccessfully)
+            {
+                _isBuildMode = false;
+                if (_cursorVisual != null) _cursorVisual.SetActive(false);
+                OnLiftPlaced?.Invoke();
+            }
         }
         
         private void CancelPlacement()

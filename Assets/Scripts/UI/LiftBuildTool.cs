@@ -44,14 +44,15 @@ namespace SkiResortTycoon.UI
                     BindingFlags.NonPublic | BindingFlags.Instance);
             }
             
-            // Remember previous state
+            // Remember previous state and enable build mode
             if (_isBuildModeField != null)
             {
                 _previousBuildMode = (bool)_isBuildModeField.GetValue(_liftBuilder);
-                
-                // Enable build mode
                 _isBuildModeField.SetValue(_liftBuilder, true);
             }
+
+            // Subscribe so we exit build mode automatically after one lift is placed
+            _liftBuilder.OnLiftPlaced += OnLiftPlacedHandler;
             
             NotificationManager.Instance?.ShowInfo("Click bottom station, then top station");
             
@@ -62,25 +63,24 @@ namespace SkiResortTycoon.UI
             {
                 var cursorVisual = cursorVisualField.GetValue(_liftBuilder) as GameObject;
                 if (cursorVisual != null)
-                {
                     cursorVisual.SetActive(true);
-                }
             }
         }
         
         public override void OnDeactivate()
         {
             base.OnDeactivate();
-            
+
+            if (_liftBuilder != null)
+                _liftBuilder.OnLiftPlaced -= OnLiftPlacedHandler;
+
             if (_liftBuilder == null || _isBuildModeField == null) return;
             
             // Cancel any in-progress placement
             var cancelMethod = typeof(LiftBuilder).GetMethod("CancelPlacement", 
                 BindingFlags.NonPublic | BindingFlags.Instance);
             if (cancelMethod != null)
-            {
                 cancelMethod.Invoke(_liftBuilder, null);
-            }
             
             // Restore previous build mode state (or turn off)
             _isBuildModeField.SetValue(_liftBuilder, _previousBuildMode);
@@ -92,10 +92,15 @@ namespace SkiResortTycoon.UI
             {
                 var cursorVisual = cursorVisualField.GetValue(_liftBuilder) as GameObject;
                 if (cursorVisual != null && !_previousBuildMode)
-                {
                     cursorVisual.SetActive(false);
-                }
             }
+        }
+
+        private void OnLiftPlacedHandler()
+        {
+            // Lift was successfully built — unsubscribe then exit build mode
+            _liftBuilder.OnLiftPlaced -= OnLiftPlacedHandler;
+            UIManager.Instance?.DeactivateTool();
         }
         
         protected override void HandleInput()

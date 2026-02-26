@@ -1,20 +1,24 @@
 using UnityEngine;
+using SkiResortTycoon.Core;
 using SkiResortTycoon.UnityBridge;
 using System.Reflection;
 
 namespace SkiResortTycoon.UI
 {
     /// <summary>
-    /// Lift building tool - integrates UI button with existing LiftBuilder system.
-    /// Activating this tool enters lift build mode (same as pressing L).
+    /// Lift building tool — bridges the dock button with LiftBuilder and ContextWindowController.
+    ///
+    /// Flow:
+    ///   Activate  → enable LiftBuilder._isBuildMode
+    ///   1st click → OnBottomStationPlaced  → open context window Phase 1
+    ///   2nd click → OnLiftReadyToConfirm   → open context window Phase 2 (stats + Confirm/Cancel)
+    ///   Confirm   → LiftBuilder.ConfirmLift() → OnLiftPlaced → deactivate, show lift-selected window
+    ///   Cancel    → LiftBuilder.CancelPendingLift() → OnLiftCancelled → deactivate, hide window
     /// </summary>
     public class LiftBuildTool : BaseTool
     {
         [Header("Tool References")]
         [SerializeField] private LiftBuilder _liftBuilder;
-        
-        [Header("Lift Settings")]
-        [SerializeField] private int _baseCost = 25000;
         
         private FieldInfo _isBuildModeField;
         private bool _previousBuildMode = false;
@@ -22,6 +26,8 @@ namespace SkiResortTycoon.UI
         public override string ToolName => "Lift";
         public override string ToolDescription => "Build a new ski lift";
         
+        // ── Activation ───────────────────────────────────────────────────────
+
         public override void OnActivate()
         {
             base.OnActivate();
@@ -37,34 +43,34 @@ namespace SkiResortTycoon.UI
                 }
             }
             
-            // Get the private _isBuildMode field using reflection
+            // Enable _isBuildMode via reflection (field is private on LiftBuilder)
             if (_isBuildModeField == null)
-            {
-                _isBuildModeField = typeof(LiftBuilder).GetField("_isBuildMode", 
+                _isBuildModeField = typeof(LiftBuilder).GetField("_isBuildMode",
                     BindingFlags.NonPublic | BindingFlags.Instance);
-            }
             
-            // Remember previous state and enable build mode
             if (_isBuildModeField != null)
             {
                 _previousBuildMode = (bool)_isBuildModeField.GetValue(_liftBuilder);
                 _isBuildModeField.SetValue(_liftBuilder, true);
             }
 
-            // Subscribe so we exit build mode automatically after one lift is placed
-            _liftBuilder.OnLiftPlaced += OnLiftPlacedHandler;
+            // Show cursor
+            var cursorField = typeof(LiftBuilder).GetField("_cursorVisual",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            if (cursorField != null)
+            {
+                var cursor = cursorField.GetValue(_liftBuilder) as GameObject;
+                if (cursor != null) cursor.SetActive(true);
+            }
+
+            // Subscribe to LiftBuilder events
+            _liftBuilder.OnBottomStationPlaced  += HandleBottomStationPlaced;
+            _liftBuilder.OnLiftPreviewUpdated   += HandleLiftPreviewUpdated;
+            _liftBuilder.OnLiftReadyToConfirm   += HandleLiftReadyToConfirm;
+            _liftBuilder.OnLiftPlaced           += HandleLiftPlaced;
+            _liftBuilder.OnLiftCancelled        += HandleLiftCancelled;
             
             NotificationManager.Instance?.ShowInfo("Click bottom station, then top station");
-            
-            // Show cursor if available
-            var cursorVisualField = typeof(LiftBuilder).GetField("_cursorVisual", 
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            if (cursorVisualField != null)
-            {
-                var cursorVisual = cursorVisualField.GetValue(_liftBuilder) as GameObject;
-                if (cursorVisual != null)
-                    cursorVisual.SetActive(true);
-            }
         }
         
         public override void OnDeactivate()
@@ -72,64 +78,104 @@ namespace SkiResortTycoon.UI
             base.OnDeactivate();
 
             if (_liftBuilder != null)
-                _liftBuilder.OnLiftPlaced -= OnLiftPlacedHandler;
+            {
+                _liftBuilder.OnBottomStationPlaced  -= HandleBottomStationPlaced;
+                _liftBuilder.OnLiftPreviewUpdated   -= HandleLiftPreviewUpdated;
+                _liftBuilder.OnLiftReadyToConfirm   -= HandleLiftReadyToConfirm;
+                _liftBuilder.OnLiftPlaced           -= HandleLiftPlaced;
+                _liftBuilder.OnLiftCancelled        -= HandleLiftCancelled;
 
-            if (_liftBuilder == null || _isBuildModeField == null) return;
-            
-            // Cancel any in-progress placement
-            var cancelMethod = typeof(LiftBuilder).GetMethod("CancelPlacement", 
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            if (cancelMethod != null)
-                cancelMethod.Invoke(_liftBuilder, null);
-            
-            // Restore previous build mode state (or turn off)
-            _isBuildModeField.SetValue(_liftBuilder, _previousBuildMode);
-            
-            // Hide cursor
-            var cursorVisualField = typeof(LiftBuilder).GetField("_cursorVisual", 
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            if (cursorVisualField != null)
-            {
-                var cursorVisual = cursorVisualField.GetValue(_liftBuilder) as GameObject;
-                if (cursorVisual != null && !_previousBuildMode)
-                    cursorVisual.SetActive(false);
-            }
-        }
-
-        private void OnLiftPlacedHandler()
-        {
-            // Lift was successfully built — unsubscribe then exit build mode
-            _liftBuilder.OnLiftPlaced -= OnLiftPlacedHandler;
-            UIManager.Instance?.DeactivateTool();
-        }
-        
-        protected override void HandleInput()
-        {
-            // The LiftBuilder handles its own input in its Update method
-            // We just need to keep build mode enabled while this tool is active
-            base.HandleInput();
-            
-            // If escape is pressed, cancel and deactivate
-            if (Input.GetKeyDown(KeyCode.Escape))
-            {
-                UIManager.Instance?.DeactivateTool();
-            }
-        }
-        
-        public override void OnCancel()
-        {
-            if (_liftBuilder != null)
-            {
-                var cancelMethod = typeof(LiftBuilder).GetMethod("CancelPlacement", 
-                    BindingFlags.NonPublic | BindingFlags.Instance);
-                if (cancelMethod != null)
+                // Cancel any in-progress (non-confirmed) placement
+                if (!_liftBuilder.IsPendingConfirmation)
                 {
-                    cancelMethod.Invoke(_liftBuilder, null);
-                    NotificationManager.Instance?.ShowInfo("Lift placement cancelled");
+                    var cancelMethod = typeof(LiftBuilder).GetMethod("CancelPlacement",
+                        BindingFlags.NonPublic | BindingFlags.Instance);
+                    cancelMethod?.Invoke(_liftBuilder, null);
+                }
+
+                if (_isBuildModeField != null)
+                    _isBuildModeField.SetValue(_liftBuilder, _previousBuildMode);
+
+                // Hide cursor
+                var cursorField = typeof(LiftBuilder).GetField("_cursorVisual",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                if (cursorField != null)
+                {
+                    var cursor = cursorField.GetValue(_liftBuilder) as GameObject;
+                    if (cursor != null && !_previousBuildMode) cursor.SetActive(false);
                 }
             }
-            
+        }
+
+        public override void OnCancel()
+        {
+            // If pending confirmation, tell LiftBuilder to cancel properly
+            if (_liftBuilder != null && _liftBuilder.IsPendingConfirmation)
+            {
+                _liftBuilder.CancelPendingLift(); // fires OnLiftCancelled → HandleLiftCancelled
+                return; // HandleLiftCancelled will call DeactivateTool
+            }
+
             base.OnCancel();
+        }
+
+        // ── Input ────────────────────────────────────────────────────────────
+
+        protected override void HandleInput()
+        {
+            // While pending confirmation, let LiftBuilder (and the context window
+            // buttons) own all input — don't intercept ESC / right-click here.
+            if (_liftBuilder != null && _liftBuilder.IsPendingConfirmation) return;
+
+            base.HandleInput(); // right-click cancel
+
+            if (Input.GetKeyDown(KeyCode.Escape))
+                UIManager.Instance?.DeactivateTool();
+        }
+
+        // ── LiftBuilder event handlers ───────────────────────────────────────
+
+        private void HandleBottomStationPlaced()
+        {
+            ContextWindowController.Instance?.ShowLiftBuildPhase1();
+        }
+
+        private void HandleLiftPreviewUpdated(float lengthM, float elevationM, int baseCost, int addedCost)
+        {
+            ContextWindowController.Instance?.UpdateLiftBuildStats(lengthM, elevationM, baseCost, addedCost);
+        }
+
+        private void HandleLiftReadyToConfirm(LiftData liftData, int baseCost, int lengthAddedCost)
+        {
+            ContextWindowController.Instance?.ShowLiftBuildPhase2(
+                liftData,
+                baseCost,
+                lengthAddedCost,
+                onConfirm: () => _liftBuilder?.ConfirmLift(),
+                onCancel:  () => _liftBuilder?.CancelPendingLift()
+            );
+        }
+
+        private void HandleLiftPlaced(SelectableStructure selectable)
+        {
+            // Unsubscribe first to avoid double calls during DeactivateTool
+            _liftBuilder.OnLiftPlaced -= HandleLiftPlaced;
+
+            UIManager.Instance?.DeactivateTool();
+
+            // Transition context window from "building" to "lift selected"
+            if (selectable != null)
+                ContextWindowController.Instance?.ShowStructure(selectable);
+            else
+                ContextWindowController.Instance?.Hide();
+        }
+
+        private void HandleLiftCancelled()
+        {
+            _liftBuilder.OnLiftCancelled -= HandleLiftCancelled;
+
+            UIManager.Instance?.DeactivateTool();
+            ContextWindowController.Instance?.Hide();
         }
     }
 }

@@ -110,6 +110,24 @@ namespace SkiResortTycoon.UI
         [SerializeField] private TextMeshProUGUI _lodgeVisitsAllTimeValue;
         [SerializeField] private TextMeshProUGUI _lodgeUpkeepValue;
 
+        // ── Lift Building section ────────────────────────────────────────────
+        [Header("Lift Building Section")]
+        [SerializeField] private GameObject _liftBuildSection;
+
+        [Header("Lift Building — Stats (always visible, update live)")]
+        [SerializeField] private TextMeshProUGUI _liftBuildTypeValue;
+        [SerializeField] private TextMeshProUGUI _liftBuildBaseCostValue;
+        [SerializeField] private TextMeshProUGUI _liftBuildLengthCostValue;
+        [SerializeField] private TextMeshProUGUI _liftBuildTotalCostValue;
+        [SerializeField] private TextMeshProUGUI _liftBuildUpkeepValue;
+        [SerializeField] private TextMeshProUGUI _liftBuildLengthFtValue;
+        [SerializeField] private TextMeshProUGUI _liftBuildVerticalValue;
+        [SerializeField] private TextMeshProUGUI _liftBuildCapacityValue;
+
+        [Header("Lift Building — Confirm / Cancel (shown only after 2nd click)")]
+        [SerializeField] private Button          _liftBuildConfirmButton;
+        [SerializeField] private Button          _liftBuildCancelButton;
+
         // ── Skier section ────────────────────────────────────────────
         [Header("Skier Section")]
         [SerializeField] private GameObject _skierSection;
@@ -140,10 +158,20 @@ namespace SkiResortTycoon.UI
         [SerializeField] private Sprite _lodgeIcon;
         [SerializeField] private Sprite _skierIcon;
 
+        // ── Action buttons ────────────────────────────────────────────
+        [Header("Action Buttons")]
+        [SerializeField] private Button _demolishButton;
+        [SerializeField] private Button _findButton;
+        [SerializeField] private Button _followButton;
+
         // ── Internal state ────────────────────────────────────────────
         private SelectableStructure _current;
         private bool  _visible;
         private float _targetAlpha;
+
+        // Lift-build callbacks (set while in Phase 2 pending confirmation)
+        private System.Action _liftBuildOnConfirm;
+        private System.Action _liftBuildOnCancel;
 
         private const float MetresToFeet = 3.28084f;
 
@@ -179,6 +207,18 @@ namespace SkiResortTycoon.UI
             if (_diffBlueButton        != null) _diffBlueButton.onClick.AddListener(()        => OnDifficultyChosen(TrailDifficulty.Blue));
             if (_diffBlackButton       != null) _diffBlackButton.onClick.AddListener(()       => OnDifficultyChosen(TrailDifficulty.Black));
             if (_diffDoubleBlackButton != null) _diffDoubleBlackButton.onClick.AddListener(() => OnDifficultyChosen(TrailDifficulty.DoubleBlack));
+
+            if (_liftBuildConfirmButton != null)
+                _liftBuildConfirmButton.onClick.AddListener(OnLiftBuildConfirm);
+            if (_liftBuildCancelButton != null)
+                _liftBuildCancelButton.onClick.AddListener(OnLiftBuildCancel);
+
+            if (_demolishButton != null)
+                _demolishButton.onClick.AddListener(OnDemolishClicked);
+            if (_findButton != null)
+                _findButton.onClick.AddListener(OnFindClicked);
+            if (_followButton != null)
+                _followButton.onClick.AddListener(OnFollowClicked);
 
             // Expand buttons start hidden; DifficultyPicker itself is never touched
             SetExpandButtonsActive(false);
@@ -220,25 +260,141 @@ namespace SkiResortTycoon.UI
             SetPanelVisible(true);
             PopulateHeader();
 
-            SetSectionActive(_trailSection, structure.Type == StructureType.Trail);
-            SetSectionActive(_liftSection,  structure.Type == StructureType.Lift);
-            SetSectionActive(_lodgeSection, structure.Type == StructureType.Lodge);
-            SetSectionActive(_skierSection, structure.Type == StructureType.Skier);
+            SetSectionActive(_trailSection,     structure.Type == StructureType.Trail);
+            SetSectionActive(_liftSection,      structure.Type == StructureType.Lift);
+            SetSectionActive(_lodgeSection,     structure.Type == StructureType.Lodge);
+            SetSectionActive(_skierSection,     structure.Type == StructureType.Skier);
+            SetSectionActive(_liftBuildSection, false);
+
+            if (_liftBuildConfirmButton != null) _liftBuildConfirmButton.gameObject.SetActive(false);
+            if (_liftBuildCancelButton  != null) _liftBuildCancelButton.gameObject.SetActive(false);
 
             switch (structure.Type)
             {
-                case StructureType.Trail: PopulateTrail(); break;
-                case StructureType.Lift:  PopulateLift();  break;
-                case StructureType.Lodge: PopulateLodge(); break;
-                case StructureType.Skier: PopulateSkier(); break;
+                case StructureType.Trail:
+                    PopulateTrail();
+                    SetActionButtons(find: true, follow: false, demolish: true);
+                    break;
+                case StructureType.Lift:
+                    PopulateLift();
+                    SetActionButtons(find: true, follow: false, demolish: true);
+                    break;
+                case StructureType.Lodge:
+                    PopulateLodge();
+                    SetActionButtons(find: true, follow: false, demolish: true);
+                    break;
+                case StructureType.Skier:
+                    PopulateSkier();
+                    SetActionButtons(find: true, follow: true, demolish: false);
+                    break;
             }
         }
 
         public void Hide()
         {
             _current = null;
+            _liftBuildOnConfirm = null;
+            _liftBuildOnCancel  = null;
             CollapsePickerIfOpen();
             SetPanelVisible(false);
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        //  Lift Building — Phase 1  (bottom station placed)
+        // ─────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Opens the lift-building context window.
+        /// Stats show "--" until the cursor moves over the mountain.
+        /// Confirm / Cancel buttons are hidden until Phase 2.
+        /// </summary>
+        public void ShowLiftBuildPhase1()
+        {
+            _current = null;
+            SetPanelVisible(true);
+
+            if (_titleInput != null) _titleInput.SetTextWithoutNotify("New Lift");
+            SetIcon(_liftIcon);
+            if (_subtitleText != null)
+            {
+                _subtitleText.text      = "LIFT";
+                _subtitleText.color     = Color.white;
+                _subtitleText.fontSize  = 15f;
+                _subtitleText.fontStyle = TMPro.FontStyles.UpperCase;
+            }
+
+            SetSectionActive(_trailSection,     false);
+            SetSectionActive(_liftSection,      false);
+            SetSectionActive(_lodgeSection,     false);
+            SetSectionActive(_skierSection,     false);
+            SetSectionActive(_liftBuildSection, true);
+
+            // Stats start blank, Confirm/Cancel hidden until 2nd click
+            SetText(_liftBuildTypeValue,       "--");
+            SetText(_liftBuildBaseCostValue,   "--");
+            SetText(_liftBuildLengthCostValue, "--");
+            SetText(_liftBuildTotalCostValue,  "--");
+            SetText(_liftBuildUpkeepValue,     "$500 / day");
+            SetText(_liftBuildLengthFtValue,   "--");
+            SetText(_liftBuildVerticalValue,   "--");
+            SetText(_liftBuildCapacityValue,   "--");
+
+            if (_liftBuildConfirmButton != null) _liftBuildConfirmButton.gameObject.SetActive(false);
+            if (_liftBuildCancelButton  != null) _liftBuildCancelButton.gameObject.SetActive(false);
+            SetActionButtons(find: false, follow: false, demolish: false);
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        //  Live stat update (called every frame while dragging top pt)
+        // ─────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Updates the stat rows in real-time while the player hovers the top station.
+        /// Does not show Confirm / Cancel yet.
+        /// </summary>
+        public void UpdateLiftBuildStats(float lengthM, float elevationM, int baseCost, int addedCost)
+        {
+            if (!_visible) return;
+
+            int totalCost = baseCost + addedCost;
+            SetText(_liftBuildTypeValue,       "--");
+            SetText(_liftBuildBaseCostValue,   $"${baseCost:N0}");
+            SetText(_liftBuildLengthCostValue, $"${addedCost:N0}");
+            SetText(_liftBuildTotalCostValue,  $"${totalCost:N0}");
+            SetText(_liftBuildLengthFtValue,   $"{lengthM * MetresToFeet:N0} ft");
+            SetText(_liftBuildVerticalValue,   $"{elevationM * MetresToFeet:N0} ft");
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        //  Lift Building — Phase 2  (pending confirmation)
+        // ─────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Locks the stats to the placed values and reveals Confirm / Cancel.
+        /// </summary>
+        public void ShowLiftBuildPhase2(LiftData liftData, int baseCost, int lengthAddedCost,
+            System.Action onConfirm, System.Action onCancel)
+        {
+            _liftBuildOnConfirm = onConfirm;
+            _liftBuildOnCancel  = onCancel;
+
+            if (!_visible) SetPanelVisible(true);
+
+            if (liftData != null)
+            {
+                SetText(_liftBuildTypeValue,       "--");
+                SetText(_liftBuildBaseCostValue,   $"${baseCost:N0}");
+                SetText(_liftBuildLengthCostValue, $"${lengthAddedCost:N0}");
+                SetText(_liftBuildTotalCostValue,  $"${liftData.BuildCost:N0}");
+                SetText(_liftBuildUpkeepValue,     "$500 / day");
+                SetText(_liftBuildLengthFtValue,   $"{liftData.Length * MetresToFeet:N0} ft");
+                SetText(_liftBuildVerticalValue,   $"{liftData.ElevationGain * MetresToFeet:N0} ft");
+                SetText(_liftBuildCapacityValue,   $"{liftData.Capacity:N0} / hr");
+            }
+
+            // Reveal Confirm / Cancel buttons
+            if (_liftBuildConfirmButton != null) _liftBuildConfirmButton.gameObject.SetActive(true);
+            if (_liftBuildCancelButton  != null) _liftBuildCancelButton.gameObject.SetActive(true);
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -521,6 +677,13 @@ namespace SkiResortTycoon.UI
             if (section != null) section.SetActive(active);
         }
 
+        private void SetActionButtons(bool find, bool follow, bool demolish)
+        {
+            if (_findButton    != null) _findButton.gameObject.SetActive(find);
+            if (_followButton  != null) _followButton.gameObject.SetActive(follow);
+            if (_demolishButton != null) _demolishButton.gameObject.SetActive(demolish);
+        }
+
         private static void SetText(TextMeshProUGUI label, string text, Color? color = null)
         {
             if (label == null) return;
@@ -631,6 +794,55 @@ namespace SkiResortTycoon.UI
         private void OnToolChanged(BaseTool tool)
         {
             if (tool != null && _visible) Hide();
+        }
+
+        private void OnLiftBuildConfirm()
+        {
+            var cb = _liftBuildOnConfirm;
+            _liftBuildOnConfirm = null;
+            _liftBuildOnCancel  = null;
+            cb?.Invoke();
+            // Context window will be updated by LiftBuildTool.HandleLiftPlaced → ShowStructure
+        }
+
+        private void OnLiftBuildCancel()
+        {
+            var cb = _liftBuildOnCancel;
+            _liftBuildOnConfirm = null;
+            _liftBuildOnCancel  = null;
+            cb?.Invoke();
+        }
+
+        // ── Action button callbacks ───────────────────────────────────────
+
+        private void OnDemolishClicked()
+        {
+            if (_current == null) return;
+
+            var target = _current;
+            Hide();
+
+            if (StructureSelectionManager.Instance != null)
+                StructureSelectionManager.Instance.DeselectStructure();
+
+            // Lodge: unregister from manager before destroying
+            if (target.Type == StructureType.Lodge && target.Lodge != null)
+            {
+                if (LodgeManager.Instance != null)
+                    LodgeManager.Instance.UnregisterLodge(target.Lodge);
+            }
+
+            Destroy(target.gameObject);
+        }
+
+        private void OnFindClicked()
+        {
+            // Not yet implemented
+        }
+
+        private void OnFollowClicked()
+        {
+            // Not yet implemented
         }
     }
 }

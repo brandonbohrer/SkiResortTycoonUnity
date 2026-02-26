@@ -190,8 +190,6 @@ namespace SkiResortTycoon.UI
         // Build callbacks (shared by lift/lodge/trail build windows)
         private System.Action _liftBuildOnConfirm;
         private System.Action _liftBuildOnCancel;
-        private System.Action _trailBuildOnConfirm;
-        private System.Action _trailBuildOnCancel;
 
         private const float MetresToFeet = 3.28084f;
 
@@ -232,11 +230,6 @@ namespace SkiResortTycoon.UI
                 _liftBuildConfirmButton.onClick.AddListener(OnLiftBuildConfirm);
             if (_liftBuildCancelButton != null)
                 _liftBuildCancelButton.onClick.AddListener(OnLiftBuildCancel);
-
-            if (_trailBuildConfirmButton != null)
-                _trailBuildConfirmButton.onClick.AddListener(OnTrailBuildConfirm);
-            if (_trailBuildCancelButton != null)
-                _trailBuildCancelButton.onClick.AddListener(OnTrailBuildCancel);
 
             if (_demolishButton != null)
                 _demolishButton.onClick.AddListener(OnDemolishClicked);
@@ -324,8 +317,6 @@ namespace SkiResortTycoon.UI
             _current = null;
             _liftBuildOnConfirm  = null;
             _liftBuildOnCancel   = null;
-            _trailBuildOnConfirm = null;
-            _trailBuildOnCancel  = null;
             CollapsePickerIfOpen();
             SetPanelVisible(false);
         }
@@ -837,12 +828,13 @@ namespace SkiResortTycoon.UI
 
         /// <summary>
         /// Opens the trail-building context window on first anchor placement.
-        /// Confirm / Cancel are hidden until the trail enters Settled state.
+        /// Reuses the shared Confirm / Cancel buttons (same as lift/lodge build).
+        /// Buttons are hidden until the trail enters Settled state.
         /// </summary>
         public void ShowTrailBuildWindow(System.Action onConfirm, System.Action onCancel)
         {
-            _trailBuildOnConfirm = onConfirm;
-            _trailBuildOnCancel  = onCancel;
+            _liftBuildOnConfirm = onConfirm;
+            _liftBuildOnCancel  = onCancel;
             _current = null;
 
             SetPanelVisible(true);
@@ -869,18 +861,27 @@ namespace SkiResortTycoon.UI
             SetText(_trailBuildLengthValue, "--");
             SetText(_trailBuildCostValue,   "--");
 
-            if (_trailBuildConfirmButton != null) _trailBuildConfirmButton.gameObject.SetActive(false);
-            if (_trailBuildCancelButton  != null) _trailBuildCancelButton.gameObject.SetActive(false);
+            if (_liftBuildConfirmButton != null) _liftBuildConfirmButton.gameObject.SetActive(false);
+            if (_liftBuildCancelButton  != null) _liftBuildCancelButton.gameObject.SetActive(false);
             SetActionButtons(find: false, follow: false, demolish: false);
         }
 
         /// <summary>
-        /// Reveals Confirm / Cancel after the trail enters Settled state.
+        /// Reveals the shared Confirm / Cancel after the trail enters Settled state.
         /// </summary>
         public void ShowTrailBuildConfirmButtons()
         {
-            if (_trailBuildConfirmButton != null) _trailBuildConfirmButton.gameObject.SetActive(true);
-            if (_trailBuildCancelButton  != null) _trailBuildCancelButton.gameObject.SetActive(true);
+            if (_liftBuildConfirmButton != null) _liftBuildConfirmButton.gameObject.SetActive(true);
+            if (_liftBuildCancelButton  != null) _liftBuildCancelButton.gameObject.SetActive(true);
+        }
+
+        /// <summary>
+        /// Hides the shared Confirm / Cancel when resuming from Settled → Placing.
+        /// </summary>
+        public void HideTrailBuildConfirmButtons()
+        {
+            if (_liftBuildConfirmButton != null) _liftBuildConfirmButton.gameObject.SetActive(false);
+            if (_liftBuildCancelButton  != null) _liftBuildCancelButton.gameObject.SetActive(false);
         }
 
         /// <summary>
@@ -892,22 +893,6 @@ namespace SkiResortTycoon.UI
             SetText(_trailBuildWidthValue,  $"{widthWorld:F1}");
             SetText(_trailBuildLengthValue, lengthWorld > 1f ? $"{lengthWorld * MetresToFeet:N0} ft" : "--");
             SetText(_trailBuildCostValue,   $"${cost:N0}");
-        }
-
-        private void OnTrailBuildConfirm()
-        {
-            var cb = _trailBuildOnConfirm;
-            _trailBuildOnConfirm = null;
-            _trailBuildOnCancel  = null;
-            cb?.Invoke();
-        }
-
-        private void OnTrailBuildCancel()
-        {
-            var cb = _trailBuildOnCancel;
-            _trailBuildOnConfirm = null;
-            _trailBuildOnCancel  = null;
-            cb?.Invoke();
         }
 
         // ─────────────────────────────────────────────────────────────

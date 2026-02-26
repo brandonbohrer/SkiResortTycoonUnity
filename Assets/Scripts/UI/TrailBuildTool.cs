@@ -141,11 +141,16 @@ namespace SkiResortTycoon.UI
             if (Input.GetMouseButtonDown(0))
             {
                 Vector3? pos = _trailDrawer.GetMountainPositionUnderMouse();
-                if (pos.HasValue)
+                if (!pos.HasValue) return;
+
+                if (_trailDrawer.State == TrailBuildState.Settled)
                 {
-                    _isPainting = true;
-                    _trailDrawer.AddPaintSample(pos.Value);
+                    _trailDrawer.TryResumeFromAnchor(pos.Value);
+                    return;
                 }
+
+                _isPainting = true;
+                _trailDrawer.AddPaintSample(pos.Value);
             }
 
             if (Input.GetMouseButton(0) && _isPainting)
@@ -166,13 +171,18 @@ namespace SkiResortTycoon.UI
 
         private void HandleLineInput()
         {
-            if (_trailDrawer.State == TrailBuildState.Settled) return;
-
             if (Input.GetMouseButtonDown(0))
             {
                 Vector3? pos = _trailDrawer.GetMountainPositionUnderMouse();
-                if (pos.HasValue)
-                    _trailDrawer.PlaceAnchor(pos.Value);
+                if (!pos.HasValue) return;
+
+                if (_trailDrawer.State == TrailBuildState.Settled)
+                {
+                    _trailDrawer.TryResumeFromAnchor(pos.Value);
+                    return;
+                }
+
+                _trailDrawer.PlaceAnchor(pos.Value);
             }
         }
 
@@ -180,17 +190,20 @@ namespace SkiResortTycoon.UI
 
         private void HandlePenInput()
         {
-            if (_trailDrawer.State == TrailBuildState.Settled) return;
-
             if (Input.GetMouseButtonDown(0))
             {
                 Vector3? pos = _trailDrawer.GetMountainPositionUnderMouse();
-                if (pos.HasValue)
+                if (!pos.HasValue) return;
+
+                if (_trailDrawer.State == TrailBuildState.Settled)
                 {
-                    _trailDrawer.PlaceAnchor(pos.Value);
-                    _trailDrawer.BeginPenHandleDrag(pos.Value);
-                    _penClickedThisFrame = true;
+                    _trailDrawer.TryResumeFromAnchor(pos.Value);
+                    return;
                 }
+
+                _trailDrawer.PlaceAnchor(pos.Value);
+                _trailDrawer.BeginPenHandleDrag(pos.Value);
+                _penClickedThisFrame = true;
             }
 
             if (Input.GetMouseButton(0) && _trailDrawer.IsDraggingHandle && !_penClickedThisFrame)
@@ -228,12 +241,7 @@ namespace SkiResortTycoon.UI
         {
             if (_cursorCircle == null) return;
 
-            if (overUI)
-            {
-                _cursorCircle.gameObject.SetActive(false);
-                return;
-            }
-
+            // Always keep the cursor visible and following the mouse
             _cursorCircle.gameObject.SetActive(true);
             _cursorCircle.position = Input.mousePosition;
 
@@ -243,10 +251,13 @@ namespace SkiResortTycoon.UI
             pixelDiameter = Mathf.Max(pixelDiameter, 16f);
             _cursorCircle.sizeDelta = new Vector2(pixelDiameter, pixelDiameter);
 
-            // Update trail drawer cursor position for preview
-            Vector3? worldPos = _trailDrawer.GetMountainPositionUnderMouse();
-            if (worldPos.HasValue)
-                _trailDrawer.UpdateCursorPosition(worldPos.Value);
+            // Update trail drawer cursor position for preview (skip if over UI)
+            if (!overUI)
+            {
+                Vector3? worldPos = _trailDrawer.GetMountainPositionUnderMouse();
+                if (worldPos.HasValue)
+                    _trailDrawer.UpdateCursorPosition(worldPos.Value);
+            }
         }
 
         private float WorldSizeToScreenPixels(float worldSize)
@@ -304,6 +315,10 @@ namespace SkiResortTycoon.UI
             if (state == TrailBuildState.Settled && _trailDrawer.AnchorCount >= 2)
             {
                 ContextWindowController.Instance?.ShowTrailBuildConfirmButtons();
+            }
+            else if (state == TrailBuildState.Placing)
+            {
+                ContextWindowController.Instance?.HideTrailBuildConfirmButtons();
             }
         }
 

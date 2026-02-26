@@ -29,6 +29,12 @@ namespace SkiResortTycoon.UnityBridge
         [Header("Settings")]
         [SerializeField] private float _snapRadius = 5f;
         [SerializeField] private float _paintSampleSpacing = 1.5f;
+        [SerializeField] private float _penHandleMultiplier = 1.5f;
+        [SerializeField] private float _anchorResumeRadius = 2f;
+
+        [Header("Anchor Markers")]
+        [SerializeField] private Color _anchorMarkerColor = new Color(0.29f, 0.56f, 0.85f, 0.6f);
+        [SerializeField] private float _anchorMarkerRadius = 0.5f;
 
         // ── Runtime state ────────────────────────────────────────────────
         private TrailSystem _trailSystem;
@@ -52,6 +58,10 @@ namespace SkiResortTycoon.UnityBridge
         private readonly List<Vector3> _committedPathCache = new List<Vector3>();
         // Cached preview segment (last anchor → cursor)
         private readonly List<Vector3> _previewSegCache = new List<Vector3>();
+
+        // Anchor marker GameObjects
+        private readonly List<GameObject> _anchorMarkers = new List<GameObject>();
+        private Material _anchorMarkerMat;
 
         // ── Events ───────────────────────────────────────────────────────
         public event Action OnTrailCancelled;
@@ -213,7 +223,7 @@ namespace SkiResortTycoon.UnityBridge
 
             var last = _anchors[_anchors.Count - 1];
             Vector3 anchorPos = MountainManager.ToUnityVector3(last.Position);
-            Vector3 offset = currentWorldPos - anchorPos;
+            Vector3 offset = (currentWorldPos - anchorPos) * _penHandleMultiplier;
 
             last.HandleOut = MountainManager.ToVector3f(anchorPos + offset);
             last.HandleIn = MountainManager.ToVector3f(anchorPos - offset);
@@ -230,6 +240,30 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         public bool IsDraggingHandle => _isDraggingHandle;
+
+        /// <summary>
+        /// When in Settled state, checks if a click position is near the last
+        /// anchor. If so, resumes Placing from that anchor.
+        /// Returns true if building was resumed.
+        /// </summary>
+        public bool TryResumeFromAnchor(Vector3 clickWorldPos)
+        {
+            if (_state != TrailBuildState.Settled || _anchors.Count == 0)
+                return false;
+
+            var lastAnchor = _anchors[_anchors.Count - 1];
+            Vector3 lastPos = MountainManager.ToUnityVector3(lastAnchor.Position);
+            float dist = Vector3.Distance(clickWorldPos, lastPos);
+
+            if (dist <= _anchorResumeRadius)
+            {
+                SetState(TrailBuildState.Placing);
+                RebuildPreview();
+                return true;
+            }
+
+            return false;
+        }
 
         // ── Undo / Cancel ────────────────────────────────────────────────
 
@@ -271,6 +305,7 @@ namespace SkiResortTycoon.UnityBridge
             _anchors.Clear();
             _paintPoints.Clear();
             _isDraggingHandle = false;
+            ClearAnchorMarkers();
             SetState(TrailBuildState.Idle);
             _previewRenderer?.HideAll();
             OnTrailCancelled?.Invoke();
@@ -351,6 +386,7 @@ namespace SkiResortTycoon.UnityBridge
 
             _anchors.Clear();
             _paintPoints.Clear();
+            ClearAnchorMarkers();
             SetState(TrailBuildState.Idle);
             _previewRenderer?.HideAll();
 
@@ -367,6 +403,8 @@ namespace SkiResortTycoon.UnityBridge
             EvaluateAnchorsToUnityList(_anchors, _committedPathCache);
             _previewRenderer.SetCommittedPath(_committedPathCache, _trailWidth);
 
+            RebuildAnchorMarkers();
+
             if (_state == TrailBuildState.Placing)
                 RebuildPreviewSegment();
             else
@@ -379,9 +417,25 @@ namespace SkiResortTycoon.UnityBridge
 
             _previewSegCache.Clear();
             var lastAnchor = _anchors[_anchors.Count - 1];
-            Vector3 lastPos = MountainManager.ToUnityVector3(lastAnchor.Position);
-            _previewSegCache.Add(lastPos);
-            _previewSegCache.Add(_cursorWorldPos);
+
+            bool useBezier = _mode == TrailDrawMode.Pen && lastAnchor.HandleOut.HasValue;
+
+            if (useBezier)
+            {
+                var tempV3f = new List<Vector3f>();
+                TrailData.EvaluateBezierSegment(
+                    lastAnchor.Position, lastAnchor.HandleOut,
+                    null, MountainManager.ToVector3f(_cursorWorldPos),
+                    tempV3f, 20, skipFirst: false);
+
+                foreach (var p in tempV3f)
+                    _previewSegCache.Add(ProjectOntoTerrain(MountainManager.ToUnityVector3(p)));
+            }
+            else
+            {
+                _previewSegCache.Add(ProjectOntoTerrain(MountainManager.ToUnityVector3(lastAnchor.Position)));
+                _previewSegCache.Add(ProjectOntoTerrain(_cursorWorldPos));
+            }
 
             _previewRenderer.SetPreviewSegment(_previewSegCache, _trailWidth);
         }
@@ -389,7 +443,10 @@ namespace SkiResortTycoon.UnityBridge
         private void RebuildPaintPreview()
         {
             if (_previewRenderer == null || _paintPoints.Count < 2) return;
-            _previewRenderer.SetCommittedPath(_paintPoints, _trailWidth);
+            var projected = new List<Vector3>(_paintPoints.Count);
+            foreach (var pt in _paintPoints)
+                projected.Add(ProjectOntoTerrain(pt));
+            _previewRenderer.SetCommittedPath(projected, _trailWidth);
         }
 
         private void EvaluateAnchorsToUnityList(List<TrailAnchorPoint> anchors, List<Vector3> outList)
@@ -397,7 +454,7 @@ namespace SkiResortTycoon.UnityBridge
             if (anchors.Count == 0) return;
             if (anchors.Count == 1)
             {
-                outList.Add(MountainManager.ToUnityVector3(anchors[0].Position));
+                outList.Add(ProjectOntoTerrain(MountainManager.ToUnityVector3(anchors[0].Position)));
                 return;
             }
 
@@ -423,7 +480,54 @@ namespace SkiResortTycoon.UnityBridge
             }
 
             foreach (var p in tempV3f)
-                outList.Add(MountainManager.ToUnityVector3(p));
+                outList.Add(ProjectOntoTerrain(MountainManager.ToUnityVector3(p)));
+        }
+
+        /// <summary>
+        /// Projects a world point down onto the mountain surface so the trail
+        /// hugs the terrain instead of floating above/below it.
+        /// </summary>
+        private Vector3 ProjectOntoTerrain(Vector3 point)
+        {
+            if (_mountainManager == null) return point;
+            float? y = _mountainManager.GetHeightAtWorldPos(point);
+            if (y.HasValue)
+                point.y = y.Value;
+            return point;
+        }
+
+        // ── Anchor markers ───────────────────────────────────────────────
+
+        private void RebuildAnchorMarkers()
+        {
+            ClearAnchorMarkers();
+
+            if (_anchorMarkerMat == null)
+            {
+                _anchorMarkerMat = new Material(Shader.Find("Sprites/Default"));
+                _anchorMarkerMat.color = _anchorMarkerColor;
+            }
+
+            foreach (var a in _anchors)
+            {
+                Vector3 pos = ProjectOntoTerrain(MountainManager.ToUnityVector3(a.Position));
+                pos.y += 0.2f;
+                var marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                marker.name = "AnchorMarker";
+                marker.transform.position = pos;
+                marker.transform.localScale = Vector3.one * (_anchorMarkerRadius * 2f);
+                marker.GetComponent<Renderer>().material = _anchorMarkerMat;
+                var col = marker.GetComponent<Collider>();
+                if (col != null) Destroy(col);
+                _anchorMarkers.Add(marker);
+            }
+        }
+
+        private void ClearAnchorMarkers()
+        {
+            foreach (var m in _anchorMarkers)
+                if (m != null) Destroy(m);
+            _anchorMarkers.Clear();
         }
 
         // ── Snap helpers ─────────────────────────────────────────────────

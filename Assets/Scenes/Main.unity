@@ -13650,7 +13650,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 60883714}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 59f8146938fff824cb5fd77236b75775, type: 3}
   m_Name: 
@@ -158997,10 +158997,10 @@ RectTransform:
   - {fileID: 16065600}
   m_Father: {fileID: 60883715}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 1}
+  m_AnchoredPosition: {x: 243.5, y: -46.81}
+  m_SizeDelta: {x: 487, y: 93.62}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &710676140
 MonoBehaviour:
@@ -215552,6 +215552,8 @@ MonoBehaviour:
   _liftBuildCapacityValue: {fileID: 238167046}
   _liftBuildConfirmButton: {fileID: 782844325}
   _liftBuildCancelButton: {fileID: 2038093245}
+  _lodgeBuildSection: {fileID: 60883714}
+  _lodgeBuildCostValue: {fileID: 2103105433}
   _skierSection: {fileID: 219183736}
   _skierStatusValue: {fileID: 28669340}
   _skierSkillValue: {fileID: 884031912}

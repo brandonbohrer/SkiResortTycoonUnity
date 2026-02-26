@@ -128,6 +128,11 @@ namespace SkiResortTycoon.UI
         [SerializeField] private Button          _liftBuildConfirmButton;
         [SerializeField] private Button          _liftBuildCancelButton;
 
+        // ── Lodge Building section ────────────────────────────────────────────
+        [Header("Lodge Building Section")]
+        [SerializeField] private GameObject      _lodgeBuildSection;
+        [SerializeField] private TextMeshProUGUI _lodgeBuildCostValue;
+
         // ── Skier section ────────────────────────────────────────────
         [Header("Skier Section")]
         [SerializeField] private GameObject _skierSection;
@@ -260,11 +265,12 @@ namespace SkiResortTycoon.UI
             SetPanelVisible(true);
             PopulateHeader();
 
-            SetSectionActive(_trailSection,     structure.Type == StructureType.Trail);
-            SetSectionActive(_liftSection,      structure.Type == StructureType.Lift);
-            SetSectionActive(_lodgeSection,     structure.Type == StructureType.Lodge);
-            SetSectionActive(_skierSection,     structure.Type == StructureType.Skier);
-            SetSectionActive(_liftBuildSection, false);
+            SetSectionActive(_trailSection,      structure.Type == StructureType.Trail);
+            SetSectionActive(_liftSection,       structure.Type == StructureType.Lift);
+            SetSectionActive(_lodgeSection,      structure.Type == StructureType.Lodge);
+            SetSectionActive(_skierSection,      structure.Type == StructureType.Skier);
+            SetSectionActive(_liftBuildSection,  false);
+            SetSectionActive(_lodgeBuildSection, false);
 
             if (_liftBuildConfirmButton != null) _liftBuildConfirmButton.gameObject.SetActive(false);
             if (_liftBuildCancelButton  != null) _liftBuildCancelButton.gameObject.SetActive(false);
@@ -323,11 +329,12 @@ namespace SkiResortTycoon.UI
                 _subtitleText.fontStyle = TMPro.FontStyles.UpperCase;
             }
 
-            SetSectionActive(_trailSection,     false);
-            SetSectionActive(_liftSection,      false);
-            SetSectionActive(_lodgeSection,     false);
-            SetSectionActive(_skierSection,     false);
-            SetSectionActive(_liftBuildSection, true);
+            SetSectionActive(_trailSection,      false);
+            SetSectionActive(_liftSection,       false);
+            SetSectionActive(_lodgeSection,      false);
+            SetSectionActive(_skierSection,      false);
+            SetSectionActive(_liftBuildSection,  true);
+            SetSectionActive(_lodgeBuildSection, false);
 
             // Stats start blank, Confirm/Cancel hidden until 2nd click
             SetText(_liftBuildTypeValue,       "--");
@@ -793,7 +800,51 @@ namespace SkiResortTycoon.UI
 
         private void OnToolChanged(BaseTool tool)
         {
-            if (tool != null && _visible) Hide();
+            // Only auto-close when showing a selected structure and a build tool activates.
+            // If _current is null the window belongs to a build mode — don't close it.
+            if (tool != null && _visible && _current != null) Hide();
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        //  Lodge Building
+        // ─────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Opens the lodge-building context window.
+        /// Shows cost and Confirm / Cancel immediately.
+        /// </summary>
+        public void ShowLodgeBuildWindow(int buildCost, System.Action onConfirm, System.Action onCancel)
+        {
+            _liftBuildOnConfirm = onConfirm;
+            _liftBuildOnCancel  = onCancel;
+
+            _current = null;
+            SetPanelVisible(true);
+
+            if (_titleInput != null) _titleInput.SetTextWithoutNotify("New Lodge");
+            SetIcon(_lodgeIcon);
+            if (_subtitleText != null)
+            {
+                _subtitleText.text      = "LODGE";
+                _subtitleText.color     = Color.white;
+                _subtitleText.fontSize  = 15f;
+                _subtitleText.fontStyle = TMPro.FontStyles.UpperCase;
+            }
+
+            SetSectionActive(_trailSection,      false);
+            SetSectionActive(_liftSection,       false);
+            SetSectionActive(_lodgeSection,      false);
+            SetSectionActive(_skierSection,      false);
+            SetSectionActive(_liftBuildSection,  false);
+            SetSectionActive(_lodgeBuildSection, true);
+
+            SetText(_lodgeBuildCostValue, $"${buildCost:N0}");
+
+            SetActionButtons(find: false, follow: false, demolish: false);
+
+            // Confirm/Cancel visible immediately for lodge building
+            if (_liftBuildConfirmButton != null) _liftBuildConfirmButton.gameObject.SetActive(true);
+            if (_liftBuildCancelButton  != null) _liftBuildCancelButton.gameObject.SetActive(true);
         }
 
         private void OnLiftBuildConfirm()

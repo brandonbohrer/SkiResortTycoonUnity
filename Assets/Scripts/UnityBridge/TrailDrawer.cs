@@ -122,7 +122,7 @@ namespace SkiResortTycoon.UnityBridge
 
         public void SetWidth(float width)
         {
-            _trailWidth = Mathf.Clamp(width, 5f, 10f);
+            _trailWidth = Mathf.Clamp(width, 7.5f, 30f);
             RebuildPreview();
         }
 
@@ -227,8 +227,8 @@ namespace SkiResortTycoon.UnityBridge
             Vector3 anchorPos = MountainManager.ToUnityVector3(last.Position);
             Vector3 offset = (currentWorldPos - anchorPos) * _penHandleMultiplier;
 
-            last.HandleOut = MountainManager.ToVector3f(anchorPos + offset);
-            last.HandleIn = MountainManager.ToVector3f(anchorPos - offset);
+            last.HandleOut = MountainManager.ToVector3f(ProjectOntoTerrain(anchorPos + offset));
+            last.HandleIn = MountainManager.ToVector3f(ProjectOntoTerrain(anchorPos - offset));
 
             RebuildPreview();
         }
@@ -310,6 +310,7 @@ namespace SkiResortTycoon.UnityBridge
             _paintPoints.Clear();
             _isDraggingHandle = false;
             ClearAnchorMarkers();
+            TreeClearer.RestorePreviewTrees();
             SetState(TrailBuildState.Idle);
             _previewRenderer?.HideAll();
             OnTrailCancelled?.Invoke();
@@ -366,11 +367,13 @@ namespace SkiResortTycoon.UnityBridge
             var stats = _trailSystem.CalculateDifficulty(trail);
             trail.GenerateBoundaries();
 
-            // Clear trees
+            // Commit preview-hidden trees so they stay disabled permanently,
+            // then do a final pass with the confirmed path to catch any stragglers.
+            TreeClearer.CommitPreviewTrees();
             var pathUnity = new List<Vector3>();
             foreach (var pt in trail.WorldPathPoints)
                 pathUnity.Add(MountainManager.ToUnityVector3(pt));
-            TreeClearer.ClearTreesAlongPath(pathUnity, _trailWidth);
+            TreeClearer.ClearTreesAlongPath(pathUnity, _trailWidth * 0.5f);
 
             // Rebuild connectivity
             if (_liftBuilder != null && _liftBuilder.Connectivity != null)
@@ -407,6 +410,9 @@ namespace SkiResortTycoon.UnityBridge
             _committedPathCache.Clear();
             EvaluateAnchorsToUnityList(_anchors, _committedPathCache);
             _previewRenderer.SetCommittedPath(_committedPathCache, _trailWidth);
+
+            if (_committedPathCache.Count >= 2)
+                TreeClearer.ClearTreesForPreview(_committedPathCache, _trailWidth * 0.5f);
 
             RebuildAnchorMarkers();
 
@@ -452,6 +458,8 @@ namespace SkiResortTycoon.UnityBridge
             foreach (var pt in _paintPoints)
                 projected.Add(ProjectOntoTerrain(pt));
             _previewRenderer.SetCommittedPath(projected, _trailWidth);
+
+            TreeClearer.ClearTreesForPreview(projected, _trailWidth * 0.5f);
         }
 
         private void EvaluateAnchorsToUnityList(List<TrailAnchorPoint> anchors, List<Vector3> outList)

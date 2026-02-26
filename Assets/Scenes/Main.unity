@@ -176032,7 +176032,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 1076513334}
   m_HandleRect: {fileID: 1076513333}
   m_Direction: 2
-  m_Value: 0
+  m_Value: 1
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -241386,6 +241386,10 @@ MonoBehaviour:
   _camera: {fileID: 1543875374}
   _snapRadius: 5
   _paintSampleSpacing: 1.5
+  _penHandleMultiplier: 3
+  _anchorResumeRadius: 2
+  _anchorMarkerColor: {r: 0.29, g: 0.56, b: 0.85, a: 0.6}
+  _anchorMarkerRadius: 0.5
 --- !u!4 &1091263536
 Transform:
   m_ObjectHideFlags: 0
@@ -242968,7 +242972,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
-  m_Color: {r: 0.2901961, g: 0.56078434, b: 0.8509804, a: 0.14901961}
+  m_Color: {r: 0.2901961, g: 0.56078434, b: 0.8509804, a: 0.39215687}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1

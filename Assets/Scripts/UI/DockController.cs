@@ -48,8 +48,8 @@ namespace SkiResortTycoon.UI
         private Color _paintOriginal, _lineOriginal, _penOriginal;
         private bool _skipNextToolClose;
 
-        private const float WidthMin = 5f;
-        private const float WidthMax = 10f;
+        private const float WidthMin = 7.5f;
+        private const float WidthMax = 18f;
 
         void Start()
         {
@@ -81,11 +81,12 @@ namespace SkiResortTycoon.UI
 
             if (_trailWidthSlider != null)
             {
-                _trailWidthSlider.minValue = 0f;
+                _trailWidthSlider.minValue = 1f;
                 _trailWidthSlider.maxValue = 100f;
-                _trailWidthSlider.value = 50f;
+                _trailWidthSlider.wholeNumbers = true;
+                _trailWidthSlider.value = 1f;
                 _trailWidthSlider.onValueChanged.AddListener(OnTrailWidthChanged);
-                RefreshWidthText(50f);
+                RefreshWidthText(1f);
             }
 
             RefreshTrailModeButtons();
@@ -185,7 +186,7 @@ namespace SkiResortTycoon.UI
         private void OnTrailWidthChanged(float sliderValue)
         {
             RefreshWidthText(sliderValue);
-            float worldWidth = WidthMin + (sliderValue / 100f) * (WidthMax - WidthMin);
+            float worldWidth = Mathf.Lerp(WidthMin, WidthMax, (sliderValue - 1f) / 99f);
 
             var tool = UIManager.Instance?.ActiveTool as TrailBuildTool;
             tool?.SetTrailWidth(worldWidth);

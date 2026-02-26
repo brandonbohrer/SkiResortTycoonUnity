@@ -52,6 +52,17 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         /// <summary>
+        /// Make preview-hidden trees permanent (don't restore them).
+        /// Call this on trail/lift confirm so trees stay hidden.
+        /// </summary>
+        public static void CommitPreviewTrees()
+        {
+            if (_instance == null) return;
+            _instance._previewTreeStates.Clear();
+            _instance._previewClearedTrees.Clear();
+        }
+
+        /// <summary>
         /// Clears trees within a radius of a single point.
         /// </summary>
         public static void ClearTreesAroundPoint(Vector3 worldPosition, float radius)
@@ -104,16 +115,15 @@ namespace SkiResortTycoon.UnityBridge
 
                 Vector3 tp = tree.position;
 
-                // Minimum distance in XZ to any segment of the polyline
                 float minDist = MinDistanceToPathXZ(tp, pathPoints, corridorWidth);
                 if (minDist <= corridorWidth)
                 {
-                    Destroy(tree.gameObject);
+                    tree.gameObject.SetActive(false);
                     totalCleared++;
                 }
             }
 
-            Debug.Log($"[TreeClearer] Cleared {totalCleared} trees along path (corridor={corridorWidth}m)");
+            Debug.Log($"[TreeClearer] Disabled {totalCleared} trees along path (corridor={corridorWidth}m)");
         }
 
         private int ClearTreesInternal(Vector3 worldPosition, float radius)

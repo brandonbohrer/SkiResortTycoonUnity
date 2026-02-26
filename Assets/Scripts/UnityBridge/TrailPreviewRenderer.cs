@@ -22,7 +22,7 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private Color _fillColor = new Color(0.29f, 0.56f, 0.85f, 0.15f);
         [SerializeField] private Color _outlineColor = new Color(0.29f, 0.56f, 0.85f, 0.9f);
         [SerializeField] private float _outlineWidth = 0.25f;
-        [SerializeField] private float _heightOffset = 0.15f;
+        [SerializeField] private float _heightOffset = 0.4f;
 
         // Committed segments mesh
         private Mesh _fillMesh;

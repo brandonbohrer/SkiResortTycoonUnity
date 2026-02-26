@@ -25,6 +25,8 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private Color _skierColor = new Color(1f, 0.2f, 0.2f); // Red
         [SerializeField] private float _skierSize = 1.5f; // Bigger so we can see them
         [SerializeField] private int _maxActiveSkiers = 50;
+        [Tooltip("Material template for skier dots (Unlit/Color). Must be assigned — Shader.Find is not used in builds.")]
+        [SerializeField] private Material _skierMaterialTemplate;
 
         // NEW: Prefab-based visuals (assign SkierRoot.prefab here)
         [SerializeField] private GameObject _skierPrefab; // assign SkierRoot.prefab
@@ -153,9 +155,15 @@ namespace SkiResortTycoon.UnityBridge
 
         private void Awake()
         {
-            // Create material for skier dots
-            _skierMaterial = new Material(Shader.Find("Unlit/Color"));
-            _skierMaterial.color = _skierColor;
+            if (_skierMaterialTemplate != null)
+            {
+                _skierMaterial = new Material(_skierMaterialTemplate);
+                _skierMaterial.color = _skierColor;
+            }
+            else
+            {
+                Debug.LogWarning("[SkierVisualizer] _skierMaterialTemplate not assigned — skier dots will use default material. Assign an Unlit/Color material to fix this in builds.");
+            }
             if (_enableDebugLogs) Debug.Log("[SkierVisualizer] Awake - initialized material");
         }
 
@@ -508,17 +516,6 @@ namespace SkiResortTycoon.UnityBridge
 
             // Apply scale multiplier
             skierObj.transform.localScale = skierObj.transform.localScale * _skierSize;
-
-            // Set material tint with skill-based color
-            var targetColor = GetSkillColor(skier.Skill);
-            var renderers = skierObj.GetComponentsInChildren<Renderer>(true);
-            foreach (var r in renderers)
-            {
-                if (r == null) continue;
-                var mat = r.material;
-                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", targetColor);
-                else if (mat.HasProperty("_Color")) mat.SetColor("_Color", targetColor);
-            }
 
             // Remove colliders (keep "purely visual" behavior)
             var colliders = skierObj.GetComponentsInChildren<Collider>(true);
@@ -2267,17 +2264,6 @@ namespace SkiResortTycoon.UnityBridge
             return availableTrails[availableTrails.Count - 1];
         }
 
-        private Color GetSkillColor(SkillLevel skill)
-        {
-            switch (skill)
-            {
-                case SkillLevel.Beginner:    return new Color(0.1f, 1f, 0.1f);
-                case SkillLevel.Intermediate: return new Color(0.2f, 0.5f, 1f);
-                case SkillLevel.Advanced:     return new Color(0.1f, 0.1f, 0.1f);
-                case SkillLevel.Expert:       return new Color(1f, 0.2f, 0.2f);
-                default:                      return Color.white;
-            }
-        }
 
         // ─────────────────────────────────────────────────────────────────
         //  Geometry helper

@@ -29,6 +29,8 @@ namespace SkiResortTycoon.UnityBridge
         [Header("Visual Feedback")]
         [SerializeField] private Color _snapColor = Color.green;
         [SerializeField] private Color _defaultColor = Color.white;
+        [Tooltip("Material used for the lift cursor sphere. Must be assigned — Shader.Find is not used in builds.")]
+        [SerializeField] private Material _cursorMaterialTemplate;
         
         [Header("Prefab Builder (optional - enables 3D lift visuals)")]
         [SerializeField] private LiftPrefabBuilder _prefabBuilder;
@@ -99,9 +101,16 @@ namespace SkiResortTycoon.UnityBridge
                 _cursorVisual = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 _cursorVisual.name = "LiftCursor";
                 _cursorVisual.transform.localScale = Vector3.one * 2.0f;
-                var renderer = _cursorVisual.GetComponent<Renderer>();
-                renderer.material = new Material(Shader.Find("Standard"));
-                renderer.material.color = _defaultColor;
+                var rend = _cursorVisual.GetComponent<Renderer>();
+                if (_cursorMaterialTemplate != null)
+                {
+                    rend.material = new Material(_cursorMaterialTemplate);
+                    rend.material.color = _defaultColor;
+                }
+                else
+                {
+                    Debug.LogWarning("[LiftBuilder] _cursorMaterialTemplate not assigned — cursor will use default material. Assign a Standard material to fix this in builds.");
+                }
                 Destroy(_cursorVisual.GetComponent<Collider>());
                 _cursorVisual.SetActive(false);
             }

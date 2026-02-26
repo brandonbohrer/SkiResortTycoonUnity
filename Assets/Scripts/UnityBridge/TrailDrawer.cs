@@ -185,13 +185,15 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (_paintPoints.Count < 2)
             {
-                // Too short — discard
                 _paintPoints.Clear();
                 return;
             }
 
-            // Replace all anchors with paint samples
-            _anchors.Clear();
+            // Remove the initial paint anchor (placed by AddPaintSample) so we
+            // don't duplicate it, then append all paint samples to existing anchors.
+            if (_anchors.Count > 0 && _anchors[_anchors.Count - 1].SourceMode == TrailDrawMode.Paint)
+                _anchors.RemoveAt(_anchors.Count - 1);
+
             foreach (var pt in _paintPoints)
             {
                 _anchors.Add(new TrailAnchorPoint(
@@ -257,6 +259,8 @@ namespace SkiResortTycoon.UnityBridge
 
             if (dist <= _anchorResumeRadius)
             {
+                // Break handle continuity so next segment starts as a fresh curve
+                lastAnchor.HandleOut = null;
                 SetState(TrailBuildState.Placing);
                 RebuildPreview();
                 return true;
@@ -346,6 +350,7 @@ namespace SkiResortTycoon.UnityBridge
                         MountainManager.ToVector3f(_magneticCursor.SnappedPosition);
             }
 
+            _trailSystem.MinPoints = 2;
             bool valid = _trailSystem.ValidateTrail(trail);
             if (!valid)
             {

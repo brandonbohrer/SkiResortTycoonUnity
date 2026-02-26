@@ -1,6 +1,8 @@
 using System;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
+using SkiResortTycoon.Core;
 
 namespace SkiResortTycoon.UI
 {
@@ -24,9 +26,30 @@ namespace SkiResortTycoon.UI
 
         [SerializeField] private DockCategory[] _categories;
 
+        // ── Trail Build Mode UI (drag from TrailsSubRow) ─────────────────────
+        [Header("Trail Build Mode UI")]
+        [Tooltip("The TrailBuildTool component in the scene.")]
+        [SerializeField] private TrailBuildTool _trailBuildTool;
+        [Tooltip("Paint mode button in the trails subrow.")]
+        [SerializeField] private Button _paintModeButton;
+        [Tooltip("Straight line mode button in the trails subrow.")]
+        [SerializeField] private Button _lineModeButton;
+        [Tooltip("Pen / curvy mode button in the trails subrow.")]
+        [SerializeField] private Button _penModeButton;
+        [Tooltip("Trail width slider (0–100). Maps to world width 5–10.")]
+        [SerializeField] private Slider _trailWidthSlider;
+        [Tooltip("Text label showing current width value.")]
+        [SerializeField] private TextMeshProUGUI _trailWidthText;
+
         // ── Runtime state ────────────────────────────────────────────────────
         private int _activeIndex = -1;
         private Color[] _originalColors;
+        private TrailDrawMode _activeTrailMode = TrailDrawMode.Paint;
+        private Color _paintOriginal, _lineOriginal, _penOriginal;
+        private bool _skipNextToolClose;
+
+        private const float WidthMin = 5f;
+        private const float WidthMax = 10f;
 
         void Start()
         {
@@ -47,11 +70,30 @@ namespace SkiResortTycoon.UI
                     _categories[i].button.onClick.AddListener(() => OnCategoryClicked(idx));
             }
 
+            // Trail mode buttons
+            CacheButtonColor(_paintModeButton, out _paintOriginal);
+            CacheButtonColor(_lineModeButton,  out _lineOriginal);
+            CacheButtonColor(_penModeButton,   out _penOriginal);
+
+            if (_paintModeButton != null) _paintModeButton.onClick.AddListener(() => SetTrailMode(TrailDrawMode.Paint));
+            if (_lineModeButton  != null) _lineModeButton.onClick.AddListener(()  => SetTrailMode(TrailDrawMode.Line));
+            if (_penModeButton   != null) _penModeButton.onClick.AddListener(()   => SetTrailMode(TrailDrawMode.Pen));
+
+            if (_trailWidthSlider != null)
+            {
+                _trailWidthSlider.minValue = 0f;
+                _trailWidthSlider.maxValue = 100f;
+                _trailWidthSlider.value = 50f;
+                _trailWidthSlider.onValueChanged.AddListener(OnTrailWidthChanged);
+                RefreshWidthText(50f);
+            }
+
+            RefreshTrailModeButtons();
+
             var uiManager = UIManager.Instance;
             if (uiManager != null)
             {
                 uiManager.OnMenuOpened.AddListener(CloseDock);
-                // Close the dock whenever a build tool is activated (clears screen for terrain work)
                 uiManager.OnToolChanged.AddListener(OnToolChanged);
             }
 
@@ -88,6 +130,11 @@ namespace SkiResortTycoon.UI
 
         private void OnToolChanged(BaseTool tool)
         {
+            if (_skipNextToolClose)
+            {
+                _skipNextToolClose = false;
+                return;
+            }
             if (tool != null) CloseDock();
         }
 
@@ -114,6 +161,63 @@ namespace SkiResortTycoon.UI
             var image = button.targetGraphic as Image;
             if (image != null)
                 image.color = active ? SelectedColor : originalColor;
+        }
+
+        // ── Trail mode / width ───────────────────────────────────────────────
+
+        private void SetTrailMode(TrailDrawMode mode)
+        {
+            _activeTrailMode = mode;
+            RefreshTrailModeButtons();
+
+            // Activate the trail tool if it isn't already active
+            if (_trailBuildTool != null && UIManager.Instance != null
+                && !UIManager.Instance.IsToolActive(_trailBuildTool))
+            {
+                _skipNextToolClose = true;
+                UIManager.Instance.ActivateTool(_trailBuildTool);
+            }
+
+            var tool = UIManager.Instance?.ActiveTool as TrailBuildTool;
+            tool?.SetDrawMode(mode);
+        }
+
+        private void OnTrailWidthChanged(float sliderValue)
+        {
+            RefreshWidthText(sliderValue);
+            float worldWidth = WidthMin + (sliderValue / 100f) * (WidthMax - WidthMin);
+
+            var tool = UIManager.Instance?.ActiveTool as TrailBuildTool;
+            tool?.SetTrailWidth(worldWidth);
+        }
+
+        private void RefreshWidthText(float sliderValue)
+        {
+            if (_trailWidthText != null)
+                _trailWidthText.text = Mathf.RoundToInt(sliderValue).ToString();
+        }
+
+        private void RefreshTrailModeButtons()
+        {
+            SetModeButtonColor(_paintModeButton, _paintOriginal, _activeTrailMode == TrailDrawMode.Paint);
+            SetModeButtonColor(_lineModeButton,  _lineOriginal,  _activeTrailMode == TrailDrawMode.Line);
+            SetModeButtonColor(_penModeButton,   _penOriginal,   _activeTrailMode == TrailDrawMode.Pen);
+        }
+
+        private static void SetModeButtonColor(Button btn, Color original, bool active)
+        {
+            if (btn == null) return;
+            var img = btn.targetGraphic as Image;
+            if (img != null)
+                img.color = active ? SelectedColor : original;
+        }
+
+        private static void CacheButtonColor(Button btn, out Color color)
+        {
+            color = Color.white;
+            if (btn == null) return;
+            var img = btn.targetGraphic as Image;
+            if (img != null) color = img.color;
         }
 
         // ── Public API ───────────────────────────────────────────────────────

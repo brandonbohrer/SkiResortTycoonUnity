@@ -128,6 +128,19 @@ namespace SkiResortTycoon.UI
         [SerializeField] private Button          _liftBuildConfirmButton;
         [SerializeField] private Button          _liftBuildCancelButton;
 
+        // ── Trail Building section ───────────────────────────────────────────
+        [Header("Trail Building Section")]
+        [SerializeField] private GameObject      _trailBuildSection;
+
+        [Header("Trail Building — Stats")]
+        [SerializeField] private TextMeshProUGUI _trailBuildWidthValue;
+        [SerializeField] private TextMeshProUGUI _trailBuildLengthValue;
+        [SerializeField] private TextMeshProUGUI _trailBuildCostValue;
+
+        [Header("Trail Building — Confirm / Cancel")]
+        [SerializeField] private Button          _trailBuildConfirmButton;
+        [SerializeField] private Button          _trailBuildCancelButton;
+
         // ── Lodge Building section ────────────────────────────────────────────
         [Header("Lodge Building Section")]
         [SerializeField] private GameObject      _lodgeBuildSection;
@@ -174,9 +187,11 @@ namespace SkiResortTycoon.UI
         private bool  _visible;
         private float _targetAlpha;
 
-        // Lift-build callbacks (set while in Phase 2 pending confirmation)
+        // Build callbacks (shared by lift/lodge/trail build windows)
         private System.Action _liftBuildOnConfirm;
         private System.Action _liftBuildOnCancel;
+        private System.Action _trailBuildOnConfirm;
+        private System.Action _trailBuildOnCancel;
 
         private const float MetresToFeet = 3.28084f;
 
@@ -217,6 +232,11 @@ namespace SkiResortTycoon.UI
                 _liftBuildConfirmButton.onClick.AddListener(OnLiftBuildConfirm);
             if (_liftBuildCancelButton != null)
                 _liftBuildCancelButton.onClick.AddListener(OnLiftBuildCancel);
+
+            if (_trailBuildConfirmButton != null)
+                _trailBuildConfirmButton.onClick.AddListener(OnTrailBuildConfirm);
+            if (_trailBuildCancelButton != null)
+                _trailBuildCancelButton.onClick.AddListener(OnTrailBuildCancel);
 
             if (_demolishButton != null)
                 _demolishButton.onClick.AddListener(OnDemolishClicked);
@@ -270,10 +290,13 @@ namespace SkiResortTycoon.UI
             SetSectionActive(_lodgeSection,      structure.Type == StructureType.Lodge);
             SetSectionActive(_skierSection,      structure.Type == StructureType.Skier);
             SetSectionActive(_liftBuildSection,  false);
+            SetSectionActive(_trailBuildSection, false);
             SetSectionActive(_lodgeBuildSection, false);
 
             if (_liftBuildConfirmButton != null) _liftBuildConfirmButton.gameObject.SetActive(false);
             if (_liftBuildCancelButton  != null) _liftBuildCancelButton.gameObject.SetActive(false);
+            if (_trailBuildConfirmButton != null) _trailBuildConfirmButton.gameObject.SetActive(false);
+            if (_trailBuildCancelButton  != null) _trailBuildCancelButton.gameObject.SetActive(false);
 
             switch (structure.Type)
             {
@@ -299,8 +322,10 @@ namespace SkiResortTycoon.UI
         public void Hide()
         {
             _current = null;
-            _liftBuildOnConfirm = null;
-            _liftBuildOnCancel  = null;
+            _liftBuildOnConfirm  = null;
+            _liftBuildOnCancel   = null;
+            _trailBuildOnConfirm = null;
+            _trailBuildOnCancel  = null;
             CollapsePickerIfOpen();
             SetPanelVisible(false);
         }
@@ -334,6 +359,7 @@ namespace SkiResortTycoon.UI
             SetSectionActive(_lodgeSection,      false);
             SetSectionActive(_skierSection,      false);
             SetSectionActive(_liftBuildSection,  true);
+            SetSectionActive(_trailBuildSection, false);
             SetSectionActive(_lodgeBuildSection, false);
 
             // Stats start blank, Confirm/Cancel hidden until 2nd click
@@ -806,6 +832,85 @@ namespace SkiResortTycoon.UI
         }
 
         // ─────────────────────────────────────────────────────────────
+        //  Trail Building
+        // ─────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Opens the trail-building context window on first anchor placement.
+        /// Confirm / Cancel are hidden until the trail enters Settled state.
+        /// </summary>
+        public void ShowTrailBuildWindow(System.Action onConfirm, System.Action onCancel)
+        {
+            _trailBuildOnConfirm = onConfirm;
+            _trailBuildOnCancel  = onCancel;
+            _current = null;
+
+            SetPanelVisible(true);
+
+            if (_titleInput != null) _titleInput.SetTextWithoutNotify("New Trail");
+            SetIcon(_trailIcon);
+            if (_subtitleText != null)
+            {
+                _subtitleText.text      = "TRAIL";
+                _subtitleText.color     = Color.white;
+                _subtitleText.fontSize  = 15f;
+                _subtitleText.fontStyle = TMPro.FontStyles.UpperCase;
+            }
+
+            SetSectionActive(_trailSection,      false);
+            SetSectionActive(_liftSection,       false);
+            SetSectionActive(_lodgeSection,      false);
+            SetSectionActive(_skierSection,      false);
+            SetSectionActive(_liftBuildSection,  false);
+            SetSectionActive(_trailBuildSection, true);
+            SetSectionActive(_lodgeBuildSection, false);
+
+            SetText(_trailBuildWidthValue,  "--");
+            SetText(_trailBuildLengthValue, "--");
+            SetText(_trailBuildCostValue,   "--");
+
+            if (_trailBuildConfirmButton != null) _trailBuildConfirmButton.gameObject.SetActive(false);
+            if (_trailBuildCancelButton  != null) _trailBuildCancelButton.gameObject.SetActive(false);
+            SetActionButtons(find: false, follow: false, demolish: false);
+        }
+
+        /// <summary>
+        /// Reveals Confirm / Cancel after the trail enters Settled state.
+        /// </summary>
+        public void ShowTrailBuildConfirmButtons()
+        {
+            if (_trailBuildConfirmButton != null) _trailBuildConfirmButton.gameObject.SetActive(true);
+            if (_trailBuildCancelButton  != null) _trailBuildCancelButton.gameObject.SetActive(true);
+        }
+
+        /// <summary>
+        /// Live stat updates while building.
+        /// </summary>
+        public void UpdateTrailBuildStats(float widthWorld, float lengthWorld, int cost)
+        {
+            if (!_visible) return;
+            SetText(_trailBuildWidthValue,  $"{widthWorld:F1}");
+            SetText(_trailBuildLengthValue, lengthWorld > 1f ? $"{lengthWorld * MetresToFeet:N0} ft" : "--");
+            SetText(_trailBuildCostValue,   $"${cost:N0}");
+        }
+
+        private void OnTrailBuildConfirm()
+        {
+            var cb = _trailBuildOnConfirm;
+            _trailBuildOnConfirm = null;
+            _trailBuildOnCancel  = null;
+            cb?.Invoke();
+        }
+
+        private void OnTrailBuildCancel()
+        {
+            var cb = _trailBuildOnCancel;
+            _trailBuildOnConfirm = null;
+            _trailBuildOnCancel  = null;
+            cb?.Invoke();
+        }
+
+        // ─────────────────────────────────────────────────────────────
         //  Lodge Building
         // ─────────────────────────────────────────────────────────────
 
@@ -836,6 +941,7 @@ namespace SkiResortTycoon.UI
             SetSectionActive(_lodgeSection,      false);
             SetSectionActive(_skierSection,      false);
             SetSectionActive(_liftBuildSection,  false);
+            SetSectionActive(_trailBuildSection, false);
             SetSectionActive(_lodgeBuildSection, true);
 
             SetText(_lodgeBuildCostValue, $"${buildCost:N0}");

@@ -3,17 +3,39 @@ using System.Collections.Generic;
 
 namespace SkiResortTycoon.Core
 {
-    /// <summary>
-    /// Trail difficulty ratings (ski resort standard).
-    /// </summary>
     public enum TrailDifficulty
     {
-        Green = 0,      // Beginner (easiest)
-        Blue = 1,       // Intermediate
-        Black = 2,      // Advanced
-        DoubleBlack = 3 // Expert
+        Green = 0,
+        Blue = 1,
+        Black = 2,
+        DoubleBlack = 3
     }
-    
+
+    public enum TrailDrawMode
+    {
+        Paint,
+        Line,
+        Pen
+    }
+
+    /// <summary>
+    /// A single anchor in the trail path. Pen-mode anchors carry cubic-bezier
+    /// handles; Paint/Line anchors leave them null (treated as linear).
+    /// </summary>
+    public class TrailAnchorPoint
+    {
+        public Vector3f Position;
+        public Vector3f? HandleIn;
+        public Vector3f? HandleOut;
+        public TrailDrawMode SourceMode;
+
+        public TrailAnchorPoint(Vector3f position, TrailDrawMode mode)
+        {
+            Position = position;
+            SourceMode = mode;
+        }
+    }
+
     /// <summary>
     /// Pure C# representation of a ski trail.
     /// No Unity types.
@@ -22,30 +44,28 @@ namespace SkiResortTycoon.Core
     {
         public int TrailId { get; set; }
         public string Name { get; set; }
-        
-        // World-space positions (authoritative for rendering and gameplay)
+
         public List<Vector3f> WorldPathPoints { get; private set; }
-        
-        // Boundary edges for skier navigation (perpendicular offsets from centerline)
+
         public List<Vector3f> LeftBoundaryPoints { get; private set; }
         public List<Vector3f> RightBoundaryPoints { get; private set; }
-        public float TrailWidth { get; set; } = 8f; // Default matches tree clearing width
-        
-        // Legacy grid coordinates (kept for backwards compatibility)
+        public float TrailWidth { get; set; } = 7.5f;
+
         public List<TileCoord> PathPoints { get; private set; }
-        
+
+        /// <summary>
+        /// Ordered anchor points placed by the player. Dense WorldPathPoints
+        /// are evaluated from these via EvaluatePathFromAnchors().
+        /// </summary>
+        public List<TrailAnchorPoint> Anchors { get; private set; }
+
         public TrailDifficulty Difficulty { get; set; }
         public int Length { get; private set; }
         public float AverageSlope { get; set; }
         public float MaxSlope { get; set; }
         public float TotalElevationDrop { get; set; }
         public bool IsValid { get; set; }
-        
-        /// <summary>
-        /// Total 3D arc-length of the trail in world units.
-        /// Computed from WorldPathPoints on first access, then cached.
-        /// Used by the traffic system to derive trail capacity (longer = more skiers).
-        /// </summary>
+
         public float WorldLength
         {
             get
@@ -56,7 +76,9 @@ namespace SkiResortTycoon.Core
             }
         }
         private float _worldLengthCached = -1f;
-        
+
+        private const int BezierSamplesPerSegment = 20;
+
         public TrailData(int trailId)
         {
             TrailId = trailId;
@@ -65,38 +87,115 @@ namespace SkiResortTycoon.Core
             LeftBoundaryPoints = new List<Vector3f>();
             RightBoundaryPoints = new List<Vector3f>();
             PathPoints = new List<TileCoord>();
+            Anchors = new List<TrailAnchorPoint>();
             Difficulty = TrailDifficulty.Green;
             IsValid = false;
         }
-        
-        /// <summary>
-        /// Adds a point to the trail path (legacy tile coordinate).
-        /// </summary>
+
         public void AddPoint(TileCoord coord)
         {
             PathPoints.Add(coord);
             Length = PathPoints.Count;
         }
-        
-        /// <summary>
-        /// Adds a world-space point to the trail path.
-        /// </summary>
+
         public void AddWorldPoint(Vector3f position)
         {
             WorldPathPoints.Add(position);
             Length = WorldPathPoints.Count;
-            _worldLengthCached = -1f; // invalidate cache
+            _worldLengthCached = -1f;
         }
-        
+
         /// <summary>
-        /// Clears all points from the trail.
+        /// Rebuilds WorldPathPoints from the Anchors list.
+        /// Linear interpolation for Paint/Line anchors, cubic bezier for Pen anchors.
         /// </summary>
+        public void EvaluatePathFromAnchors()
+        {
+            WorldPathPoints.Clear();
+            _worldLengthCached = -1f;
+
+            if (Anchors.Count == 0) return;
+
+            if (Anchors.Count == 1)
+            {
+                WorldPathPoints.Add(Anchors[0].Position);
+                Length = 1;
+                return;
+            }
+
+            for (int i = 0; i < Anchors.Count - 1; i++)
+            {
+                var a = Anchors[i];
+                var b = Anchors[i + 1];
+                bool hasBezier = a.HandleOut.HasValue || b.HandleIn.HasValue;
+
+                if (hasBezier)
+                {
+                    Vector3f p0 = a.Position;
+                    Vector3f p1 = a.HandleOut ?? a.Position;
+                    Vector3f p2 = b.HandleIn ?? b.Position;
+                    Vector3f p3 = b.Position;
+
+                    for (int s = 0; s <= BezierSamplesPerSegment; s++)
+                    {
+                        if (s == 0 && i > 0) continue; // avoid duplicate at segment joins
+                        float t = s / (float)BezierSamplesPerSegment;
+                        WorldPathPoints.Add(CubicBezier(p0, p1, p2, p3, t));
+                    }
+                }
+                else
+                {
+                    if (i == 0) WorldPathPoints.Add(a.Position);
+                    WorldPathPoints.Add(b.Position);
+                }
+            }
+
+            Length = WorldPathPoints.Count;
+        }
+
+        /// <summary>
+        /// Evaluates a single cubic bezier segment and appends points to the
+        /// supplied list. Useful for previewing the segment from lastAnchor to
+        /// a tentative cursor position without rebuilding the whole path.
+        /// </summary>
+        public static void EvaluateBezierSegment(
+            Vector3f p0, Vector3f? handleOut,
+            Vector3f? handleIn, Vector3f p3,
+            List<Vector3f> outPoints, int samples = 20, bool skipFirst = false)
+        {
+            Vector3f p1 = handleOut ?? p0;
+            Vector3f p2 = handleIn ?? p3;
+
+            for (int s = 0; s <= samples; s++)
+            {
+                if (s == 0 && skipFirst) continue;
+                float t = s / (float)samples;
+                outPoints.Add(CubicBezier(p0, p1, p2, p3, t));
+            }
+        }
+
+        public static Vector3f CubicBezier(Vector3f p0, Vector3f p1, Vector3f p2, Vector3f p3, float t)
+        {
+            float u = 1f - t;
+            float uu = u * u;
+            float uuu = uu * u;
+            float tt = t * t;
+            float ttt = tt * t;
+
+            return new Vector3f(
+                uuu * p0.X + 3f * uu * t * p1.X + 3f * u * tt * p2.X + ttt * p3.X,
+                uuu * p0.Y + 3f * uu * t * p1.Y + 3f * u * tt * p2.Y + ttt * p3.Y,
+                uuu * p0.Z + 3f * uu * t * p1.Z + 3f * u * tt * p2.Z + ttt * p3.Z
+            );
+        }
+
         public void Clear()
         {
             WorldPathPoints.Clear();
             LeftBoundaryPoints.Clear();
             RightBoundaryPoints.Clear();
             PathPoints.Clear();
+            Anchors.Clear();
             Length = 0;
             IsValid = false;
             _worldLengthCached = -1f;

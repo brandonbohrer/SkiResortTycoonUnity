@@ -1,370 +1,486 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using SkiResortTycoon.Core;
-using System.Collections.Generic;
 
 namespace SkiResortTycoon.UnityBridge
 {
+    public enum TrailBuildState
+    {
+        Idle,
+        Placing,   // preview follows cursor from last anchor
+        Settled    // trail set at current anchors, waiting for confirm
+    }
+
     /// <summary>
-    /// Unity input handler for drawing trails on the terrain.
-    /// Player clicks and drags to create a trail path.
+    /// Backend for the new trail building system.
+    /// Manages anchors, three drawing modes, state machine, and preview.
+    /// All input is routed here from TrailBuildTool via public API — no
+    /// keyboard handling or reflection hacks.
     /// </summary>
     public class TrailDrawer : MonoBehaviour
     {
         [Header("References")]
         [SerializeField] private MountainManager _mountainManager;
-        [SerializeField] private LiftBuilder _liftBuilder;  // Reference to get connectivity
+        [SerializeField] private LiftBuilder _liftBuilder;
+        [SerializeField] private TrailPreviewRenderer _previewRenderer;
         [SerializeField] private Camera _camera;
-        
-        [Header("Drawing Settings")]
-        [SerializeField] private float _tileSize = 1f;
-        [SerializeField] private int _minPointSpacing = 1; // Min tiles between points
-        [SerializeField] private KeyCode _drawKey = KeyCode.T; // Press T to draw
-        [SerializeField] private bool _debugMode = true;
-        [SerializeField] private float _snapRadius = 5f; // Magnetic cursor snap radius
-        
-        [Header("Visual Feedback")]
-        [SerializeField] private Color _snapColor = Color.green;
-        [SerializeField] private Color _defaultColor = Color.yellow;
-        
+
+        [Header("Settings")]
+        [SerializeField] private float _snapRadius = 5f;
+        [SerializeField] private float _paintSampleSpacing = 1.5f;
+
+        // ── Runtime state ────────────────────────────────────────────────
         private TrailSystem _trailSystem;
         private MagneticCursor _magneticCursor;
-        private TrailData _currentTrail;
-        private bool _isDrawing = false;
-        private Vector3 _lastAddedWorldPoint;
-        
+        private TrailBuildState _state = TrailBuildState.Idle;
+        private TrailDrawMode _mode = TrailDrawMode.Paint;
+        private float _trailWidth = 7.5f;
+
+        private readonly List<TrailAnchorPoint> _anchors = new List<TrailAnchorPoint>();
+        private Vector3 _cursorWorldPos;
+
+        // Paint mode accumulator
+        private readonly List<Vector3> _paintPoints = new List<Vector3>();
+        private Vector3 _lastPaintSample;
+
+        // Pen mode handle dragging
+        private bool _isDraggingHandle;
+        private Vector3 _penDragStart;
+
+        // Cached evaluated path (committed segments only)
+        private readonly List<Vector3> _committedPathCache = new List<Vector3>();
+        // Cached preview segment (last anchor → cursor)
+        private readonly List<Vector3> _previewSegCache = new List<Vector3>();
+
+        // ── Events ───────────────────────────────────────────────────────
+        public event Action OnTrailCancelled;
+        public event Action<TrailBuildState> OnStateChanged;
+        public event Action OnAnchorPlaced;
+        public event Action<SelectableStructure> OnTrailConfirmed;
+
+        // ── Public properties ────────────────────────────────────────────
+        public TrailSystem TrailSystem => _trailSystem;
+        public MountainManager GridRenderer => _mountainManager;
+        public TrailBuildState State => _state;
+        public TrailDrawMode Mode => _mode;
+        public float TrailWidth => _trailWidth;
+        public int AnchorCount => _anchors.Count;
+        public bool IsBuilding => _state != TrailBuildState.Idle;
+        // Legacy compat used by TrailVisualizer
+        public TrailData CurrentTrail => null;
+        public bool IsDrawing => false;
+
+        // ── Initialization ───────────────────────────────────────────────
+
         void Start()
         {
-            if (_camera == null)
-            {
-                _camera = Camera.main;
-            }
+            if (_camera == null) _camera = Camera.main;
         }
-        
+
         private void EnsureInitialized()
         {
-            // Lazy initialization - create trail system when first needed
             if (_trailSystem == null && _mountainManager != null && _mountainManager.TerrainData != null)
             {
-                // Get connectivity from LiftBuilder (shared snap registry)
                 SnapRegistry registry = null;
                 if (_liftBuilder != null && _liftBuilder.Connectivity != null)
                 {
                     registry = _liftBuilder.Connectivity.Registry;
-                    // Create magnetic cursor
                     _magneticCursor = new MagneticCursor(registry, _snapRadius);
                 }
-                
                 _trailSystem = new TrailSystem(_mountainManager.TerrainData, registry);
             }
         }
-        
+
         void Update()
         {
             EnsureInitialized();
-            
-            if (_trailSystem == null)
+        }
+
+        // ── Public API — called by TrailBuildTool ────────────────────────
+
+        public void StartBuilding()
+        {
+            EnsureInitialized();
+            _anchors.Clear();
+            _paintPoints.Clear();
+            _isDraggingHandle = false;
+            SetState(TrailBuildState.Idle);
+        }
+
+        public void SetMode(TrailDrawMode mode) => _mode = mode;
+
+        public void SetWidth(float width)
+        {
+            _trailWidth = Mathf.Clamp(width, 5f, 10f);
+            RebuildPreview();
+        }
+
+        public void UpdateCursorPosition(Vector3 worldPos)
+        {
+            _cursorWorldPos = worldPos;
+            if (_state == TrailBuildState.Placing)
+                RebuildPreviewSegment();
+        }
+
+        // ── Anchor placement ─────────────────────────────────────────────
+
+        /// <summary>
+        /// Place an anchor at the given world position. For paint mode this is
+        /// called rapidly as the mouse moves; for line/pen it's called on click.
+        /// </summary>
+        public void PlaceAnchor(Vector3 worldPos)
+        {
+            EnsureInitialized();
+            if (_trailSystem == null) return;
+
+            Vector3 snapped = TrySnap(worldPos, _anchors.Count == 0);
+
+            var anchor = new TrailAnchorPoint(
+                MountainManager.ToVector3f(snapped), _mode);
+
+            _anchors.Add(anchor);
+            SetState(TrailBuildState.Placing);
+            OnAnchorPlaced?.Invoke();
+            RebuildPreview();
+        }
+
+        /// <summary>
+        /// Paint-mode: add a raw sample point. Converted to anchors on settle.
+        /// </summary>
+        public void AddPaintSample(Vector3 worldPos)
+        {
+            if (_paintPoints.Count == 0)
             {
-                // Still not ready
+                _paintPoints.Add(worldPos);
+                _lastPaintSample = worldPos;
+                if (_anchors.Count == 0)
+                    PlaceAnchor(worldPos);
                 return;
             }
-            
-            HandleDrawingInput();
-        }
-        
-        void OnDrawGizmos()
-        {
-            if (!_debugMode) return;
-            
-            // Draw cursor at mouse position (visible in Scene view)
-            Vector3? worldPos = GetMountainPositionUnderMouse();
-            if (worldPos.HasValue)
+
+            if (Vector3.Distance(worldPos, _lastPaintSample) >= _paintSampleSpacing)
             {
-                Gizmos.color = Color.yellow;
-                Gizmos.DrawWireSphere(worldPos.Value, 2f);
+                _paintPoints.Add(worldPos);
+                _lastPaintSample = worldPos;
+                RebuildPaintPreview();
             }
         }
-        
-        private void HandleDrawingInput()
+
+        /// <summary>
+        /// Paint-mode: finish the current stroke. Converts raw samples into
+        /// anchors and transitions to Settled.
+        /// </summary>
+        public void FinishPaintStroke()
         {
-            // Start drawing
-            if (Input.GetKeyDown(_drawKey))
+            if (_paintPoints.Count < 2)
             {
-                Vector3? position = GetMountainPositionUnderMouse();
-                if (position.HasValue)
+                // Too short — discard
+                _paintPoints.Clear();
+                return;
+            }
+
+            // Replace all anchors with paint samples
+            _anchors.Clear();
+            foreach (var pt in _paintPoints)
+            {
+                _anchors.Add(new TrailAnchorPoint(
+                    MountainManager.ToVector3f(pt), TrailDrawMode.Paint));
+            }
+            _paintPoints.Clear();
+            SetState(TrailBuildState.Settled);
+            RebuildPreview();
+        }
+
+        /// <summary>
+        /// Pen-mode: begin dragging a handle from the most recent anchor.
+        /// Called on mouse-down when placing the second+ pen anchor.
+        /// </summary>
+        public void BeginPenHandleDrag(Vector3 anchorWorldPos)
+        {
+            _isDraggingHandle = true;
+            _penDragStart = anchorWorldPos;
+        }
+
+        /// <summary>
+        /// Pen-mode: update handle while dragging.
+        /// The drag offset from the anchor position defines handleOut on the
+        /// current anchor and a mirrored handleIn.
+        /// </summary>
+        public void UpdatePenHandleDrag(Vector3 currentWorldPos)
+        {
+            if (!_isDraggingHandle || _anchors.Count == 0) return;
+
+            var last = _anchors[_anchors.Count - 1];
+            Vector3 anchorPos = MountainManager.ToUnityVector3(last.Position);
+            Vector3 offset = currentWorldPos - anchorPos;
+
+            last.HandleOut = MountainManager.ToVector3f(anchorPos + offset);
+            last.HandleIn = MountainManager.ToVector3f(anchorPos - offset);
+
+            RebuildPreview();
+        }
+
+        /// <summary>
+        /// Pen-mode: end handle drag.
+        /// </summary>
+        public void EndPenHandleDrag()
+        {
+            _isDraggingHandle = false;
+        }
+
+        public bool IsDraggingHandle => _isDraggingHandle;
+
+        // ── Undo / Cancel ────────────────────────────────────────────────
+
+        /// <summary>
+        /// Right-click behaviour:
+        ///   Placing → Settled  (stop preview, keep anchors)
+        ///   Settled → remove last anchor, back to Placing
+        ///   Single anchor left + right-click → cancel
+        /// Returns true if the trail was fully cancelled.
+        /// </summary>
+        public bool UndoOrSettle()
+        {
+            if (_state == TrailBuildState.Placing)
+            {
+                SetState(TrailBuildState.Settled);
+                RebuildPreview();
+                return false;
+            }
+
+            if (_state == TrailBuildState.Settled)
+            {
+                if (_anchors.Count <= 1)
                 {
-                    StartDrawing(position.Value);
+                    CancelBuilding();
+                    return true;
                 }
-                else if (_debugMode)
-                {
-                    Debug.LogWarning("Cannot start drawing - not on mountain surface");
-                }
+
+                _anchors.RemoveAt(_anchors.Count - 1);
+                SetState(TrailBuildState.Placing);
+                RebuildPreview();
+                return false;
             }
-            
-            // Continue drawing (hold key and move mouse)
-            if (Input.GetKey(_drawKey) && _isDrawing)
-            {
-                Vector3? position = GetMountainPositionUnderMouse();
-                if (position.HasValue)
-                {
-                    ContinueDrawing(position.Value);
-                }
-            }
-            
-            // Finish drawing
-            if (Input.GetKeyUp(_drawKey) && _isDrawing)
-            {
-                FinishDrawing();
-            }
+
+            return false;
         }
-        
-        private void StartDrawing(Vector3 startPosition)
+
+        public void CancelBuilding()
         {
-            // Use magnetic cursor to snap start point to lodge entrances or lift tops
-            Vector3 snappedStart = startPosition;
-            if (_magneticCursor != null)
-            {
-                SnapPointType[] validTypes = new[]
-                {
-                    SnapPointType.BuildingEntrance,
-                    SnapPointType.LiftTop,
-                    SnapPointType.TrailEnd
-                };
-                _magneticCursor.Update(startPosition, validTypes);
-                if (_magneticCursor.IsSnapped)
-                    snappedStart = _magneticCursor.SnappedPosition;
-            }
-            
-            _isDrawing = true;
-            _currentTrail = _trailSystem.CreateTrail();
-            _currentTrail.AddWorldPoint(MountainManager.ToVector3f(snappedStart));
-            
-            // Also add legacy tile coord for backwards compatibility
-            // Tile X = world X, Tile Y = world Z (not world Y which is height)
-            int tileX = Mathf.RoundToInt(snappedStart.x / _tileSize);
-            int tileY = Mathf.RoundToInt(snappedStart.z / _tileSize);
-            _currentTrail.AddPoint(new TileCoord(tileX, tileY));
-            
-            _lastAddedWorldPoint = snappedStart;
+            _anchors.Clear();
+            _paintPoints.Clear();
+            _isDraggingHandle = false;
+            SetState(TrailBuildState.Idle);
+            _previewRenderer?.HideAll();
+            OnTrailCancelled?.Invoke();
         }
-        
-        private void ContinueDrawing(Vector3 position)
+
+        // ── Confirm ──────────────────────────────────────────────────────
+
+        public void ConfirmTrail()
         {
-            if (_currentTrail == null) return;
-            
-            // Check if far enough from last point (3D distance)
-            float distance = Vector3.Distance(position, _lastAddedWorldPoint);
-            
-            if (distance >= _minPointSpacing)
+            if (_trailSystem == null || _anchors.Count < 2)
             {
-                _currentTrail.AddWorldPoint(MountainManager.ToVector3f(position));
-                
-                // Also add legacy tile coord (Tile Y = world Z)
-                int tileX = Mathf.RoundToInt(position.x / _tileSize);
-                int tileY = Mathf.RoundToInt(position.z / _tileSize);
-                _currentTrail.AddPoint(new TileCoord(tileX, tileY));
-                
-                _lastAddedWorldPoint = position;
+                CancelBuilding();
+                return;
             }
-        }
-        
-        private void FinishDrawing()
-        {
-            if (_currentTrail == null) return;
-            
-            _isDrawing = false;
-            
-            // Snap end point to lodge entrances, lift bottoms, or base spawn
-            if (_magneticCursor != null && _currentTrail.WorldPathPoints.Count >= 2)
+
+            TrailData trail = _trailSystem.CreateTrail();
+            trail.TrailWidth = _trailWidth;
+
+            foreach (var a in _anchors)
+                trail.Anchors.Add(a);
+
+            trail.EvaluatePathFromAnchors();
+
+            // Snap end point
+            if (_magneticCursor != null && trail.WorldPathPoints.Count >= 2)
             {
-                Vector3f lastPoint = _currentTrail.WorldPathPoints[_currentTrail.WorldPathPoints.Count - 1];
-                Vector3 lastPointUnity = MountainManager.ToUnityVector3(lastPoint);
-                
-                SnapPointType[] validTypes = new[]
+                var lastPt = trail.WorldPathPoints[trail.WorldPathPoints.Count - 1];
+                var lastUnity = MountainManager.ToUnityVector3(lastPt);
+                _magneticCursor.Update(lastUnity, new[]
                 {
                     SnapPointType.BuildingEntrance,
                     SnapPointType.LiftBottom,
                     SnapPointType.BaseSpawn,
                     SnapPointType.TrailStart
-                };
-                _magneticCursor.Update(lastPointUnity, validTypes);
-                
+                });
                 if (_magneticCursor.IsSnapped)
-                {
-                    // Replace last point with snapped position
-                    Vector3f snappedEnd = MountainManager.ToVector3f(_magneticCursor.SnappedPosition);
-                    _currentTrail.WorldPathPoints[_currentTrail.WorldPathPoints.Count - 1] = snappedEnd;
-                }
+                    trail.WorldPathPoints[trail.WorldPathPoints.Count - 1] =
+                        MountainManager.ToVector3f(_magneticCursor.SnappedPosition);
             }
-            
-            // Validate trail
-            bool isValid = _trailSystem.ValidateTrail(_currentTrail);
-            
-            if (isValid)
+
+            bool valid = _trailSystem.ValidateTrail(trail);
+            if (!valid)
             {
-                // Register snap points for EVERY point in the trail (user requirement)
-                if (_liftBuilder != null && _liftBuilder.Connectivity != null)
-                {
-                    int snapPointsAdded = 0;
-                    foreach (var point in _currentTrail.WorldPathPoints)
-                    {
-                        // Each trail point is a valid snap point
-                        var snapPoint = new SnapPoint(SnapPointType.TrailPoint, point, _currentTrail.TrailId, $"Trail{_currentTrail.TrailId}_Point{snapPointsAdded}");
-                        _liftBuilder.Connectivity.Registry.Register(snapPoint);
-                        snapPointsAdded++;
-                    }
-                    
-                    // Also register start/end as special types for connection logic
-                    if (_currentTrail.WorldPathPoints.Count >= 2)
-                    {
-                        var startSnap = new SnapPoint(SnapPointType.TrailStart, _currentTrail.WorldPathPoints[0], _currentTrail.TrailId, $"Trail{_currentTrail.TrailId}_Start");
-                        var endSnap = new SnapPoint(SnapPointType.TrailEnd, _currentTrail.WorldPathPoints[_currentTrail.WorldPathPoints.Count - 1], _currentTrail.TrailId, $"Trail{_currentTrail.TrailId}_End");
-                        
-                        _liftBuilder.Connectivity.Registry.Register(startSnap);
-                        _liftBuilder.Connectivity.Registry.Register(endSnap);
-                    }
-                    
-                    Debug.Log($"Snap Points Registered: {snapPointsAdded} trail points + start/end");
-                }
-                
-                
-                // Calculate difficulty and get detailed stats
-                var stats = _trailSystem.CalculateDifficulty(_currentTrail);
-                
-                // Generate trail boundaries for skier navigation
-                _currentTrail.GenerateBoundaries();
-                Debug.Log($"[TrailDrawer] Generated boundaries: Left={_currentTrail.LeftBoundaryPoints.Count}, Right={_currentTrail.RightBoundaryPoints.Count}, Width={_currentTrail.TrailWidth}f");
-                
-                // Clear trees along the trail path
-                List<Vector3> trailPath = new List<Vector3>();
-                foreach (var point in _currentTrail.WorldPathPoints)
-                {
-                    trailPath.Add(MountainManager.ToUnityVector3(point));
-                }
-                TreeClearer.ClearTreesAlongPath(trailPath, corridorWidth: 8f); // Wider corridor for trails
-                
-                // Rebuild connections (automatically connects lifts to trails based on proximity)
-                if (_liftBuilder != null && _liftBuilder.Connectivity != null)
-                {
-                    _liftBuilder.Connectivity.RebuildConnections();
-                }
-                
-                Debug.Log($"=== TRAIL CREATED ===");
-                Debug.Log($"Trail ID: {_currentTrail.TrailId}");
-                Debug.Log($"Points: {_currentTrail.Length}");
-                Debug.Log($"Difficulty: {_currentTrail.Difficulty}");
-                Debug.Log($"--- Measurements ---");
-                Debug.Log($"Drop: {stats.TotalDrop:F1} height units");
-                Debug.Log($"Run: {stats.TotalRun:F1} tiles");
-                Debug.Log($"AvgGrade: {stats.AvgGrade:F3} ({stats.AvgGrade * 100:F1}%)");
-                Debug.Log($"MaxSegmentGrade: {stats.MaxSegmentGrade:F3} ({stats.MaxSegmentGrade * 100:F1}%) at segment {stats.MaxGradeSegment}");
-                Debug.Log($"--- Thresholds ---");
-                Debug.Log($"Green: < 12%, Blue: 12-22%, Black: 22-35%, Double Black: > 35%");
-                
-                // Log connectivity info
-                if (_liftBuilder != null && _liftBuilder.Connectivity != null)
-                {
-                    var connectedLifts = _liftBuilder.Connectivity.Connections.GetLiftsToTrail(_currentTrail.TrailId);
-                    Debug.Log($"Accessible by {connectedLifts.Count} lift(s)");
-                }
-                
-                Debug.Log($"==================");
-                
-                // Invalidate all skier goals so they re-plan with the new trail
-                var skierViz = FindObjectOfType<SkierVisualizer>();
-                if (skierViz != null) skierViz.InvalidateAllSkierGoals();
-            }
-            else
-            {
-                Debug.LogWarning("Trail invalid (too short, doesn't go downhill enough, or too many uphill segments). Removing.");
-                _trailSystem.RemoveTrail(_currentTrail);
-            }
-            
-            _currentTrail = null;
-        }
-        
-        private Vector3? GetMountainPositionUnderMouse()
-        {
-            if (_camera == null || _mountainManager == null)
-            {
-                return null;
-            }
-            
-            return _mountainManager.RaycastMountain(_camera, Input.mousePosition);
-        }
-        
-        /// <summary>
-        /// Gets the trail system for external access.
-        /// </summary>
-        public TrailSystem TrailSystem => _trailSystem;
-        public MountainManager GridRenderer => _mountainManager;
-        
-        /// <summary>
-        /// Gets the currently drawing trail (or null).
-        /// </summary>
-        public TrailData CurrentTrail => _currentTrail;
-        
-        /// <summary>
-        /// Returns true if currently drawing a trail.
-        /// </summary>
-        public bool IsDrawing => _isDrawing;
-        
-        private Vector3 TileToWorldPos(TileCoord coord)
-        {
-            // Use MountainManager for proper 3D coordinates
-            if (_mountainManager != null)
-            {
-                return _mountainManager.TileToWorldPos(coord);
-            }
-            
-            float worldX = coord.X * _tileSize;
-            float worldZ = coord.Y * _tileSize;
-            return new Vector3(worldX, 0f, worldZ);
-        }
-        
-        void OnGUI()
-        {
-            if (!_debugMode) return;
-            
-            GUI.Box(new Rect(10, 100, 300, 120), "Trail Drawing");
-            
-            // Show initialization status
-            if (_trailSystem == null)
-            {
-                GUI.Label(new Rect(20, 120, 280, 20), "Status: Initializing...");
-                GUI.Label(new Rect(20, 140, 280, 20), $"GridRenderer: {(_mountainManager != null ? "OK" : "NULL")}");
-                GUI.Label(new Rect(20, 160, 280, 20), $"TerrainData: {(_mountainManager != null && _mountainManager.TerrainData != null ? "OK" : "NULL")}");
+                Debug.LogWarning("[TrailDrawer] Trail invalid. Removing.");
+                _trailSystem.RemoveTrail(trail);
+                CancelBuilding();
                 return;
             }
-            
-            GUI.Label(new Rect(20, 120, 280, 20), $"Press and HOLD '{_drawKey}' to draw");
-            GUI.Label(new Rect(20, 140, 280, 20), $"Drawing: {_isDrawing}");
-            
-            Vector3? position = GetMountainPositionUnderMouse();
-            if (position.HasValue)
+
+            // Register snap points
+            RegisterTrailSnapPoints(trail);
+
+            var stats = _trailSystem.CalculateDifficulty(trail);
+            trail.GenerateBoundaries();
+
+            // Clear trees
+            var pathUnity = new List<Vector3>();
+            foreach (var pt in trail.WorldPathPoints)
+                pathUnity.Add(MountainManager.ToUnityVector3(pt));
+            TreeClearer.ClearTreesAlongPath(pathUnity, _trailWidth);
+
+            // Rebuild connectivity
+            if (_liftBuilder != null && _liftBuilder.Connectivity != null)
+                _liftBuilder.Connectivity.RebuildConnections();
+
+            // Invalidate skier goals
+            var skierViz = FindObjectOfType<SkierVisualizer>();
+            if (skierViz != null) skierViz.InvalidateAllSkierGoals();
+
+            Debug.Log($"[TrailDrawer] Trail {trail.TrailId} confirmed — " +
+                      $"{trail.WorldPathPoints.Count} pts, {trail.Difficulty}, " +
+                      $"drop {stats.TotalDrop:F1}, grade {stats.AvgGrade * 100:F1}%");
+
+            // Build visual and get selectable
+            SelectableStructure selectable = null;
+            var visualizer = FindObjectOfType<TrailVisualizer>();
+            // The visualizer picks up new trails automatically on LateUpdate
+
+            _anchors.Clear();
+            _paintPoints.Clear();
+            SetState(TrailBuildState.Idle);
+            _previewRenderer?.HideAll();
+
+            OnTrailConfirmed?.Invoke(selectable);
+        }
+
+        // ── Preview rebuilding ───────────────────────────────────────────
+
+        private void RebuildPreview()
+        {
+            if (_previewRenderer == null) return;
+
+            _committedPathCache.Clear();
+            EvaluateAnchorsToUnityList(_anchors, _committedPathCache);
+            _previewRenderer.SetCommittedPath(_committedPathCache, _trailWidth);
+
+            if (_state == TrailBuildState.Placing)
+                RebuildPreviewSegment();
+            else
+                _previewRenderer.HidePreview();
+        }
+
+        private void RebuildPreviewSegment()
+        {
+            if (_previewRenderer == null || _anchors.Count == 0) return;
+
+            _previewSegCache.Clear();
+            var lastAnchor = _anchors[_anchors.Count - 1];
+            Vector3 lastPos = MountainManager.ToUnityVector3(lastAnchor.Position);
+            _previewSegCache.Add(lastPos);
+            _previewSegCache.Add(_cursorWorldPos);
+
+            _previewRenderer.SetPreviewSegment(_previewSegCache, _trailWidth);
+        }
+
+        private void RebuildPaintPreview()
+        {
+            if (_previewRenderer == null || _paintPoints.Count < 2) return;
+            _previewRenderer.SetCommittedPath(_paintPoints, _trailWidth);
+        }
+
+        private void EvaluateAnchorsToUnityList(List<TrailAnchorPoint> anchors, List<Vector3> outList)
+        {
+            if (anchors.Count == 0) return;
+            if (anchors.Count == 1)
             {
-                GUI.Label(new Rect(20, 160, 280, 20), $"Pos: ({position.Value.x:F1}, {position.Value.y:F1}, {position.Value.z:F1})");
-                
-                // Draw a visual cursor in Game view
-                if (_camera != null)
+                outList.Add(MountainManager.ToUnityVector3(anchors[0].Position));
+                return;
+            }
+
+            var tempV3f = new List<Vector3f>();
+            for (int i = 0; i < anchors.Count - 1; i++)
+            {
+                var a = anchors[i];
+                var b = anchors[i + 1];
+                bool hasBezier = a.HandleOut.HasValue || b.HandleIn.HasValue;
+
+                if (hasBezier)
                 {
-                    Vector3 screenPos = _camera.WorldToScreenPoint(position.Value);
-                    screenPos.y = Screen.height - screenPos.y; // Flip Y for GUI coordinates
-                    
-                    // Draw crosshair
-                    float size = 10f;
-                    GUI.color = _defaultColor;
-                    GUI.DrawTexture(new Rect(screenPos.x - size/2, screenPos.y - 1, size, 2), Texture2D.whiteTexture);
-                    GUI.DrawTexture(new Rect(screenPos.x - 1, screenPos.y - size/2, 2, size), Texture2D.whiteTexture);
-                    GUI.color = Color.white;
+                    TrailData.EvaluateBezierSegment(
+                        a.Position, a.HandleOut,
+                        b.HandleIn, b.Position,
+                        tempV3f, 20, skipFirst: i > 0);
+                }
+                else
+                {
+                    if (i == 0) tempV3f.Add(a.Position);
+                    tempV3f.Add(b.Position);
                 }
             }
-            else
+
+            foreach (var p in tempV3f)
+                outList.Add(MountainManager.ToUnityVector3(p));
+        }
+
+        // ── Snap helpers ─────────────────────────────────────────────────
+
+        private Vector3 TrySnap(Vector3 rawPos, bool isStart)
+        {
+            if (_magneticCursor == null) return rawPos;
+
+            var types = isStart
+                ? new[] { SnapPointType.BuildingEntrance, SnapPointType.LiftTop, SnapPointType.TrailEnd }
+                : new[] { SnapPointType.BuildingEntrance, SnapPointType.LiftBottom, SnapPointType.BaseSpawn, SnapPointType.TrailStart };
+
+            _magneticCursor.Update(rawPos, types);
+            return _magneticCursor.IsSnapped ? _magneticCursor.SnappedPosition : rawPos;
+        }
+
+        private void RegisterTrailSnapPoints(TrailData trail)
+        {
+            if (_liftBuilder == null || _liftBuilder.Connectivity == null) return;
+            var registry = _liftBuilder.Connectivity.Registry;
+
+            int count = 0;
+            foreach (var pt in trail.WorldPathPoints)
             {
-                GUI.Label(new Rect(20, 160, 280, 20), "Pos: None (not on mountain)");
+                registry.Register(new SnapPoint(
+                    SnapPointType.TrailPoint, pt, trail.TrailId,
+                    $"Trail{trail.TrailId}_Pt{count}"));
+                count++;
             }
-            
-            GUI.Label(new Rect(20, 180, 280, 20), $"Trails: {_trailSystem.Trails.Count}");
-            GUI.Label(new Rect(20, 200, 280, 20), $"Status: Ready!");
+
+            if (trail.WorldPathPoints.Count >= 2)
+            {
+                registry.Register(new SnapPoint(
+                    SnapPointType.TrailStart, trail.WorldPathPoints[0],
+                    trail.TrailId, $"Trail{trail.TrailId}_Start"));
+                registry.Register(new SnapPoint(
+                    SnapPointType.TrailEnd,
+                    trail.WorldPathPoints[trail.WorldPathPoints.Count - 1],
+                    trail.TrailId, $"Trail{trail.TrailId}_End"));
+            }
+        }
+
+        // ── Raycast helper (used by TrailBuildTool) ──────────────────────
+
+        public Vector3? GetMountainPositionUnderMouse()
+        {
+            if (_camera == null || _mountainManager == null) return null;
+            return _mountainManager.RaycastMountain(_camera, Input.mousePosition);
+        }
+
+        // ── State machine ────────────────────────────────────────────────
+
+        private void SetState(TrailBuildState newState)
+        {
+            if (_state == newState) return;
+            _state = newState;
+            OnStateChanged?.Invoke(_state);
         }
     }
 }

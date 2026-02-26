@@ -5709,7 +5709,19 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 24022641}
   m_OnClick:
     m_PersistentCalls:
-      m_Calls: []
+      m_Calls:
+      - m_Target: {fileID: 0}
+        m_TargetAssemblyTypeName: 
+        m_MethodName: 
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: 
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
 --- !u!114 &24022641
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -106519,6 +106531,81 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 5438435042986937857, guid: 1c52a3d45826b4c92addf3ee33e56cdd, type: 3}
   m_PrefabInstance: {fileID: 489571863}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &489586791
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 489586794}
+  - component: {fileID: 489586793}
+  - component: {fileID: 489586792}
+  m_Layer: 5
+  m_Name: CursorBorder
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &489586792
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 489586791}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
+  m_Material: {fileID: 0}
+  m_Color: {r: 0.13705945, g: 0.25300795, b: 0.3773585, a: 1}
+  m_RaycastTarget: 1
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: 21300000, guid: ffc269e96426f4b2d9355cf8fecfaaaa, type: 3}
+  m_Type: 0
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
+--- !u!222 &489586793
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 489586791}
+  m_CullTransparentMesh: 1
+--- !u!224 &489586794
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 489586791}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1819360195}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 10, y: 10}
+  m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1001 &489866237
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -177569,6 +177656,57 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 5438435042986937857, guid: 1c52a3d45826b4c92addf3ee33e56cdd, type: 3}
   m_PrefabInstance: {fileID: 799072938}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &799101448
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 799101450}
+  - component: {fileID: 799101449}
+  m_Layer: 0
+  m_Name: TrailPreviewRenderer
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &799101449
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 799101448}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bc6e801c0e41d432abeae8766206337d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UnityBridge.TrailPreviewRenderer
+  _mountainManager: {fileID: 1571617882}
+  _fillMaterialTemplate: {fileID: 0}
+  _outlineMaterialTemplate: {fileID: 0}
+  _fillColor: {r: 0.29, g: 0.56, b: 0.85, a: 0.15}
+  _outlineColor: {r: 0.29, g: 0.56, b: 0.85, a: 0.9}
+  _outlineWidth: 0.25
+  _heightOffset: 0.15
+--- !u!4 &799101450
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 799101448}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 304.80215, y: 163.42747, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &799999214
 GameObject:
   m_ObjectHideFlags: 0
@@ -215552,6 +215690,12 @@ MonoBehaviour:
   _liftBuildCapacityValue: {fileID: 238167046}
   _liftBuildConfirmButton: {fileID: 782844325}
   _liftBuildCancelButton: {fileID: 2038093245}
+  _trailBuildSection: {fileID: 966966162}
+  _trailBuildWidthValue: {fileID: 0}
+  _trailBuildLengthValue: {fileID: 949638301}
+  _trailBuildCostValue: {fileID: 32985143}
+  _trailBuildConfirmButton: {fileID: 782844325}
+  _trailBuildCancelButton: {fileID: 2038093245}
   _lodgeBuildSection: {fileID: 60883714}
   _lodgeBuildCostValue: {fileID: 2103105433}
   _skierSection: {fileID: 219183736}
@@ -222447,8 +222591,12 @@ MonoBehaviour:
   _toolName: Tool
   _toolIcon: {fileID: 0}
   _toolDescription: Description
-  _trailDrawer: {fileID: 0}
-  _baseCost: 5000
+  _trailDrawer: {fileID: 1091263535}
+  _cursorCircle: {fileID: 1819360195}
+  _cursorCircleImage: {fileID: 1097350646}
+  _cursorCircleBorder: {fileID: 489586792}
+  _cursorFillColor: {r: 0.29, g: 0.56, b: 0.85, a: 0.15}
+  _cursorBorderColor: {r: 0.29, g: 0.56, b: 0.85, a: 1}
 --- !u!1001 &1014031714
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -241234,14 +241382,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UnityBridge.TrailDrawer
   _mountainManager: {fileID: 1571617882}
   _liftBuilder: {fileID: 1504220261}
+  _previewRenderer: {fileID: 799101449}
   _camera: {fileID: 1543875374}
-  _tileSize: 1
-  _minPointSpacing: 1
-  _drawKey: 116
-  _debugMode: 0
   _snapRadius: 5
-  _snapColor: {r: 0, g: 1, b: 0, a: 1}
-  _defaultColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  _paintSampleSpacing: 1.5
 --- !u!4 &1091263536
 Transform:
   m_ObjectHideFlags: 0
@@ -242793,6 +242937,81 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 5438435042986937857, guid: 1c52a3d45826b4c92addf3ee33e56cdd, type: 3}
   m_PrefabInstance: {fileID: 1097216114}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1097350645
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1097350648}
+  - component: {fileID: 1097350647}
+  - component: {fileID: 1097350646}
+  m_Layer: 5
+  m_Name: CursorFill
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1097350646
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1097350645}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
+  m_Material: {fileID: 0}
+  m_Color: {r: 0.2901961, g: 0.56078434, b: 0.8509804, a: 0.14901961}
+  m_RaycastTarget: 1
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: -4646876343654227710, guid: 635556541a717454e9197266984ae2fd, type: 3}
+  m_Type: 0
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
+--- !u!222 &1097350647
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1097350645}
+  m_CullTransparentMesh: 1
+--- !u!224 &1097350648
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1097350645}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1819360195}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1001 &1097465103
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -246934,6 +247153,7 @@ RectTransform:
   - {fileID: 1452375333}
   - {fileID: 286469125}
   - {fileID: 1265693099}
+  - {fileID: 1819360195}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -325569,6 +325789,12 @@ MonoBehaviour:
     subRow: {fileID: 541234965}
   - button: {fileID: 728678125}
     subRow: {fileID: 486303388}
+  _trailBuildTool: {fileID: 1014014541}
+  _paintModeButton: {fileID: 24022640}
+  _lineModeButton: {fileID: 1244890655}
+  _penModeButton: {fileID: 1912590420}
+  _trailWidthSlider: {fileID: 5855499}
+  _trailWidthText: {fileID: 1906354107}
 --- !u!1001 &1489983976
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -328287,6 +328513,7 @@ MonoBehaviour:
   _snapRadius: 5
   _snapColor: {r: 0, g: 1, b: 0, a: 1}
   _defaultColor: {r: 1, g: 1, b: 1, a: 1}
+  _cursorMaterialTemplate: {fileID: 0}
   _prefabBuilder: {fileID: 1504220264}
 --- !u!4 &1504220262
 Transform:
@@ -397886,6 +398113,56 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 5438435042986937857, guid: 1c52a3d45826b4c92addf3ee33e56cdd, type: 3}
   m_PrefabInstance: {fileID: 1818625665}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1819360194
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1819360195}
+  - component: {fileID: 1819360196}
+  m_Layer: 5
+  m_Name: TrailCursor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!224 &1819360195
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1819360194}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1097350648}
+  - {fileID: 489586794}
+  m_Father: {fileID: 1112410979}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 50, y: 50}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!225 &1819360196
+CanvasGroup:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1819360194}
+  m_Enabled: 1
+  m_Alpha: 1
+  m_Interactable: 1
+  m_BlocksRaycasts: 0
+  m_IgnoreParentGroups: 0
 --- !u!1001 &1820741876
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -437219,6 +437496,7 @@ MonoBehaviour:
   _skierColor: {r: 1, g: 0.2, b: 0.2, a: 1}
   _skierSize: 1.5
   _maxActiveSkiers: 50
+  _skierMaterialTemplate: {fileID: 0}
   _skierPrefab: {fileID: 1341620292782584, guid: 40290f336ccbb6644ac5ebf86b4522fe, type: 3}
   _skierParent: {fileID: 1000882485}
   baseSpawnPosition: {x: 224.2, y: 205.5}
@@ -476836,3 +477114,4 @@ SceneRoots:
   - {fileID: 187455606}
   - {fileID: 375766707}
   - {fileID: 111792753}
+  - {fileID: 799101450}

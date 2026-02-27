@@ -122,7 +122,7 @@ namespace SkiResortTycoon.UnityBridge
 
         public void SetWidth(float width)
         {
-            _trailWidth = Mathf.Clamp(width, 7.5f, 30f);
+            _trailWidth = Mathf.Clamp(width, 10f, 30f);
             RebuildPreview();
         }
 

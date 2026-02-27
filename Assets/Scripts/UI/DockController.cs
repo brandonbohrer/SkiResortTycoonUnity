@@ -48,8 +48,8 @@ namespace SkiResortTycoon.UI
         private Color _paintOriginal, _lineOriginal, _penOriginal;
         private bool _skipNextToolClose;
 
-        private const float WidthMin = 7.5f;
-        private const float WidthMax = 18f;
+        private const float WidthMin = 10f;
+        private const float WidthMax = 30f;
 
         void Start()
         {
@@ -84,9 +84,9 @@ namespace SkiResortTycoon.UI
                 _trailWidthSlider.minValue = 1f;
                 _trailWidthSlider.maxValue = 100f;
                 _trailWidthSlider.wholeNumbers = true;
-                _trailWidthSlider.value = 1f;
+                _trailWidthSlider.value = 50f;
                 _trailWidthSlider.onValueChanged.AddListener(OnTrailWidthChanged);
-                RefreshWidthText(1f);
+                RefreshWidthText(50f);
             }
 
             RefreshTrailModeButtons();

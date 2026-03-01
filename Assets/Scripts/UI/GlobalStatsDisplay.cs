@@ -84,6 +84,36 @@ namespace SkiResortTycoon.UI
         {
             if (text == null) return;
             
+            // Enable raycast target so tooltip can detect hover
+            text.raycastTarget = true;
+            
+            // Try to add tooltip to parent container first (the pill background)
+            // This makes the entire pill hoverable, not just the text
+            var parent = text.transform.parent;
+            if (parent != null)
+            {
+                var parentTrigger = parent.GetComponent<TooltipTrigger>();
+                if (parentTrigger == null)
+                {
+                    // Check if parent has an Image component (the pill background)
+                    var parentImage = parent.GetComponent<UnityEngine.UI.Image>();
+                    if (parentImage != null)
+                    {
+                        parentImage.raycastTarget = true;
+                        parentTrigger = parent.gameObject.AddComponent<TooltipTrigger>();
+                        parentTrigger.SetContent(header, content);
+                        return; // Successfully added to parent, we're done
+                    }
+                }
+                else
+                {
+                    // Parent already has tooltip, use it
+                    parentTrigger.SetContent(header, content);
+                    return;
+                }
+            }
+            
+            // Fallback: add tooltip directly to text element
             var tooltipTrigger = text.GetComponent<TooltipTrigger>();
             if (tooltipTrigger == null)
             {

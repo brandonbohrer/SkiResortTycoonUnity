@@ -72,7 +72,23 @@ namespace SkiResortTycoon.UI
             public const string TrailWidthHeader = "Trail Width";
             public const string TrailWidthContent = "Adjust the width of trails you're drawing.";
             
-            public static string GetCategoryContent(string categoryName) => $"Open {categoryName} options.";
+            public static string GetCategoryContent(string categoryName)
+            {
+                // Clean up category name (remove "SubRow" suffix if present)
+                string cleanName = categoryName;
+                if (cleanName.EndsWith("SubRow", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    cleanName = cleanName.Substring(0, cleanName.Length - 6);
+                }
+                
+                // Capitalize first letter
+                if (cleanName.Length > 0)
+                {
+                    cleanName = char.ToUpper(cleanName[0]) + cleanName.Substring(1).ToLower();
+                }
+                
+                return $"Open to see {cleanName} options.";
+            }
         }
         
         // ── Context Window ───────────────────────────────────────────────────
@@ -89,6 +105,47 @@ namespace SkiResortTycoon.UI
             
             public const string LodgeStatusHeader = "Lodge Status";
             public const string LodgeStatusContent = "Toggle whether this lodge is open or closed.";
+            
+            // Action Buttons
+            public const string DemolishHeader = "Demolish";
+            public const string DemolishContent = "Permanently delete this structure.";
+            
+            public const string FindHeader = "Find";
+            public const string FindContent = "Center the camera on this structure.";
+            
+            public const string FollowHeader = "Follow";
+            public const string FollowContent = "Follow this structure with the camera.\n(Coming soon)";
+            
+            // Build Buttons
+            public const string ConfirmHeader = "Confirm";
+            public const string ConfirmContent = "Confirm and build this structure.";
+            
+            public const string CancelHeader = "Cancel";
+            public const string CancelContent = "Cancel building this structure.";
+            
+            // Difficulty Picker Main Button (dynamic - shows current difficulty)
+            public static string GetDifficultyPickerHeader(string difficultyName) => $"Trail Difficulty: {difficultyName}";
+            public static string GetDifficultyPickerContent(string difficultyName) => $"This trail is designated as {difficultyName}.\nClick to change difficulty (may affect guest satisfaction).";
+            
+            // Difficulty Buttons
+            public const string GreenDifficultyHeader = "Green Circle";
+            public const string GreenDifficultyContent = "Set trail difficulty to Green Circle (easiest).";
+            
+            public const string BlueDifficultyHeader = "Blue Square";
+            public const string BlueDifficultyContent = "Set trail difficulty to Blue Square (intermediate).";
+            
+            public const string BlackDifficultyHeader = "Black Diamond";
+            public const string BlackDifficultyContent = "Set trail difficulty to Black Diamond (advanced).";
+            
+            public const string DoubleBlackDifficultyHeader = "Double Black";
+            public const string DoubleBlackDifficultyContent = "Set trail difficulty to Double Black (expert).";
+            
+            // Buffet Buttons
+            public const string BuffetDecrementHeader = "Decrease Buffet";
+            public const string BuffetDecrementContent = "Decrease buffet capacity.";
+            
+            public const string BuffetIncrementHeader = "Increase Buffet";
+            public const string BuffetIncrementContent = "Increase buffet capacity.";
         }
         
         // ── Manager Tabs ─────────────────────────────────────────────────────

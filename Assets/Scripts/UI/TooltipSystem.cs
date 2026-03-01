@@ -23,6 +23,18 @@ namespace SkiResortTycoon.UI
         [SerializeField] private float _maxWidth = 300f;
         [SerializeField] private Vector2 _offset = new Vector2(16f, -16f);
         
+        [Header("Smart Positioning")]
+        [Tooltip("Distance from screen edge to trigger smart positioning (in pixels)")]
+        [SerializeField] private float _edgeMargin = 50f;
+        [Tooltip("Offset when tooltip appears above cursor (bottom of screen)")]
+        [SerializeField] private Vector2 _offsetAbove = new Vector2(16f, 16f);
+        [Tooltip("Offset when tooltip appears below cursor (top of screen)")]
+        [SerializeField] private Vector2 _offsetBelow = new Vector2(16f, -8f);
+        [Tooltip("Offset when tooltip appears to left of cursor (right edge)")]
+        [SerializeField] private Vector2 _offsetLeft = new Vector2(-16f, -16f);
+        [Tooltip("Offset when tooltip appears to right of cursor (left edge)")]
+        [SerializeField] private Vector2 _offsetRight = new Vector2(16f, -16f);
+        
         private RectTransform _rectTransform;
         private RectTransform _canvasRect;
         private float _hoverTimer = 0f;
@@ -143,42 +155,72 @@ namespace SkiResortTycoon.UI
         {
             if (_rectTransform == null) return;
             
-            Vector2 position = Input.mousePosition;
+            Vector2 mousePos = Input.mousePosition;
             
-            // Apply offset
-            position += _offset;
-            
-            // Get tooltip size
+            // Get tooltip size (force layout rebuild to get accurate size)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(_rectTransform);
             Vector2 tooltipSize = _rectTransform.sizeDelta;
             
-            // Clamp to screen bounds
-            if (_canvasRect != null)
+            // Get screen size
+            Vector2 screenSize = new Vector2(Screen.width, Screen.height);
+            
+            // Determine which edges we're near (using screen coordinates)
+            bool nearTop = mousePos.y > screenSize.y - _edgeMargin;
+            bool nearBottom = mousePos.y < _edgeMargin;
+            bool nearRight = mousePos.x > screenSize.x - _edgeMargin;
+            bool nearLeft = mousePos.x < _edgeMargin;
+            
+            // Smart positioning: choose offset based on screen position
+            Vector2 offset = _offset; // Default offset (bottom-right)
+            
+            // Priority: Top/Bottom first, then Left/Right
+            if (nearTop)
             {
-                Vector2 screenSize = _canvasRect.sizeDelta;
-                
-                // Right edge
-                if (position.x + tooltipSize.x > screenSize.x)
-                {
-                    position.x = Input.mousePosition.x - tooltipSize.x - _offset.x;
-                }
-                
-                // Bottom edge
-                if (position.y - tooltipSize.y < 0)
-                {
-                    position.y = tooltipSize.y;
-                }
-                
-                // Top edge
-                if (position.y > screenSize.y)
-                {
-                    position.y = screenSize.y;
-                }
-                
-                // Left edge
-                if (position.x < 0)
-                {
-                    position.x = 0;
-                }
+                // Near top of screen - show tooltip BELOW cursor
+                offset = _offsetBelow;
+            }
+            else if (nearBottom)
+            {
+                // Near bottom of screen - show tooltip ABOVE cursor
+                offset = _offsetAbove;
+            }
+            else if (nearRight)
+            {
+                // Near right edge - show tooltip to LEFT of cursor
+                offset = _offsetLeft;
+            }
+            else if (nearLeft)
+            {
+                // Near left edge - show tooltip to RIGHT of cursor
+                offset = _offsetRight;
+            }
+            
+            // Calculate initial position with chosen offset
+            Vector2 position = mousePos + offset;
+            
+            // Final bounds checking and smart flipping if still out of bounds
+            // Right edge - flip to left side if needed
+            if (position.x + tooltipSize.x > screenSize.x)
+            {
+                position.x = mousePos.x - tooltipSize.x - Mathf.Abs(offset.x);
+            }
+            
+            // Left edge - ensure it doesn't go off screen
+            if (position.x < 0)
+            {
+                position.x = Mathf.Abs(offset.x);
+            }
+            
+            // Top edge - flip to below if needed
+            if (position.y + tooltipSize.y > screenSize.y)
+            {
+                position.y = mousePos.y - tooltipSize.y - Mathf.Abs(offset.y);
+            }
+            
+            // Bottom edge - ensure it doesn't go off screen
+            if (position.y < 0)
+            {
+                position.y = Mathf.Abs(offset.y);
             }
             
             _rectTransform.position = position;

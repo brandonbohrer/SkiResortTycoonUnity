@@ -73,8 +73,19 @@ namespace SkiResortTycoon.UI
                 {
                     _categories[i].button.onClick.AddListener(() => OnCategoryClicked(idx));
                     // Add tooltip for category button
-                    var categoryName = _categories[i].subRow != null ? _categories[i].subRow.name : "Category";
-                    SetupTooltip(_categories[i].button, categoryName, TooltipTexts.Dock.GetCategoryContent(categoryName));
+                    var rawCategoryName = _categories[i].subRow != null ? _categories[i].subRow.name : "Category";
+                    // Clean up the name (remove "SubRow" suffix)
+                    string cleanCategoryName = rawCategoryName;
+                    if (cleanCategoryName.EndsWith("SubRow", System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        cleanCategoryName = cleanCategoryName.Substring(0, cleanCategoryName.Length - 6);
+                    }
+                    // Capitalize first letter
+                    if (cleanCategoryName.Length > 0)
+                    {
+                        cleanCategoryName = char.ToUpper(cleanCategoryName[0]) + cleanCategoryName.Substring(1).ToLower();
+                    }
+                    SetupTooltip(_categories[i].button, cleanCategoryName, TooltipTexts.Dock.GetCategoryContent(rawCategoryName));
                 }
             }
 

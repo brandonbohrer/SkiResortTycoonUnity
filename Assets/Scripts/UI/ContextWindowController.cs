@@ -52,6 +52,7 @@ namespace SkiResortTycoon.UI
         // Difficulty picker — always-visible icon button + 4 expand buttons
         // DifficultyPicker itself is NEVER hidden by code — only the 4 expand buttons are toggled.
         [Header("Trail — Difficulty Picker")]
+        [SerializeField] private Button _difficultyPickerButton; // The main button that shows current difficulty
         [SerializeField] private Image  _difficultySetIcon;   // Image child inside DifficultyPicker button
         [SerializeField] private Sprite _greenSprite;
         [SerializeField] private Sprite _blueSprite;
@@ -224,31 +225,97 @@ namespace SkiResortTycoon.UI
             }
 
             if (_buffetDecrementButton != null)
+            {
                 _buffetDecrementButton.onClick.AddListener(OnBuffetDecrement);
+                SetupTooltip(_buffetDecrementButton, TooltipTexts.ContextWindow.BuffetDecrementHeader, TooltipTexts.ContextWindow.BuffetDecrementContent);
+            }
             if (_buffetIncrementButton != null)
+            {
                 _buffetIncrementButton.onClick.AddListener(OnBuffetIncrement);
+                SetupTooltip(_buffetIncrementButton, TooltipTexts.ContextWindow.BuffetIncrementHeader, TooltipTexts.ContextWindow.BuffetIncrementContent);
+            }
 
             // Title input — rename structure when user finishes editing
             if (_titleInput != null)
                 _titleInput.onEndEdit.AddListener(OnTitleEndEdit);
 
+            // Difficulty picker main button (shows current difficulty)
+            // Try to find button automatically if not set (it's the parent of the difficulty icon)
+            if (_difficultyPickerButton == null && _difficultySetIcon != null)
+            {
+                _difficultyPickerButton = _difficultySetIcon.GetComponentInParent<Button>();
+            }
+            
+            if (_difficultyPickerButton != null)
+            {
+                _difficultyPickerButton.onClick.AddListener(ToggleDifficultyPicker);
+                // Tooltip will be updated dynamically when difficulty changes
+                UpdateDifficultyPickerTooltip(TrailDifficulty.Green); // Default, will update when trail is shown
+            }
+            else
+            {
+                Debug.LogWarning("[ContextWindowController] Difficulty picker button not found. Tooltip will not work. Please wire _difficultyPickerButton in Inspector or ensure _difficultySetIcon has a Button parent.");
+            }
+            
             // Difficulty picker buttons
-            if (_diffGreenButton       != null) _diffGreenButton.onClick.AddListener(()       => OnDifficultyChosen(TrailDifficulty.Green));
-            if (_diffBlueButton        != null) _diffBlueButton.onClick.AddListener(()        => OnDifficultyChosen(TrailDifficulty.Blue));
-            if (_diffBlackButton       != null) _diffBlackButton.onClick.AddListener(()       => OnDifficultyChosen(TrailDifficulty.Black));
-            if (_diffDoubleBlackButton != null) _diffDoubleBlackButton.onClick.AddListener(() => OnDifficultyChosen(TrailDifficulty.DoubleBlack));
+            if (_diffGreenButton != null)
+            {
+                _diffGreenButton.onClick.AddListener(() => OnDifficultyChosen(TrailDifficulty.Green));
+                SetupTooltip(_diffGreenButton, TooltipTexts.ContextWindow.GreenDifficultyHeader, TooltipTexts.ContextWindow.GreenDifficultyContent);
+            }
+            if (_diffBlueButton != null)
+            {
+                _diffBlueButton.onClick.AddListener(() => OnDifficultyChosen(TrailDifficulty.Blue));
+                SetupTooltip(_diffBlueButton, TooltipTexts.ContextWindow.BlueDifficultyHeader, TooltipTexts.ContextWindow.BlueDifficultyContent);
+            }
+            if (_diffBlackButton != null)
+            {
+                _diffBlackButton.onClick.AddListener(() => OnDifficultyChosen(TrailDifficulty.Black));
+                SetupTooltip(_diffBlackButton, TooltipTexts.ContextWindow.BlackDifficultyHeader, TooltipTexts.ContextWindow.BlackDifficultyContent);
+            }
+            if (_diffDoubleBlackButton != null)
+            {
+                _diffDoubleBlackButton.onClick.AddListener(() => OnDifficultyChosen(TrailDifficulty.DoubleBlack));
+                SetupTooltip(_diffDoubleBlackButton, TooltipTexts.ContextWindow.DoubleBlackDifficultyHeader, TooltipTexts.ContextWindow.DoubleBlackDifficultyContent);
+            }
 
             if (_liftBuildConfirmButton != null)
+            {
                 _liftBuildConfirmButton.onClick.AddListener(OnLiftBuildConfirm);
+                SetupTooltip(_liftBuildConfirmButton, TooltipTexts.ContextWindow.ConfirmHeader, TooltipTexts.ContextWindow.ConfirmContent);
+            }
             if (_liftBuildCancelButton != null)
+            {
                 _liftBuildCancelButton.onClick.AddListener(OnLiftBuildCancel);
+                SetupTooltip(_liftBuildCancelButton, TooltipTexts.ContextWindow.CancelHeader, TooltipTexts.ContextWindow.CancelContent);
+            }
+
+            if (_trailBuildConfirmButton != null)
+            {
+                _trailBuildConfirmButton.onClick.AddListener(OnLiftBuildConfirm); // Reuses same callback
+                SetupTooltip(_trailBuildConfirmButton, TooltipTexts.ContextWindow.ConfirmHeader, TooltipTexts.ContextWindow.ConfirmContent);
+            }
+            if (_trailBuildCancelButton != null)
+            {
+                _trailBuildCancelButton.onClick.AddListener(OnLiftBuildCancel); // Reuses same callback
+                SetupTooltip(_trailBuildCancelButton, TooltipTexts.ContextWindow.CancelHeader, TooltipTexts.ContextWindow.CancelContent);
+            }
 
             if (_demolishButton != null)
+            {
                 _demolishButton.onClick.AddListener(OnDemolishClicked);
+                SetupTooltip(_demolishButton, TooltipTexts.ContextWindow.DemolishHeader, TooltipTexts.ContextWindow.DemolishContent);
+            }
             if (_findButton != null)
+            {
                 _findButton.onClick.AddListener(OnFindClicked);
+                SetupTooltip(_findButton, TooltipTexts.ContextWindow.FindHeader, TooltipTexts.ContextWindow.FindContent);
+            }
             if (_followButton != null)
+            {
                 _followButton.onClick.AddListener(OnFollowClicked);
+                SetupTooltip(_followButton, TooltipTexts.ContextWindow.FollowHeader, TooltipTexts.ContextWindow.FollowContent);
+            }
 
             // Expand buttons start hidden; DifficultyPicker itself is never touched
             SetExpandButtonsActive(false);
@@ -491,6 +558,7 @@ namespace SkiResortTycoon.UI
 
             // Difficulty set icon (picker starts collapsed)
             RefreshDifficultyIcon(trail.Difficulty);
+            UpdateDifficultyPickerTooltip(trail.Difficulty);
             CollapsePickerIfOpen();
 
             // Usage stats
@@ -663,6 +731,7 @@ namespace SkiResortTycoon.UI
             // Recalculate and refresh
             RefreshDifficultyIcon(difficulty);
             SetText(_subtitleText, DifficultyLabel(difficulty), DifficultyColor(difficulty));
+            UpdateDifficultyPickerTooltip(difficulty);
             CollapsePickerIfOpen();
         }
 
@@ -673,6 +742,23 @@ namespace SkiResortTycoon.UI
                 _difficultySetIcon.sprite = DifficultySprite(difficulty);
                 _difficultySetIcon.color  = DifficultyColor(difficulty);
             }
+        }
+        
+        private void UpdateDifficultyPickerTooltip(TrailDifficulty difficulty)
+        {
+            // Try to find button if not set
+            if (_difficultyPickerButton == null && _difficultySetIcon != null)
+            {
+                _difficultyPickerButton = _difficultySetIcon.GetComponentInParent<Button>();
+            }
+            
+            if (_difficultyPickerButton == null) return;
+            
+            string difficultyName = DifficultyLabel(difficulty);
+            string header = $"Trail Difficulty: {difficultyName}";
+            string content = $"This trail is designated as {difficultyName}.\nClick to change difficulty (may affect guest satisfaction).";
+            
+            SetupTooltip(_difficultyPickerButton, header, content);
         }
 
         private void CollapsePickerIfOpen() => SetExpandButtonsActive(false);
@@ -1009,7 +1095,27 @@ namespace SkiResortTycoon.UI
         
         private void SetupTooltip(Button button, string header, string content)
         {
-            if (button == null) return;
+            if (button == null)
+            {
+                Debug.LogWarning("[ContextWindowController] SetupTooltip called with null button");
+                return;
+            }
+            
+            // Ensure button can receive raycasts for tooltip detection
+            var image = button.targetGraphic as UnityEngine.UI.Image;
+            if (image != null)
+            {
+                image.raycastTarget = true;
+            }
+            else
+            {
+                // Try to find Image component on the button
+                image = button.GetComponent<UnityEngine.UI.Image>();
+                if (image != null)
+                {
+                    image.raycastTarget = true;
+                }
+            }
             
             var tooltipTrigger = button.GetComponent<TooltipTrigger>();
             if (tooltipTrigger == null)
@@ -1017,6 +1123,12 @@ namespace SkiResortTycoon.UI
                 tooltipTrigger = button.gameObject.AddComponent<TooltipTrigger>();
             }
             tooltipTrigger.SetContent(header, content);
+            
+            // Debug log to verify tooltip is being set
+            if (button == _difficultyPickerButton)
+            {
+                Debug.Log($"[ContextWindowController] Difficulty picker tooltip set: {header} - {content}");
+            }
         }
         
         private void SetupTooltip(Toggle toggle, string header, string content)

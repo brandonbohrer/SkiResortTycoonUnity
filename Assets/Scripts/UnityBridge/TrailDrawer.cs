@@ -583,6 +583,27 @@ namespace SkiResortTycoon.UnityBridge
             }
         }
 
+        // ── Demolish ─────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Removes a trail from the system entirely (data, snap points, connectivity).
+        /// Called by ContextWindowController when the player clicks Demolish.
+        /// </summary>
+        public void DemolishTrail(TrailData trail)
+        {
+            if (trail == null || _trailSystem == null) return;
+
+            _trailSystem.RemoveTrail(trail);
+
+            if (_liftBuilder != null && _liftBuilder.Connectivity != null)
+                _liftBuilder.Connectivity.RebuildConnections();
+
+            var skierViz = FindObjectOfType<SkierVisualizer>();
+            if (skierViz != null) skierViz.InvalidateAllSkierGoals();
+
+            Debug.Log($"[TrailDrawer] Trail {trail.TrailId} demolished.");
+        }
+
         // ── Raycast helper (used by TrailBuildTool) ──────────────────────
 
         public Vector3? GetMountainPositionUnderMouse()

@@ -967,6 +967,14 @@ namespace SkiResortTycoon.UI
             if (StructureSelectionManager.Instance != null)
                 StructureSelectionManager.Instance.DeselectStructure();
 
+            // Trail: remove from TrailSystem so the visualizer doesn't recreate it
+            if (target.Type == StructureType.Trail && target.TrailData != null)
+            {
+                var drawer = FindObjectOfType<SkiResortTycoon.UnityBridge.TrailDrawer>();
+                if (drawer != null)
+                    drawer.DemolishTrail(target.TrailData);
+            }
+
             // Lodge: unregister from manager before destroying
             if (target.Type == StructureType.Lodge && target.Lodge != null)
             {

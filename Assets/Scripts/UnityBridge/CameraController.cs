@@ -83,6 +83,13 @@ namespace SkiResortTycoon.UnityBridge
         private bool _isOrbiting;
         private bool _isPanning;
 
+        // UI-over-pointer detection — fresh raycast every frame to avoid stale
+        // EventSystem cache that can block scroll/zoom after clicking UI elements.
+        private UnityEngine.EventSystems.PointerEventData _pointerEventData;
+        private readonly System.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult> _uiRaycastHits =
+            new System.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult>();
+        private bool _pointerOverUI;
+
         void Awake()
         {
             _camera = GetComponent<Camera>();
@@ -161,6 +168,25 @@ namespace SkiResortTycoon.UnityBridge
                 SkiResortTycoon.UI.UIManager.Instance.IsAnyOverlayOpen)
                 return;
 
+            // Fresh raycast every frame — avoids stale EventSystem cache that makes
+            // IsPointerOverGameObject() return true after clicking UI even when the
+            // cursor has moved back to the map.
+            RefreshPointerOverUI();
+
+            // When the cursor is over the world (not UI), deselect any focused UI
+            // element so it doesn't continue consuming scroll or keyboard input.
+            if (!_pointerOverUI)
+            {
+                var es = UnityEngine.EventSystems.EventSystem.current;
+                if (es != null && es.currentSelectedGameObject != null)
+                {
+                    bool isInputField = es.currentSelectedGameObject
+                        .GetComponent<TMPro.TMP_InputField>() != null;
+                    if (!isInputField)
+                        es.SetSelectedGameObject(null);
+                }
+            }
+
             HandleOrbit();
             HandleKeyboardRotation();
             HandlePanKeyboard();
@@ -172,11 +198,23 @@ namespace SkiResortTycoon.UnityBridge
             UpdateCameraTransform();
         }
 
+        private void RefreshPointerOverUI()
+        {
+            var es = UnityEngine.EventSystems.EventSystem.current;
+            if (es == null) { _pointerOverUI = false; return; }
+
+            if (_pointerEventData == null)
+                _pointerEventData = new UnityEngine.EventSystems.PointerEventData(es);
+
+            _pointerEventData.position = Input.mousePosition;
+            _uiRaycastHits.Clear();
+            es.RaycastAll(_pointerEventData, _uiRaycastHits);
+            _pointerOverUI = _uiRaycastHits.Count > 0;
+        }
+
         // ─── Orbit (right-click drag) ───────────────────────────────────
 
-        private static bool IsPointerOverUI =>
-            UnityEngine.EventSystems.EventSystem.current != null &&
-            UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
+        private bool IsPointerOverUI => _pointerOverUI;
 
         private void HandleOrbit()
         {
@@ -282,8 +320,7 @@ namespace SkiResortTycoon.UnityBridge
         private void HandleZoom()
         {
             // Don't zoom when the pointer is over any UI element (e.g. the context window scroll view)
-            if (UnityEngine.EventSystems.EventSystem.current != null &&
-                UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
+            if (_pointerOverUI)
                 return;
 
             float scroll = Input.mouseScrollDelta.y;

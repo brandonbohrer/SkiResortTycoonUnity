@@ -287,6 +287,68 @@ namespace SkiResortTycoon.Core
         }
         
         /// <summary>
+        /// Checks whether the XZ position (x, z) lies inside this trail's corridor
+        /// (within half-width of the centerline, ignoring Y). If inside, sets
+        /// <paramref name="distanceAlong"/> to the arc-length distance along the
+        /// centerline at the closest point, suitable for passing directly to
+        /// <c>SkierMotionController.SetTrail</c>.
+        /// </summary>
+        public bool IsInsideCorridor(float x, float z, out float distanceAlong)
+        {
+            distanceAlong = 0f;
+            if (WorldPathPoints == null || WorldPathPoints.Count < 2)
+                return false;
+
+            float halfW = TrailWidth * 0.5f;
+            float bestDistSq = float.MaxValue;
+            float bestAlong = 0f;
+            float cumDist = 0f;
+
+            for (int i = 0; i < WorldPathPoints.Count - 1; i++)
+            {
+                var pA = WorldPathPoints[i];
+                var pB = WorldPathPoints[i + 1];
+
+                float ax = pA.X, az = pA.Z;
+                float bx = pB.X, bz = pB.Z;
+
+                float abx = bx - ax, abz = bz - az;
+                float segLenSq = abx * abx + abz * abz;
+
+                float t = 0f;
+                if (segLenSq > 0.0001f)
+                {
+                    t = ((x - ax) * abx + (z - az) * abz) / segLenSq;
+                    if (t < 0f) t = 0f;
+                    else if (t > 1f) t = 1f;
+                }
+
+                float closestX = ax + abx * t;
+                float closestZ = az + abz * t;
+                float dx = x - closestX;
+                float dz2 = z - closestZ;
+                float dSq = dx * dx + dz2 * dz2;
+
+                if (dSq < bestDistSq)
+                {
+                    bestDistSq = dSq;
+                    float segLen = (float)System.Math.Sqrt(segLenSq);
+                    bestAlong = cumDist + segLen * t;
+                }
+
+                cumDist += Vector3f.Distance(pA, pB);
+            }
+
+            if (bestDistSq <= halfW * halfW)
+            {
+                distanceAlong = bestAlong;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Generates left and right boundary edges from the centerline path.
         /// Boundaries are perpendicular offsets at TrailWidth/2 distance from center.
         /// </summary>

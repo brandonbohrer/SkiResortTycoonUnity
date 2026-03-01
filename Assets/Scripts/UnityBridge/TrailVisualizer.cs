@@ -25,15 +25,14 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private Color _colorDoubleBlack = new Color(0.5f, 0.0f, 0.0f, 1f); // Dark red for double-black
         [SerializeField] private Color _colorDrawing = new Color(1f, 1f, 0f, 1f); // Bright yellow
         
-        [Header("Debug Visualization")]
-        [SerializeField] private bool _showBoundaries = true; // Toggle boundary visualization
-        [SerializeField] private Color _boundaryColor = new Color(1f, 0.5f, 0f, 0.5f); // Semi-transparent orange
-        [SerializeField] private float _boundaryLineWidth = 0.3f;
+        [Header("Boundary Line Width")]
+        [SerializeField] private float _boundaryLineWidth = 0.5f;
         
         
-        private Dictionary<int, LineRenderer> _trailRenderers = new Dictionary<int, LineRenderer>();
         private Dictionary<int, LineRenderer> _leftBoundaryRenderers = new Dictionary<int, LineRenderer>();
         private Dictionary<int, LineRenderer> _rightBoundaryRenderers = new Dictionary<int, LineRenderer>();
+        // Legacy centerline renderers kept only for the SelectableStructure reference
+        private Dictionary<int, GameObject> _trailRootObjects = new Dictionary<int, GameObject>();
         private LineRenderer _currentTrailRenderer;
         
         void LateUpdate()
@@ -51,9 +50,8 @@ namespace SkiResortTycoon.UnityBridge
         {
             // Remove renderers for deleted trails
             List<int> toRemove = new List<int>();
-            foreach (var kvp in _trailRenderers)
+            foreach (var kvp in _leftBoundaryRenderers)
             {
-                // Check if renderer was destroyed (e.g., by manual deletion)
                 if (kvp.Value == null)
                 {
                     toRemove.Add(kvp.Key);
@@ -63,114 +61,77 @@ namespace SkiResortTycoon.UnityBridge
                 bool found = false;
                 foreach (var trail in _trailDrawer.TrailSystem.Trails)
                 {
-                    if (trail.TrailId == kvp.Key)
-                    {
-                        found = true;
-                        break;
-                    }
+                    if (trail.TrailId == kvp.Key) { found = true; break; }
                 }
                 
                 if (!found)
                 {
-                    Destroy(kvp.Value.gameObject);
+                    if (_leftBoundaryRenderers.ContainsKey(kvp.Key) && _leftBoundaryRenderers[kvp.Key] != null)
+                        Destroy(_leftBoundaryRenderers[kvp.Key].gameObject);
+                    if (_rightBoundaryRenderers.ContainsKey(kvp.Key) && _rightBoundaryRenderers[kvp.Key] != null)
+                        Destroy(_rightBoundaryRenderers[kvp.Key].gameObject);
+                    if (_trailRootObjects.ContainsKey(kvp.Key) && _trailRootObjects[kvp.Key] != null)
+                        Destroy(_trailRootObjects[kvp.Key]);
                     toRemove.Add(kvp.Key);
                 }
             }
             
             foreach (int id in toRemove)
             {
-                _trailRenderers.Remove(id);
-                
-                // Also remove boundary renderers (with null checks)
-                if (_leftBoundaryRenderers.ContainsKey(id))
-                {
-                    if (_leftBoundaryRenderers[id] != null)
-                    {
-                        Destroy(_leftBoundaryRenderers[id].gameObject);
-                    }
-                    _leftBoundaryRenderers.Remove(id);
-                }
-                if (_rightBoundaryRenderers.ContainsKey(id))
-                {
-                    if (_rightBoundaryRenderers[id] != null)
-                    {
-                        Destroy(_rightBoundaryRenderers[id].gameObject);
-                    }
-                    _rightBoundaryRenderers.Remove(id);
-                }
+                _leftBoundaryRenderers.Remove(id);
+                _rightBoundaryRenderers.Remove(id);
+                _trailRootObjects.Remove(id);
             }
             
-            // Create/update renderers for all trails
+            // Create/update renderers for all trails — boundary lines are the primary visual
             foreach (var trail in _trailDrawer.TrailSystem.Trails)
             {
                 if (!trail.IsValid) continue;
+                if (trail.LeftBoundaryPoints.Count == 0 || trail.RightBoundaryPoints.Count == 0)
+                    continue;
                 
-                if (!_trailRenderers.ContainsKey(trail.TrailId))
-                {
-                    // Create new renderer
-                    GameObject trailObj = new GameObject($"Trail_{trail.TrailId}");
-                    trailObj.transform.SetParent(transform);
-                    LineRenderer lr = trailObj.AddComponent<LineRenderer>();
-                    
-                    // Configure line renderer for 3D
-                    lr.material = new Material(Shader.Find("Sprites/Default"));
-                    lr.startWidth = _lineWidth;
-                    lr.endWidth = _lineWidth;
-                    lr.useWorldSpace = true;
-                    lr.textureMode = LineTextureMode.Tile;
-                    
-                    _trailRenderers[trail.TrailId] = lr;
-                    
-                    // Add selectable structure component for management
-                    var selectable = trailObj.AddComponent<SelectableStructure>();
-                    selectable.InitializeAsTrail(trail, lr);
-                }
-                
-                // Update line - SET COLOR BASED ON ACTUAL DIFFICULTY
-                LineRenderer lineRenderer = _trailRenderers[trail.TrailId];
                 Color trailColor = GetDifficultyColor(trail.Difficulty);
-                lineRenderer.startColor = trailColor;
-                lineRenderer.endColor = trailColor;
-                lineRenderer.enabled = true; // Make sure it's enabled
-                UpdateLinePositions(lineRenderer, trail.WorldPathPoints);
                 
-                // Update or create boundary renderers if enabled
-                if (_showBoundaries && trail.LeftBoundaryPoints.Count > 0 && trail.RightBoundaryPoints.Count > 0)
+                // Root object for SelectableStructure (no visible renderer)
+                if (!_trailRootObjects.ContainsKey(trail.TrailId))
                 {
-                    // Left boundary
-                    if (!_leftBoundaryRenderers.ContainsKey(trail.TrailId))
-                    {
-                        GameObject leftObj = new GameObject($"Trail_{trail.TrailId}_LeftBoundary");
-                        leftObj.transform.SetParent(transform);
-                        LineRenderer leftLr = leftObj.AddComponent<LineRenderer>();
-                        ConfigureBoundaryRenderer(leftLr);
-                        _leftBoundaryRenderers[trail.TrailId] = leftLr;
-                    }
-                    LineRenderer leftRenderer = _leftBoundaryRenderers[trail.TrailId];
-                    leftRenderer.enabled = true;
-                    UpdateLinePositions(leftRenderer, trail.LeftBoundaryPoints);
-                    
-                    // Right boundary
-                    if (!_rightBoundaryRenderers.ContainsKey(trail.TrailId))
-                    {
-                        GameObject rightObj = new GameObject($"Trail_{trail.TrailId}_RightBoundary");
-                        rightObj.transform.SetParent(transform);
-                        LineRenderer rightLr = rightObj.AddComponent<LineRenderer>();
-                        ConfigureBoundaryRenderer(rightLr);
-                        _rightBoundaryRenderers[trail.TrailId] = rightLr;
-                    }
-                    LineRenderer rightRenderer = _rightBoundaryRenderers[trail.TrailId];
-                    rightRenderer.enabled = true;
-                    UpdateLinePositions(rightRenderer, trail.RightBoundaryPoints);
+                    GameObject rootObj = new GameObject($"Trail_{trail.TrailId}");
+                    rootObj.transform.SetParent(transform);
+                    var selectable = rootObj.AddComponent<SelectableStructure>();
+                    // Pass null LineRenderer — selection uses the root GO
+                    selectable.InitializeAsTrail(trail, null);
+                    _trailRootObjects[trail.TrailId] = rootObj;
                 }
-                else
+                
+                // Left boundary
+                if (!_leftBoundaryRenderers.ContainsKey(trail.TrailId))
                 {
-                    // Disable boundary renderers if not showing boundaries
-                    if (_leftBoundaryRenderers.ContainsKey(trail.TrailId))
-                        _leftBoundaryRenderers[trail.TrailId].enabled = false;
-                    if (_rightBoundaryRenderers.ContainsKey(trail.TrailId))
-                        _rightBoundaryRenderers[trail.TrailId].enabled = false;
+                    GameObject leftObj = new GameObject($"Trail_{trail.TrailId}_LeftBoundary");
+                    leftObj.transform.SetParent(transform);
+                    LineRenderer leftLr = leftObj.AddComponent<LineRenderer>();
+                    ConfigureBoundaryRenderer(leftLr);
+                    _leftBoundaryRenderers[trail.TrailId] = leftLr;
                 }
+                LineRenderer leftRenderer = _leftBoundaryRenderers[trail.TrailId];
+                leftRenderer.startColor = trailColor;
+                leftRenderer.endColor = trailColor;
+                leftRenderer.enabled = true;
+                UpdateLinePositions(leftRenderer, trail.LeftBoundaryPoints);
+                
+                // Right boundary
+                if (!_rightBoundaryRenderers.ContainsKey(trail.TrailId))
+                {
+                    GameObject rightObj = new GameObject($"Trail_{trail.TrailId}_RightBoundary");
+                    rightObj.transform.SetParent(transform);
+                    LineRenderer rightLr = rightObj.AddComponent<LineRenderer>();
+                    ConfigureBoundaryRenderer(rightLr);
+                    _rightBoundaryRenderers[trail.TrailId] = rightLr;
+                }
+                LineRenderer rightRenderer = _rightBoundaryRenderers[trail.TrailId];
+                rightRenderer.startColor = trailColor;
+                rightRenderer.endColor = trailColor;
+                rightRenderer.enabled = true;
+                UpdateLinePositions(rightRenderer, trail.RightBoundaryPoints);
             }
         }
         
@@ -273,41 +234,21 @@ namespace SkiResortTycoon.UnityBridge
             lr.endWidth = _boundaryLineWidth;
             lr.useWorldSpace = true;
             lr.textureMode = LineTextureMode.Tile;
-            lr.startColor = _boundaryColor;
-            lr.endColor = _boundaryColor;
         }
         
         void OnDestroy()
         {
-            // Clean up all renderers
-            foreach (var kvp in _trailRenderers)
-            {
-                if (kvp.Value != null)
-                {
-                    Destroy(kvp.Value.gameObject);
-                }
-            }
-            
             foreach (var kvp in _leftBoundaryRenderers)
-            {
-                if (kvp.Value != null)
-                {
-                    Destroy(kvp.Value.gameObject);
-                }
-            }
+                if (kvp.Value != null) Destroy(kvp.Value.gameObject);
             
             foreach (var kvp in _rightBoundaryRenderers)
-            {
-                if (kvp.Value != null)
-                {
-                    Destroy(kvp.Value.gameObject);
-                }
-            }
+                if (kvp.Value != null) Destroy(kvp.Value.gameObject);
+            
+            foreach (var kvp in _trailRootObjects)
+                if (kvp.Value != null) Destroy(kvp.Value);
             
             if (_currentTrailRenderer != null)
-            {
                 Destroy(_currentTrailRenderer.gameObject);
-            }
         }
     }
 }

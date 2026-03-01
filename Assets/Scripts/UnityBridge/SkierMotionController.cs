@@ -19,8 +19,8 @@ namespace SkiResortTycoon.UnityBridge
     ///   maxSpeed * 1.5 * dt in a single frame.
     /// * Rotation is computed from the trail tangent (or lift direction),
     ///   never from position-delta, eliminating wrong-facing on transitions.
-    /// * Lateral offset uses Perlin noise for natural S-curves and is
-    ///   hard-clamped to 85 % of half-trail-width.
+    /// * Lateral offset uses multi-octave Perlin noise for natural S-curves
+    ///   and carving, hard-clamped to 92 % of half-trail-width.
     /// </summary>
     public class SkierMotionController
     {
@@ -28,6 +28,11 @@ namespace SkiResortTycoon.UnityBridge
         private readonly int _skierId;            // unique seed for Perlin
         private readonly Transform _transform;
         private readonly float _heightOffset;
+        private readonly System.Func<Vector3, float?> _terrainHeightSampler;
+
+        // ── Terrain grounding (Y smoothing) ───────────────────────────
+        private float _groundedY;
+        private bool _groundedYInitialized;
 
         // ── Speeds (may be updated externally) ──────────────────────────
         public float WalkSpeed   { get; set; } = 4f;
@@ -51,14 +56,20 @@ namespace SkiResortTycoon.UnityBridge
         // ── Walk-to-lift target ─────────────────────────────────────────
         private Vector3 _walkTarget;
 
-        // ── Lateral offset (boundary-aware) ─────────────────────────────
+        // ── Lateral offset (corridor-aware) ───────────────────────────
         private float _lateralOffset;             // -1..1  normalised
-        private const float LATERAL_DRIFT_SPEED = 0.6f;
-        private const float MAX_LATERAL_RATIO = 0.85f;  // stay off the very edge
+        private const float LATERAL_DRIFT_SPEED = 0.8f;
+        private const float MAX_LATERAL_RATIO = 0.92f;  // nearly full corridor width
 
         // ── Anti-teleport smoothing ─────────────────────────────────────
         private Vector3 _smoothedPosition;
         private bool _positionInitialized;
+
+        // ── Trail transition blending ─────────────────────────────────
+        private bool _isTransitioning;
+        private Vector3 _transitionOrigin;     // XZ position at moment of switch
+        private float _transitionTimer;
+        private float _transitionDuration;
 
         // ── Rotation state ──────────────────────────────────────────────
         private Vector3 _currentTangent = Vector3.forward;
@@ -90,11 +101,13 @@ namespace SkiResortTycoon.UnityBridge
         // ─────────────────────────────────────────────────────────────────
         //  Construction
         // ─────────────────────────────────────────────────────────────────
-        public SkierMotionController(int skierId, Transform transform, float heightOffset)
+        public SkierMotionController(int skierId, Transform transform, float heightOffset,
+            System.Func<Vector3, float?> terrainHeightSampler = null)
         {
             _skierId = skierId;
             _transform = transform;
             _heightOffset = heightOffset;
+            _terrainHeightSampler = terrainHeightSampler;
             _lateralOffset = Random.Range(-0.6f, 0.6f);
         }
 
@@ -109,15 +122,36 @@ namespace SkiResortTycoon.UnityBridge
             _distanceAlongTrail = startDistance;
             CacheTrailLengths(trail);
             ReachedTrailEnd = false;
+            _isTransitioning = false;
         }
 
-        /// <summary>Switch to a new trail mid-run, preserving lateral offset direction.</summary>
+        /// <summary>
+        /// Switch to a new trail mid-run with a smooth positional blend.
+        /// The skier's XZ position lerps from its current location to the new
+        /// trail's centerline over a short duration, while Y is always terrain-sampled.
+        /// </summary>
         public void SwitchTrail(TrailData newTrail, Vector3 currentWorldPos)
         {
+            _transitionOrigin = currentWorldPos;
             _currentTrail = newTrail;
             CacheTrailLengths(newTrail);
             _distanceAlongTrail = FindClosestDistanceOnTrail(currentWorldPos, newTrail);
-            // Preserve lateral offset sign, just slightly randomise magnitude
+
+            // Measure how far the skier needs to move laterally to reach the new trail
+            Vector3 newCenter;
+            Vector3 newTangent;
+            float newWidth;
+            SampleTrail(_distanceAlongTrail, out newCenter, out newTangent, out newWidth);
+
+            float gapXZ = Vector3.Distance(
+                new Vector3(currentWorldPos.x, 0, currentWorldPos.z),
+                new Vector3(newCenter.x, 0, newCenter.z));
+
+            // Scale blend duration by gap size: tiny gaps blend fast, large gaps take longer
+            _transitionDuration = Mathf.Clamp(gapXZ / (BaseSkiSpeed * 1.5f), 0.15f, 0.8f);
+            _transitionTimer = 0f;
+            _isTransitioning = true;
+
             _lateralOffset = Mathf.Sign(_lateralOffset) * Random.Range(0.1f, 0.7f);
             ReachedTrailEnd = false;
         }
@@ -233,6 +267,9 @@ namespace SkiResortTycoon.UnityBridge
                 ReachedLiftBottom = true;
                 return _walkTarget;
             }
+
+            // Ground to terrain while walking
+            next = GroundToTerrain(next);
             return next;
         }
 
@@ -337,8 +374,27 @@ namespace SkiResortTycoon.UnityBridge
             perp.Normalize();
 
             float halfW = trailWidth * 0.5f;
-            Vector3 finalPos = centerPos + perp * (_lateralOffset * halfW);
-            finalPos.y += _heightOffset;
+            Vector3 trailTarget = centerPos + perp * (_lateralOffset * halfW);
+
+            Vector3 finalPos = trailTarget;
+
+            // ── Transition blend: smoothly move from old position to new trail ──
+            if (_isTransitioning)
+            {
+                _transitionTimer += dt;
+                float t = Mathf.Clamp01(_transitionTimer / _transitionDuration);
+                // Smooth-step for natural ease-in/ease-out
+                t = t * t * (3f - 2f * t);
+
+                finalPos.x = Mathf.Lerp(_transitionOrigin.x, trailTarget.x, t);
+                finalPos.z = Mathf.Lerp(_transitionOrigin.z, trailTarget.z, t);
+
+                if (_transitionTimer >= _transitionDuration)
+                    _isTransitioning = false;
+            }
+
+            // Ground to terrain: use live raycast instead of baked trail Y
+            finalPos = GroundToTerrain(finalPos);
 
             // Store tangent for rotation
             _currentTangent = tangent;
@@ -450,20 +506,69 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         // ─────────────────────────────────────────────────────────────────
-        //  Lateral offset  (Step 5 — boundary enforcement)
+        //  Lateral offset  (corridor-aware, multi-octave)
         // ─────────────────────────────────────────────────────────────────
         private void UpdateLateralOffset(float dt)
         {
-            // Perlin noise gives smooth, deterministic S-curves unique per skier
-            float noiseInput = _distanceAlongTrail * 0.05f;
-            float noiseSeed  = _skierId * 137.31f; // unique offset per skier
-            float noiseVal = Mathf.PerlinNoise(noiseInput, noiseSeed);
-            float targetOffset = noiseVal * 2f - 1f; // remap 0..1 → -1..1
+            float noiseSeed = _skierId * 137.31f;
+
+            // Octave 1 — slow, wide S-curves (macro drift across the corridor)
+            float macro = Mathf.PerlinNoise(_distanceAlongTrail * 0.04f, noiseSeed) * 2f - 1f;
+
+            // Octave 2 — faster carving turns layered on top
+            float micro = Mathf.PerlinNoise(_distanceAlongTrail * 0.15f, noiseSeed + 50f) * 2f - 1f;
+
+            // Speed-linked amplitude: faster = wider carves, slower = tighter to center
+            float slope = GetSlopeAtCurrentDistance();
+            float speedFactor = Mathf.Lerp(0.4f, 1.0f, Mathf.Clamp01(slope / 35f));
+
+            float targetOffset = (macro * 0.65f + micro * 0.35f) * speedFactor;
 
             _lateralOffset = Mathf.MoveTowards(_lateralOffset, targetOffset, LATERAL_DRIFT_SPEED * dt);
 
-            // Hard-clamp so skier never touches the boundary edge
             _lateralOffset = Mathf.Clamp(_lateralOffset, -MAX_LATERAL_RATIO, MAX_LATERAL_RATIO);
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        //  Terrain grounding
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Replaces the Y component of <paramref name="pos"/> with the actual
+        /// terrain surface height plus <c>_heightOffset</c>. Lerps toward the
+        /// sampled Y to avoid micro-jitter from mesh triangle boundaries.
+        /// Falls back to the original Y if no sampler is available.
+        /// </summary>
+        private Vector3 GroundToTerrain(Vector3 pos)
+        {
+            if (_terrainHeightSampler == null)
+            {
+                pos.y += _heightOffset;
+                return pos;
+            }
+
+            float? terrainY = _terrainHeightSampler(pos);
+            if (!terrainY.HasValue)
+            {
+                pos.y += _heightOffset;
+                return pos;
+            }
+
+            float targetY = terrainY.Value + _heightOffset;
+
+            if (!_groundedYInitialized)
+            {
+                _groundedY = targetY;
+                _groundedYInitialized = true;
+            }
+            else
+            {
+                // Smooth toward sampled Y to prevent jitter from mesh triangle edges
+                _groundedY = Mathf.Lerp(_groundedY, targetY, 0.35f);
+            }
+
+            pos.y = _groundedY;
+            return pos;
         }
 
         // ─────────────────────────────────────────────────────────────────

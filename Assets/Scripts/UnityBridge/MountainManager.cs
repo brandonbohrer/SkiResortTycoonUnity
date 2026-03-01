@@ -16,6 +16,9 @@ namespace SkiResortTycoon.UnityBridge
         
         [Header("Mountain Reference")]
         [SerializeField] private GameObject _mountainMesh; // Reference to your handcrafted mountain
+
+        // Cached layer mask built from the mountain mesh's layer for fast single-hit raycasts
+        private int _mountainLayerMask = -1;
         
         private Core.TerrainData _terrainData;
         
@@ -24,8 +27,10 @@ namespace SkiResortTycoon.UnityBridge
         
         void Awake()
         {
-            // Create simple flat grid (heights will be determined by raycasting mountain later)
             _terrainData = new Core.TerrainData(_gridWidth, _gridHeight, seed: 0);
+            
+            if (_mountainMesh != null)
+                _mountainLayerMask = 1 << _mountainMesh.layer;
             
             Debug.Log($"[MountainManager] Grid initialized: {_gridWidth}x{_gridHeight}");
         }
@@ -97,10 +102,21 @@ namespace SkiResortTycoon.UnityBridge
                 return null;
             }
             
-            // Raycast down from well above the position
             Ray ray = new Ray(new Vector3(worldPos.x, worldPos.y + 1000f, worldPos.z), Vector3.down);
-            RaycastHit[] hits = Physics.RaycastAll(ray, 2000f);
+
+            // Fast path: single raycast with layer mask when the mountain is on
+            // a dedicated layer (non-default). This is the hot path for per-frame
+            // skier grounding (~50 raycasts/frame).
+            if (_mountainLayerMask > 0 && _mountainMesh.layer != 0)
+            {
+                RaycastHit hit;
+                if (Physics.Raycast(ray, out hit, 2000f, _mountainLayerMask))
+                    return hit.point.y;
+                return null;
+            }
             
+            // Fallback: RaycastAll when mountain is on the default layer
+            RaycastHit[] hits = Physics.RaycastAll(ray, 2000f);
             foreach (RaycastHit hit in hits)
             {
                 if (hit.collider.transform == _mountainMesh.transform || 

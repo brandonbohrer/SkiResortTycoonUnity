@@ -334,6 +334,16 @@ namespace SkiResortTycoon.UnityBridge
 
             trail.EvaluatePathFromAnchors();
 
+            // Project all evaluated points onto the terrain surface.
+            // EvaluatePathFromAnchors does pure math (bezier/linear) without terrain
+            // awareness, so intermediate points can float above or below the mesh.
+            for (int i = 0; i < trail.WorldPathPoints.Count; i++)
+            {
+                Vector3 pt = MountainManager.ToUnityVector3(trail.WorldPathPoints[i]);
+                pt = ProjectOntoTerrain(pt);
+                trail.WorldPathPoints[i] = MountainManager.ToVector3f(pt);
+            }
+
             // Snap end point
             if (_magneticCursor != null && trail.WorldPathPoints.Count >= 2)
             {
@@ -366,6 +376,20 @@ namespace SkiResortTycoon.UnityBridge
 
             var stats = _trailSystem.CalculateDifficulty(trail);
             trail.GenerateBoundaries();
+
+            // Project boundary points onto terrain so the edge lines sit on the surface
+            for (int i = 0; i < trail.LeftBoundaryPoints.Count; i++)
+            {
+                Vector3 pt = MountainManager.ToUnityVector3(trail.LeftBoundaryPoints[i]);
+                pt = ProjectOntoTerrain(pt);
+                trail.LeftBoundaryPoints[i] = MountainManager.ToVector3f(pt);
+            }
+            for (int i = 0; i < trail.RightBoundaryPoints.Count; i++)
+            {
+                Vector3 pt = MountainManager.ToUnityVector3(trail.RightBoundaryPoints[i]);
+                pt = ProjectOntoTerrain(pt);
+                trail.RightBoundaryPoints[i] = MountainManager.ToVector3f(pt);
+            }
 
             // Commit preview-hidden trees so they stay disabled permanently,
             // then do a final pass with the confirmed path to catch any stragglers.

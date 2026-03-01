@@ -530,8 +530,12 @@ namespace SkiResortTycoon.UnityBridge
             float baseHeight = tile != null ? tile.Height : -35f;
             var startPos = new Vector3(baseSpawnPosition.x, baseHeight + SKI_HEIGHT_OFFSET, baseSpawnPosition.y);
 
-            // Create motion controller
-            var motion = new SkierMotionController(skier.SkierId, skierObj.transform, SKI_HEIGHT_OFFSET);
+            // Create motion controller with terrain height sampler for ground clamping
+            var mountainMgr = _trailDrawer.GridRenderer;
+            System.Func<Vector3, float?> heightSampler = mountainMgr != null
+                ? (System.Func<Vector3, float?>)(pos => mountainMgr.GetHeightAtWorldPos(pos))
+                : null;
+            var motion = new SkierMotionController(skier.SkierId, skierObj.transform, SKI_HEIGHT_OFFSET, heightSampler);
             motion.WalkSpeed = _skiSpeed * 0.6f; // walk a bit slower than ski
             motion.LiftSpeed = _liftSpeed;
             motion.BaseSkiSpeed = _skiSpeed;
@@ -932,124 +936,52 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
             
-            // ── Check for nearby TRAIL STARTS ──
+            // ── Check for CORRIDOR OVERLAP with other trails ──
+            // Instead of checking distance to trail starts or segment proximity,
+            // test whether the skier's XZ position is physically inside another
+            // trail's corridor. This is the core of the corridor-based transition
+            // model: where two corridors overlap, the skier can flow naturally
+            // from one to the other.
             var allTrails = _trailDrawer.TrailSystem.GetAllTrails();
             foreach (var trail in allTrails)
             {
                 if (!trail.IsValid) continue;
                 if (trail.TrailId == vs.CurrentTrail.TrailId) continue;
                 if (vs.EvaluatedTrailExits.Contains(trail.TrailId)) continue;
-                if (trail.WorldPathPoints == null || trail.WorldPathPoints.Count == 0) continue;
-                
-                var trailStart = trail.WorldPathPoints[0];
-                Vector3 startPos = new Vector3(trailStart.X, trailStart.Y, trailStart.Z);
-                float dist = Vector3.Distance(pos, startPos);
-                
-                if (dist <= exitRadius)
-                {
-                    vs.EvaluatedTrailExits.Add(trail.TrailId);
-                    
-                    // Skill check: don't offer trails the skier can't handle
-                    if (!_distribution.IsAllowed(vs.Skier.Skill, trail.Difficulty)) continue;
-                    
-                    // Score current trail vs the branching trail using the decision engine
-                    var ctx = BuildContext(vs);
-                    var candidates = new List<TrailData> { vs.CurrentTrail, trail };
-                    
-                    var chosenTrail = SkierDecisionEngine.ChooseTrail(
-                        candidates, ctx, Config, Traffic?.State, _distribution, ComputeTrailDownstreamValue
-                    );
-                    
-                    if (chosenTrail != null && chosenTrail.TrailId != vs.CurrentTrail.TrailId)
-                    {
-                        if (_enableDebugLogs)
-                            Debug.Log($"[Skier {vs.Skier.SkierId}] Mid-trail switch → Trail {trail.TrailId} " +
-                                $"({trail.Difficulty}) from Trail {vs.CurrentTrail.TrailId}");
-                        
-                        // Fire events
-                        if (Traffic != null) Traffic.FireTrailCompleted(vs.Skier.SkierId, vs.CurrentTrail.TrailId);
-                        if (Traffic != null) Traffic.FireTrailIntended(vs.Skier.SkierId, trail.TrailId);
-                        
-                        vs.CurrentTrail = trail;
-                        vs.TrailsSkied.Add(trail.TrailId);
-                        vs.Skier.CurrentTrailId = trail.TrailId;
-                        vs.EvaluatedLiftExits.Clear();
-                        vs.EvaluatedTrailExits.Clear();
-                        
-                        // Start the new trail from the beginning
-                        vs.Motion.SetTrail(trail, 0f);
-                        
-                        if (Traffic != null) Traffic.FireTrailEntered(vs.Skier.SkierId, trail.TrailId);
-                        return;
-                    }
-                }
-            }
-            
-            // ── Check for TRAIL CROSSINGS (mid-trail intersections) ──
-            // If another trail's path physically passes through our position,
-            // offer the skier the choice to switch onto it at the crossing point.
-            foreach (var trail in allTrails)
-            {
-                if (!trail.IsValid) continue;
-                if (trail.TrailId == vs.CurrentTrail.TrailId) continue;
-                if (vs.EvaluatedTrailExits.Contains(trail.TrailId)) continue;
                 if (trail.WorldPathPoints == null || trail.WorldPathPoints.Count < 2) continue;
-                
-                // Check trail segments for proximity
-                bool foundCrossing = false;
-                for (int i = 0; i < trail.WorldPathPoints.Count - 1; i++)
-                {
-                    var p1 = trail.WorldPathPoints[i];
-                    var p2 = trail.WorldPathPoints[i + 1];
-                    Vector3 a = new Vector3(p1.X, p1.Y, p1.Z);
-                    Vector3 b = new Vector3(p2.X, p2.Y, p2.Z);
-                    
-                    // Ignore segments at very different elevations
-                    float segMidY = (a.y + b.y) * 0.5f;
-                    if (Mathf.Abs(segMidY - pos.y) > 8f) continue;
-                    
-                    Vector3 closest = ClosestPointOnLineSegment(pos, a, b);
-                    if (Vector3.Distance(pos, closest) <= exitRadius)
-                    {
-                        foundCrossing = true;
-                        break;
-                    }
-                }
-                
-                if (!foundCrossing) continue;
-                
+
+                float corridorDist;
+                if (!trail.IsInsideCorridor(pos.x, pos.z, out corridorDist))
+                    continue;
+
                 vs.EvaluatedTrailExits.Add(trail.TrailId);
-                
-                // Skill check
+
                 if (!_distribution.IsAllowed(vs.Skier.Skill, trail.Difficulty)) continue;
-                
-                // Use the decision engine: current trail vs crossing trail
-                var crossCtx = BuildContext(vs);
-                var crossCandidates = new List<TrailData> { vs.CurrentTrail, trail };
-                
-                var crossChosen = SkierDecisionEngine.ChooseTrail(
-                    crossCandidates, crossCtx, Config, Traffic?.State, _distribution, ComputeTrailDownstreamValue
+
+                var ctx = BuildContext(vs);
+                var candidates = new List<TrailData> { vs.CurrentTrail, trail };
+
+                var chosenTrail = SkierDecisionEngine.ChooseTrail(
+                    candidates, ctx, Config, Traffic?.State, _distribution, ComputeTrailDownstreamValue
                 );
-                
-                if (crossChosen != null && crossChosen.TrailId != vs.CurrentTrail.TrailId)
+
+                if (chosenTrail != null && chosenTrail.TrailId != vs.CurrentTrail.TrailId)
                 {
                     if (_enableDebugLogs)
-                        Debug.Log($"[Skier {vs.Skier.SkierId}] Trail crossing switch → Trail {trail.TrailId} " +
+                        Debug.Log($"[Skier {vs.Skier.SkierId}] Corridor overlap switch → Trail {trail.TrailId} " +
                             $"({trail.Difficulty}) from Trail {vs.CurrentTrail.TrailId}");
-                    
-                    // Fire events
+
                     if (Traffic != null) Traffic.FireTrailCompleted(vs.Skier.SkierId, vs.CurrentTrail.TrailId);
                     if (Traffic != null) Traffic.FireTrailIntended(vs.Skier.SkierId, trail.TrailId);
-                    
+
                     vs.CurrentTrail = trail;
                     vs.TrailsSkied.Add(trail.TrailId);
                     vs.Skier.CurrentTrailId = trail.TrailId;
                     vs.EvaluatedLiftExits.Clear();
                     vs.EvaluatedTrailExits.Clear();
-                    
-                    // Enter the crossing trail at the crossing point (not the start)
+
                     vs.Motion.SwitchTrail(trail, pos);
-                    
+
                     if (Traffic != null) Traffic.FireTrailEntered(vs.Skier.SkierId, trail.TrailId);
                     return;
                 }
@@ -1469,8 +1401,9 @@ namespace SkiResortTycoon.UnityBridge
         {
             bool switched = false;
             float progress = vs.Motion.TrailProgress;
+            Vector3 currentPos = vs.GameObject.transform.position;
 
-            // Goal-based trail switch
+            // Goal-based trail switch: use corridor overlap instead of distance-to-start
             if (vs.UseGoalBasedAI && vs.Skier.CurrentGoal != null)
             {
                 var goal = vs.Skier.CurrentGoal;
@@ -1482,39 +1415,37 @@ namespace SkiResortTycoon.UnityBridge
                         var nextStep = goal.PlannedPath[goal.CurrentPathIndex + 1];
                         if (nextStep.StepType == PathStepType.SkiTrail && nextStep.EntityId != vs.CurrentTrail.TrailId)
                         {
-                            Vector3 currentPos = vs.GameObject.transform.position;
                             var nextTrail = _trailDrawer.TrailSystem.GetTrail(nextStep.EntityId);
-                            if (nextTrail != null)
+                            float corridorDist;
+                            if (nextTrail != null && nextTrail.IsInsideCorridor(currentPos.x, currentPos.z, out corridorDist))
                             {
-                                float distToNext = FindDistanceToTrailStart(currentPos, nextTrail);
-                                if (distToNext < 20f)
-                                {
-                                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Following goal: Trail {vs.CurrentTrail.TrailId} → Trail {nextTrail.TrailId}");
-                                    vs.CurrentTrail = nextTrail;
-                                    vs.Motion.SwitchTrail(nextTrail, currentPos);
-                                    vs.HasSwitchedAtJunction = true;
-                                    goal.AdvanceToNextStep();
-                                    switched = true;
-                                }
+                                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Following goal: Trail {vs.CurrentTrail.TrailId} → Trail {nextTrail.TrailId}");
+                                vs.CurrentTrail = nextTrail;
+                                vs.Motion.SwitchTrail(nextTrail, currentPos);
+                                vs.HasSwitchedAtJunction = true;
+                                goal.AdvanceToNextStep();
+                                switched = true;
                             }
                         }
                     }
                 }
             }
 
-            // ── Downstream-aware junction switching ──
-            // Skiers seek out junctions leading to better terrain, but with moderation.
-            // Uses dead-end-aware values (ComputeTrailDecisionValue) so beginners won't
-            // switch to a green that leads to a double-black-only area.
-            // Probabilities are balanced to ensure all lifts/trails get some traffic.
+            // Downstream-aware junction switching using corridor overlap
             if (!switched && progress > 0.1f && progress < 0.9f)
             {
                 if (Mathf.Abs(progress % 0.05f) < 0.015f)
                 {
-                    float junctionRadius = Config != null ? Config.junctionDetectionRadius : 15f;
-                    Vector3 currentPos = vs.GameObject.transform.position;
-                    var nearbyTrails = FindNearbyTrailSegments(currentPos, junctionRadius);
-                    var validTrails = nearbyTrails.FindAll(t => t.TrailId != vs.CurrentTrail.TrailId);
+                    var allTrails = _trailDrawer.TrailSystem.GetAllTrails();
+                    var validTrails = new List<TrailData>();
+                    foreach (var t in allTrails)
+                    {
+                        if (!t.IsValid || t.TrailId == vs.CurrentTrail.TrailId) continue;
+                        if (t.WorldPathPoints == null || t.WorldPathPoints.Count < 2) continue;
+                        float unused;
+                        if (t.IsInsideCorridor(currentPos.x, currentPos.z, out unused))
+                            validTrails.Add(t);
+                    }
 
                     if (validTrails.Count > 0)
                     {
@@ -1546,17 +1477,11 @@ namespace SkiResortTycoon.UnityBridge
                             float exploreMin = Config != null ? Config.junctionExplorationMinValue : 0.2f;
 
                             if (improvement > majorThresh)
-                            {
                                 switchChance = majorChance;
-                            }
                             else if (improvement > moderateThresh)
-                            {
                                 switchChance = moderateChance;
-                            }
                             else if (bestJunctionValue >= exploreMin)
-                            {
                                 switchChance = exploreChance;
-                            }
 
                             if (switchChance > 0f && Random.value < switchChance)
                             {

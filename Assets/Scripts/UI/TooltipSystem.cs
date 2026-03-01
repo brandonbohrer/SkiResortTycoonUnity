@@ -19,7 +19,7 @@ namespace SkiResortTycoon.UI
         [SerializeField] private LayoutElement _layoutElement;
         
         [Header("Settings")]
-        [SerializeField] private float _showDelay = 0.5f;
+        [SerializeField] private float _showDelay = 1.0f;
         [SerializeField] private float _maxWidth = 300f;
         [SerializeField] private Vector2 _offset = new Vector2(16f, -16f);
         
@@ -186,17 +186,71 @@ namespace SkiResortTycoon.UI
     }
     
     /// <summary>
-    /// Attach to UI elements to show a tooltip on hover
+    /// Source for tooltip content
+    /// </summary>
+    public enum TooltipSource
+    {
+        Manual,      // Use manual header/content strings
+        FromTool,    // Get content from BaseTool reference
+        FromButton   // Get content from Button reference (future)
+    }
+    
+    /// <summary>
+    /// Attach to UI elements to show a tooltip on hover.
+    /// Supports manual content or automatic content from BaseTool references.
     /// </summary>
     public class TooltipTrigger : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     {
+        [Header("Content Source")]
+        [SerializeField] private TooltipSource _source = TooltipSource.Manual;
+        
+        [Header("Manual Content")]
         [SerializeField] private string _header;
         [TextArea(2, 5)]
         [SerializeField] private string _content;
         
+        [Header("Automatic Content")]
+        [Tooltip("BaseTool to get tooltip content from (when Source = FromTool)")]
+        [SerializeField] private BaseTool _toolReference;
+        
         public void OnPointerEnter(PointerEventData eventData)
         {
-            TooltipSystem.Instance?.PrepareShow(_header, _content);
+            string header = "";
+            string content = "";
+            
+            // Get content based on source
+            switch (_source)
+            {
+                case TooltipSource.Manual:
+                    header = _header;
+                    content = _content;
+                    break;
+                    
+                case TooltipSource.FromTool:
+                    if (_toolReference != null)
+                    {
+                        header = _toolReference.ToolName;
+                        content = _toolReference.ToolDescription;
+                    }
+                    else
+                    {
+                        header = "Tool";
+                        content = "No tool reference set";
+                    }
+                    break;
+                    
+                case TooltipSource.FromButton:
+                    // Future: extract from button
+                    header = _header;
+                    content = _content;
+                    break;
+            }
+            
+            // Only show if we have content
+            if (!string.IsNullOrEmpty(header) || !string.IsNullOrEmpty(content))
+            {
+                TooltipSystem.Instance?.PrepareShow(header, content);
+            }
         }
         
         public void OnPointerExit(PointerEventData eventData)
@@ -207,6 +261,25 @@ namespace SkiResortTycoon.UI
         void OnDisable()
         {
             TooltipSystem.Instance?.Hide();
+        }
+        
+        /// <summary>
+        /// Set tooltip content programmatically
+        /// </summary>
+        public void SetContent(string header, string content)
+        {
+            _header = header;
+            _content = content;
+            _source = TooltipSource.Manual;
+        }
+        
+        /// <summary>
+        /// Set tooltip to use a BaseTool for content
+        /// </summary>
+        public void SetTool(BaseTool tool)
+        {
+            _toolReference = tool;
+            _source = TooltipSource.FromTool;
         }
     }
 }

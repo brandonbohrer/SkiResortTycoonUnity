@@ -48,6 +48,48 @@ namespace SkiResortTycoon.UI
 
             if (_simulationRunner != null && _simulationRunner.Sim != null)
                 _displayedMoney = _simulationRunner.Sim.State.Money;
+            
+            // Setup tooltips for stat displays
+            SetupStatTooltips();
+        }
+        
+        private void SetupStatTooltips()
+        {
+            if (_dayText != null)
+                SetupTooltip(_dayText, TooltipTexts.Stats.DayHeader, TooltipTexts.Stats.DayContent);
+            
+            if (_timeText != null)
+                SetupTooltip(_timeText, TooltipTexts.Stats.TimeHeader, TooltipTexts.Stats.TimeContent);
+            
+            if (_moneyText != null)
+                SetupTooltip(_moneyText, TooltipTexts.Stats.MoneyHeader, TooltipTexts.Stats.MoneyContent);
+            
+            if (_visitorText != null)
+                SetupTooltip(_visitorText, TooltipTexts.Stats.VisitorsHeader, TooltipTexts.Stats.VisitorsContent);
+            
+            if (_trailsText != null)
+                SetupTooltip(_trailsText, TooltipTexts.Stats.TrailsHeader, TooltipTexts.Stats.TrailsContent);
+            
+            if (_liftsText != null)
+                SetupTooltip(_liftsText, TooltipTexts.Stats.LiftsHeader, TooltipTexts.Stats.LiftsContent);
+            
+            if (_lodgesText != null)
+                SetupTooltip(_lodgesText, TooltipTexts.Stats.LodgesHeader, TooltipTexts.Stats.LodgesContent);
+            
+            if (_satisfactionText != null)
+                SetupTooltip(_satisfactionText, TooltipTexts.Stats.SatisfactionHeader, TooltipTexts.Stats.SatisfactionContent);
+        }
+        
+        private void SetupTooltip(TextMeshProUGUI text, string header, string content)
+        {
+            if (text == null) return;
+            
+            var tooltipTrigger = text.GetComponent<TooltipTrigger>();
+            if (tooltipTrigger == null)
+            {
+                tooltipTrigger = text.gameObject.AddComponent<TooltipTrigger>();
+            }
+            tooltipTrigger.SetContent(header, content);
         }
 
         void Update()

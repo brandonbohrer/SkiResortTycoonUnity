@@ -49,18 +49,42 @@ namespace SkiResortTycoon.UI
 
             // Wire button listeners
             if (_pauseButton != null)
+            {
                 _pauseButton.onClick.AddListener(OnPauseToggle);
+                SetupTooltip(_pauseButton, TooltipTexts.TimeControls.PauseHeader, TooltipTexts.TimeControls.PauseContent);
+            }
 
             if (_speed1xButton != null)
+            {
                 _speed1xButton.onClick.AddListener(() => OnSpeedChange(TimeController.Speed1x));
+                SetupTooltip(_speed1xButton, TooltipTexts.TimeControls.Speed1xHeader, TooltipTexts.TimeControls.Speed1xContent);
+            }
 
             if (_speed2xButton != null)
+            {
                 _speed2xButton.onClick.AddListener(() => OnSpeedChange(TimeController.Speed2x));
+                SetupTooltip(_speed2xButton, TooltipTexts.TimeControls.Speed2xHeader, TooltipTexts.TimeControls.Speed2xContent);
+            }
 
             if (_speed3xButton != null)
+            {
                 _speed3xButton.onClick.AddListener(() => OnSpeedChange(TimeController.Speed3x));
+                SetupTooltip(_speed3xButton, TooltipTexts.TimeControls.Speed3xHeader, TooltipTexts.TimeControls.Speed3xContent);
+            }
 
             RefreshVisuals();
+        }
+        
+        private void SetupTooltip(Button button, string header, string content)
+        {
+            if (button == null) return;
+            
+            var tooltipTrigger = button.GetComponent<TooltipTrigger>();
+            if (tooltipTrigger == null)
+            {
+                tooltipTrigger = button.gameObject.AddComponent<TooltipTrigger>();
+            }
+            tooltipTrigger.SetContent(header, content);
         }
 
         void Update()

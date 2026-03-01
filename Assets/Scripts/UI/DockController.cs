@@ -61,13 +61,21 @@ namespace SkiResortTycoon.UI
             }
 
             if (_closeButton != null)
+            {
                 _closeButton.onClick.AddListener(CloseDock);
+                SetupTooltip(_closeButton, TooltipTexts.Dock.CloseHeader, TooltipTexts.Dock.CloseContent);
+            }
 
             for (int i = 0; i < _categories.Length; i++)
             {
                 int idx = i;
                 if (_categories[i].button != null)
+                {
                     _categories[i].button.onClick.AddListener(() => OnCategoryClicked(idx));
+                    // Add tooltip for category button
+                    var categoryName = _categories[i].subRow != null ? _categories[i].subRow.name : "Category";
+                    SetupTooltip(_categories[i].button, categoryName, TooltipTexts.Dock.GetCategoryContent(categoryName));
+                }
             }
 
             // Trail mode buttons
@@ -75,9 +83,26 @@ namespace SkiResortTycoon.UI
             CacheButtonColor(_lineModeButton,  out _lineOriginal);
             CacheButtonColor(_penModeButton,   out _penOriginal);
 
-            if (_paintModeButton != null) _paintModeButton.onClick.AddListener(() => SetTrailMode(TrailDrawMode.Paint));
-            if (_lineModeButton  != null) _lineModeButton.onClick.AddListener(()  => SetTrailMode(TrailDrawMode.Line));
-            if (_penModeButton   != null) _penModeButton.onClick.AddListener(()   => SetTrailMode(TrailDrawMode.Pen));
+            if (_paintModeButton != null)
+            {
+                _paintModeButton.onClick.AddListener(() => SetTrailMode(TrailDrawMode.Paint));
+                SetupTooltip(_paintModeButton, TooltipTexts.Dock.PaintModeHeader, TooltipTexts.Dock.PaintModeContent);
+            }
+            if (_lineModeButton != null)
+            {
+                _lineModeButton.onClick.AddListener(() => SetTrailMode(TrailDrawMode.Line));
+                SetupTooltip(_lineModeButton, TooltipTexts.Dock.LineModeHeader, TooltipTexts.Dock.LineModeContent);
+            }
+            if (_penModeButton != null)
+            {
+                _penModeButton.onClick.AddListener(() => SetTrailMode(TrailDrawMode.Pen));
+                SetupTooltip(_penModeButton, TooltipTexts.Dock.PenModeHeader, TooltipTexts.Dock.PenModeContent);
+            }
+            
+            if (_trailWidthSlider != null)
+            {
+                SetupTooltip(_trailWidthSlider, TooltipTexts.Dock.TrailWidthHeader, TooltipTexts.Dock.TrailWidthContent);
+            }
 
             if (_trailWidthSlider != null)
             {
@@ -225,6 +250,30 @@ namespace SkiResortTycoon.UI
 
         /// <summary>Returns the index of the currently active category, or -1 if closed.</summary>
         public int ActiveIndex => _activeIndex;
+        
+        private void SetupTooltip(Button button, string header, string content)
+        {
+            if (button == null) return;
+            
+            var tooltipTrigger = button.GetComponent<TooltipTrigger>();
+            if (tooltipTrigger == null)
+            {
+                tooltipTrigger = button.gameObject.AddComponent<TooltipTrigger>();
+            }
+            tooltipTrigger.SetContent(header, content);
+        }
+        
+        private void SetupTooltip(Slider slider, string header, string content)
+        {
+            if (slider == null) return;
+            
+            var tooltipTrigger = slider.GetComponent<TooltipTrigger>();
+            if (tooltipTrigger == null)
+            {
+                tooltipTrigger = slider.gameObject.AddComponent<TooltipTrigger>();
+            }
+            tooltipTrigger.SetContent(header, content);
+        }
     }
 
     // ── Data type ─────────────────────────────────────────────────────────────

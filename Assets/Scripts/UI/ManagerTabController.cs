@@ -29,7 +29,10 @@ namespace SkiResortTycoon.UI
         {
             // Wire close button
             if (_closeButton != null)
+            {
                 _closeButton.onClick.AddListener(() => UIManager.Instance?.CloseManager());
+                SetupTooltip(_closeButton, TooltipTexts.ManagerTabs.CloseHeader, TooltipTexts.ManagerTabs.CloseContent);
+            }
 
             // Cache original button colors
             _originalColors = new Color[_tabs.Length];
@@ -39,12 +42,21 @@ namespace SkiResortTycoon.UI
                 _originalColors[i] = img != null ? img.color : Color.white;
             }
 
-            // Wire click listeners
+            // Wire click listeners and add tooltips
+            string[] tabHeaders = { TooltipTexts.ManagerTabs.OverviewHeader, TooltipTexts.ManagerTabs.FinancesHeader, TooltipTexts.ManagerTabs.PricingHeader, TooltipTexts.ManagerTabs.GuestsHeader };
+            string[] tabContents = { TooltipTexts.ManagerTabs.OverviewContent, TooltipTexts.ManagerTabs.FinancesContent, TooltipTexts.ManagerTabs.PricingContent, TooltipTexts.ManagerTabs.GuestsContent };
+            
             for (int i = 0; i < _tabs.Length; i++)
             {
                 int idx = i;
                 if (_tabs[i].button != null)
+                {
                     _tabs[i].button.onClick.AddListener(() => SelectTab(idx));
+                    // Add tooltip
+                    string tabHeader = i < tabHeaders.Length ? tabHeaders[i] : "Tab";
+                    string tabContent = i < tabContents.Length ? tabContents[i] : "View tab information.";
+                    SetupTooltip(_tabs[i].button, tabHeader, tabContent);
+                }
             }
 
             // Auto-select Overview (index 0) on start
@@ -79,5 +91,17 @@ namespace SkiResortTycoon.UI
         }
 
         public int ActiveTab => _activeTab;
+        
+        private void SetupTooltip(Button button, string header, string content)
+        {
+            if (button == null) return;
+            
+            var tooltipTrigger = button.GetComponent<TooltipTrigger>();
+            if (tooltipTrigger == null)
+            {
+                tooltipTrigger = button.gameObject.AddComponent<TooltipTrigger>();
+            }
+            tooltipTrigger.SetContent(header, content);
+        }
     }
 }

@@ -115,6 +115,14 @@ namespace SkiResortTycoon.UI
                 int tabIndex = i; // Capture for closure
                 button.onClick.AddListener(() => SelectTab(tabIndex));
                 
+                // Add tooltip to tab button
+                var tooltipTrigger = buttonObj.GetComponent<TooltipTrigger>();
+                if (tooltipTrigger == null)
+                {
+                    tooltipTrigger = buttonObj.AddComponent<TooltipTrigger>();
+                }
+                tooltipTrigger.SetContent(tab.TabName, TooltipTexts.BuildActionBar.GetTabContent(tab.TabName));
+                
                 _tabButtons.Add(button);
             }
         }
@@ -170,6 +178,14 @@ namespace SkiResortTycoon.UI
                 // Add click listener
                 var capturedTool = tool; // Capture for closure
                 button.onClick.AddListener(() => OnToolButtonClicked(capturedTool));
+                
+                // Add tooltip to tool button
+                var tooltipTrigger = buttonObj.GetComponent<TooltipTrigger>();
+                if (tooltipTrigger == null)
+                {
+                    tooltipTrigger = buttonObj.AddComponent<TooltipTrigger>();
+                }
+                tooltipTrigger.SetTool(capturedTool);
                 
                 _toolButtons.Add(button);
             }

@@ -19,6 +19,7 @@ namespace SkiResortTycoon.UI
         private Button _button;
         private Image _buttonImage;
         private Color _originalColor;
+        private TooltipTrigger _tooltipTrigger;
 
         void Start()
         {
@@ -31,6 +32,25 @@ namespace SkiResortTycoon.UI
             var uiManager = UIManager.Instance;
             if (uiManager != null)
                 uiManager.OnToolChanged.AddListener(OnToolChanged);
+            
+            // Setup tooltip
+            SetupTooltip();
+        }
+        
+        private void SetupTooltip()
+        {
+            // Ensure TooltipTrigger exists
+            _tooltipTrigger = GetComponent<TooltipTrigger>();
+            if (_tooltipTrigger == null)
+            {
+                _tooltipTrigger = gameObject.AddComponent<TooltipTrigger>();
+            }
+            
+            // Set tooltip to use the tool reference
+            if (_tool != null)
+            {
+                _tooltipTrigger.SetTool(_tool);
+            }
         }
 
         void OnDestroy()

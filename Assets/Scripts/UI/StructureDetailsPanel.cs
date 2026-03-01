@@ -59,18 +59,21 @@ namespace SkiResortTycoon.UI
             {
                 _closeButton.onClick.RemoveAllListeners();
                 _closeButton.onClick.AddListener(OnCloseClicked);
+                SetupTooltip(_closeButton, TooltipTexts.StructureDetails.CloseHeader, TooltipTexts.StructureDetails.CloseContent);
             }
             
             if (_renameButton != null)
             {
                 _renameButton.onClick.RemoveAllListeners();
                 _renameButton.onClick.AddListener(OnRenameClicked);
+                SetupTooltip(_renameButton, TooltipTexts.StructureDetails.RenameHeader, TooltipTexts.StructureDetails.RenameContent);
             }
             
             if (_deleteButton != null)
             {
                 _deleteButton.onClick.RemoveAllListeners();
                 _deleteButton.onClick.AddListener(OnDeleteClicked);
+                SetupTooltip(_deleteButton, TooltipTexts.StructureDetails.DeleteHeader, TooltipTexts.StructureDetails.DeleteContent);
             }
             
             if (_upgradeButton != null)
@@ -78,6 +81,7 @@ namespace SkiResortTycoon.UI
                 _upgradeButton.onClick.RemoveAllListeners();
                 _upgradeButton.onClick.AddListener(OnUpgradeClicked);
                 _upgradeButton.interactable = false; // Not implemented yet
+                SetupTooltip(_upgradeButton, TooltipTexts.StructureDetails.UpgradeHeader, TooltipTexts.StructureDetails.UpgradeContent);
             }
             
             Debug.Log($"[StructureDetailsPanel] Start() - buttons wired: close={_closeButton != null}, delete={_deleteButton != null}, rename={_renameButton != null}");
@@ -788,6 +792,18 @@ namespace SkiResortTycoon.UI
         private void OnUpgradeClicked()
         {
             NotificationManager.Instance?.ShowInfo("Upgrades coming in a future update!");
+        }
+        
+        private void SetupTooltip(Button button, string header, string content)
+        {
+            if (button == null) return;
+            
+            var tooltipTrigger = button.GetComponent<TooltipTrigger>();
+            if (tooltipTrigger == null)
+            {
+                tooltipTrigger = button.gameObject.AddComponent<TooltipTrigger>();
+            }
+            tooltipTrigger.SetContent(header, content);
         }
     }
 }

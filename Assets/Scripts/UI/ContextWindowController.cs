@@ -200,16 +200,28 @@ namespace SkiResortTycoon.UI
         private void Start()
         {
             if (_closeButton != null)
+            {
                 _closeButton.onClick.AddListener(OnCloseClicked);
+                SetupTooltip(_closeButton, TooltipTexts.ContextWindow.CloseHeader, TooltipTexts.ContextWindow.CloseContent);
+            }
 
             if (_trailOpenToggle != null)
+            {
                 _trailOpenToggle.onValueChanged.AddListener(OnOpenToggleChanged);
+                SetupTooltip(_trailOpenToggle, TooltipTexts.ContextWindow.TrailStatusHeader, TooltipTexts.ContextWindow.TrailStatusContent);
+            }
 
             if (_liftOpenToggle != null)
+            {
                 _liftOpenToggle.onValueChanged.AddListener(OnLiftOpenToggleChanged);
+                SetupTooltip(_liftOpenToggle, TooltipTexts.ContextWindow.LiftStatusHeader, TooltipTexts.ContextWindow.LiftStatusContent);
+            }
 
             if (_lodgeOpenToggle != null)
+            {
                 _lodgeOpenToggle.onValueChanged.AddListener(OnLodgeOpenToggleChanged);
+                SetupTooltip(_lodgeOpenToggle, TooltipTexts.ContextWindow.LodgeStatusHeader, TooltipTexts.ContextWindow.LodgeStatusContent);
+            }
 
             if (_buffetDecrementButton != null)
                 _buffetDecrementButton.onClick.AddListener(OnBuffetDecrement);
@@ -993,6 +1005,30 @@ namespace SkiResortTycoon.UI
         private void OnFollowClicked()
         {
             // Not yet implemented
+        }
+        
+        private void SetupTooltip(Button button, string header, string content)
+        {
+            if (button == null) return;
+            
+            var tooltipTrigger = button.GetComponent<TooltipTrigger>();
+            if (tooltipTrigger == null)
+            {
+                tooltipTrigger = button.gameObject.AddComponent<TooltipTrigger>();
+            }
+            tooltipTrigger.SetContent(header, content);
+        }
+        
+        private void SetupTooltip(Toggle toggle, string header, string content)
+        {
+            if (toggle == null) return;
+            
+            var tooltipTrigger = toggle.GetComponent<TooltipTrigger>();
+            if (tooltipTrigger == null)
+            {
+                tooltipTrigger = toggle.gameObject.AddComponent<TooltipTrigger>();
+            }
+            tooltipTrigger.SetContent(header, content);
         }
     }
 }

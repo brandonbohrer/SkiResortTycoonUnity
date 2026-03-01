@@ -89,10 +89,26 @@ namespace SkiResortTycoon.UI
                 _timeController = _simulationRunner.Sim.TimeController;
 
             // Wire menu / resume / quit buttons
-            if (_menuButton   != null) _menuButton.onClick.AddListener(ToggleMenu);
-            if (_resumeButton != null) _resumeButton.onClick.AddListener(CloseMenu);
-            if (_quitButton   != null) _quitButton.onClick.AddListener(QuitGame);
-            if (_managerButton != null) _managerButton.onClick.AddListener(OpenManager);
+            if (_menuButton   != null)
+            {
+                _menuButton.onClick.AddListener(ToggleMenu);
+                SetupTooltip(_menuButton, TooltipTexts.Menu.MenuHeader, TooltipTexts.Menu.MenuContent);
+            }
+            if (_resumeButton != null)
+            {
+                _resumeButton.onClick.AddListener(CloseMenu);
+                SetupTooltip(_resumeButton, TooltipTexts.Menu.ResumeHeader, TooltipTexts.Menu.ResumeContent);
+            }
+            if (_quitButton   != null)
+            {
+                _quitButton.onClick.AddListener(QuitGame);
+                SetupTooltip(_quitButton, TooltipTexts.Menu.QuitHeader, TooltipTexts.Menu.QuitContent);
+            }
+            if (_managerButton != null)
+            {
+                _managerButton.onClick.AddListener(OpenManager);
+                SetupTooltip(_managerButton, TooltipTexts.Menu.ManagerHeader, TooltipTexts.Menu.ManagerContent);
+            }
 
             // Ensure overlays start closed
             if (_mainMenuOverlay != null) _mainMenuOverlay.SetActive(false);
@@ -426,6 +442,18 @@ namespace SkiResortTycoon.UI
         public bool HasActiveTool()
         {
             return _activeTool != null;
+        }
+        
+        private void SetupTooltip(Button button, string header, string content)
+        {
+            if (button == null) return;
+            
+            var tooltipTrigger = button.GetComponent<TooltipTrigger>();
+            if (tooltipTrigger == null)
+            {
+                tooltipTrigger = button.gameObject.AddComponent<TooltipTrigger>();
+            }
+            tooltipTrigger.SetContent(header, content);
         }
     }
 }

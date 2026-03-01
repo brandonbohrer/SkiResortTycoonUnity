@@ -350,56 +350,99 @@ namespace SkiResortTycoon.Core
 
         /// <summary>
         /// Generates left and right boundary edges from the centerline path.
-        /// Boundaries are perpendicular offsets at TrailWidth/2 distance from center.
+        /// Perpendicular is computed in the XZ plane only (Y-up world) so that
+        /// boundary width matches the horizontal tree-clearing corridor exactly.
+        /// Uses miter joins at interior points so the perpendicular distance stays
+        /// constant through curves.  Y is copied from the centerline and will be
+        /// terrain-projected by TrailDrawer after this call.
         /// </summary>
         public void GenerateBoundaries()
         {
             LeftBoundaryPoints.Clear();
             RightBoundaryPoints.Clear();
-            
+
             if (WorldPathPoints.Count < 2)
-            {
-                // Not enough points to generate boundaries
                 return;
-            }
-            
+
             float halfWidth = TrailWidth / 2f;
-            Vector3f up = new Vector3f(0, 0, 1); // Z-up axis for cross product
-            
+            const float MAX_MITER = 2f;
+
             for (int i = 0; i < WorldPathPoints.Count; i++)
             {
-                Vector3f currentPoint = WorldPathPoints[i];
-                Vector3f direction;
-                
-                // Calculate direction vector for this point
+                Vector3f pt = WorldPathPoints[i];
+                float perpX, perpZ;
+                float miterScale = 1f;
+
                 if (i == 0)
                 {
-                    // First point: use direction to next point
-                    direction = (WorldPathPoints[i + 1] - currentPoint).Normalized();
+                    XZPerp(WorldPathPoints[0], WorldPathPoints[1], out perpX, out perpZ);
                 }
                 else if (i == WorldPathPoints.Count - 1)
                 {
-                    // Last point: use direction from previous point
-                    direction = (currentPoint - WorldPathPoints[i - 1]).Normalized();
+                    XZPerp(WorldPathPoints[i - 1], WorldPathPoints[i], out perpX, out perpZ);
                 }
                 else
                 {
-                    // Middle points: average direction from previous and to next
-                    Vector3f dirToPrev = (currentPoint - WorldPathPoints[i - 1]).Normalized();
-                    Vector3f dirToNext = (WorldPathPoints[i + 1] - currentPoint).Normalized();
-                    direction = (dirToPrev + dirToNext).Normalized();
+                    // Miter join: average the normals of the two adjacent segments
+                    // then scale so the perpendicular distance to each segment stays
+                    // exactly halfWidth.
+                    float n1x, n1z, n2x, n2z;
+                    XZPerp(WorldPathPoints[i - 1], WorldPathPoints[i], out n1x, out n1z);
+                    XZPerp(WorldPathPoints[i], WorldPathPoints[i + 1], out n2x, out n2z);
+
+                    perpX = n1x + n2x;
+                    perpZ = n1z + n2z;
+                    float mLen = (float)System.Math.Sqrt(perpX * perpX + perpZ * perpZ);
+
+                    if (mLen < 0.0001f)
+                    {
+                        perpX = n1x;
+                        perpZ = n1z;
+                    }
+                    else
+                    {
+                        perpX /= mLen;
+                        perpZ /= mLen;
+
+                        float dot = perpX * n1x + perpZ * n1z;
+                        if (dot > 0.0001f)
+                            miterScale = 1f / dot;
+                        else
+                            miterScale = MAX_MITER;
+
+                        if (miterScale > MAX_MITER)
+                            miterScale = MAX_MITER;
+                    }
                 }
-                
-                // Calculate perpendicular offset (cross product with up vector)
-                Vector3f perpendicular = Vector3f.Cross(direction, up).Normalized();
-                
-                // Generate left and right boundary points
-                Vector3f leftPoint = currentPoint + perpendicular * halfWidth;
-                Vector3f rightPoint = currentPoint - perpendicular * halfWidth;
-                
-                LeftBoundaryPoints.Add(leftPoint);
-                RightBoundaryPoints.Add(rightPoint);
+
+                float ox = perpX * halfWidth * miterScale;
+                float oz = perpZ * halfWidth * miterScale;
+
+                LeftBoundaryPoints.Add(new Vector3f(pt.X + ox, pt.Y, pt.Z + oz));
+                RightBoundaryPoints.Add(new Vector3f(pt.X - ox, pt.Y, pt.Z - oz));
             }
+        }
+
+        /// <summary>
+        /// Returns the unit-length XZ perpendicular (left-hand normal) of the
+        /// segment from <paramref name="a"/> to <paramref name="b"/>.
+        /// Y is ignored so the offset is always horizontal.
+        /// </summary>
+        private static void XZPerp(Vector3f a, Vector3f b, out float perpX, out float perpZ)
+        {
+            float dx = b.X - a.X;
+            float dz = b.Z - a.Z;
+            float len = (float)System.Math.Sqrt(dx * dx + dz * dz);
+            if (len < 0.0001f)
+            {
+                perpX = 1f;
+                perpZ = 0f;
+                return;
+            }
+            dx /= len;
+            dz /= len;
+            perpX = -dz;
+            perpZ = dx;
         }
     }
 }

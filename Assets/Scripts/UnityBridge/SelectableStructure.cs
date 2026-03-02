@@ -353,9 +353,8 @@ namespace SkiResortTycoon.UnityBridge
             var container = new GameObject("TrailColliders");
             container.transform.SetParent(transform, true);
             
-            // Radius matches the visible trail line width
-            float lineWidth = (_lineRenderer != null) ? _lineRenderer.startWidth : 0.8f;
-            float radius = Mathf.Max(lineWidth * 0.5f, 0.5f);
+            // Radius spans the full corridor so the entire area between boundaries is clickable
+            float radius = _trailData.TrailWidth * 0.5f;
             
             // Step through path points, placing one capsule per segment.
             // Cap at ~80 capsules for performance.

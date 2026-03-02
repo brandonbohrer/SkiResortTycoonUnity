@@ -29,8 +29,8 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private float _boundaryLineWidth = 0.5f;
         
         
-        private Dictionary<int, LineRenderer> _leftBoundaryRenderers = new Dictionary<int, LineRenderer>();
-        private Dictionary<int, LineRenderer> _rightBoundaryRenderers = new Dictionary<int, LineRenderer>();
+        private Dictionary<int, List<LineRenderer>> _leftBoundarySegments = new Dictionary<int, List<LineRenderer>>();
+        private Dictionary<int, List<LineRenderer>> _rightBoundarySegments = new Dictionary<int, List<LineRenderer>>();
         // Legacy centerline renderers kept only for the SelectableStructure reference
         private Dictionary<int, GameObject> _trailRootObjects = new Dictionary<int, GameObject>();
         private LineRenderer _currentTrailRenderer;
@@ -50,14 +50,8 @@ namespace SkiResortTycoon.UnityBridge
         {
             // Remove renderers for deleted trails
             List<int> toRemove = new List<int>();
-            foreach (var kvp in _leftBoundaryRenderers)
+            foreach (var kvp in _leftBoundarySegments)
             {
-                if (kvp.Value == null)
-                {
-                    toRemove.Add(kvp.Key);
-                    continue;
-                }
-                
                 bool found = false;
                 foreach (var trail in _trailDrawer.TrailSystem.Trails)
                 {
@@ -66,10 +60,12 @@ namespace SkiResortTycoon.UnityBridge
                 
                 if (!found)
                 {
-                    if (_leftBoundaryRenderers.ContainsKey(kvp.Key) && _leftBoundaryRenderers[kvp.Key] != null)
-                        Destroy(_leftBoundaryRenderers[kvp.Key].gameObject);
-                    if (_rightBoundaryRenderers.ContainsKey(kvp.Key) && _rightBoundaryRenderers[kvp.Key] != null)
-                        Destroy(_rightBoundaryRenderers[kvp.Key].gameObject);
+                    if (_leftBoundarySegments.ContainsKey(kvp.Key))
+                        foreach (var lr in _leftBoundarySegments[kvp.Key])
+                            if (lr != null) Destroy(lr.gameObject);
+                    if (_rightBoundarySegments.ContainsKey(kvp.Key))
+                        foreach (var lr in _rightBoundarySegments[kvp.Key])
+                            if (lr != null) Destroy(lr.gameObject);
                     if (_trailRootObjects.ContainsKey(kvp.Key) && _trailRootObjects[kvp.Key] != null)
                         Destroy(_trailRootObjects[kvp.Key]);
                     toRemove.Add(kvp.Key);
@@ -78,8 +74,8 @@ namespace SkiResortTycoon.UnityBridge
             
             foreach (int id in toRemove)
             {
-                _leftBoundaryRenderers.Remove(id);
-                _rightBoundaryRenderers.Remove(id);
+                _leftBoundarySegments.Remove(id);
+                _rightBoundarySegments.Remove(id);
                 _trailRootObjects.Remove(id);
             }
             
@@ -103,35 +99,17 @@ namespace SkiResortTycoon.UnityBridge
                     _trailRootObjects[trail.TrailId] = rootObj;
                 }
                 
-                // Left boundary
-                if (!_leftBoundaryRenderers.ContainsKey(trail.TrailId))
-                {
-                    GameObject leftObj = new GameObject($"Trail_{trail.TrailId}_LeftBoundary");
-                    leftObj.transform.SetParent(transform);
-                    LineRenderer leftLr = leftObj.AddComponent<LineRenderer>();
-                    ConfigureBoundaryRenderer(leftLr);
-                    _leftBoundaryRenderers[trail.TrailId] = leftLr;
-                }
-                LineRenderer leftRenderer = _leftBoundaryRenderers[trail.TrailId];
-                leftRenderer.startColor = trailColor;
-                leftRenderer.endColor = trailColor;
-                leftRenderer.enabled = true;
-                UpdateLinePositions(leftRenderer, trail.LeftBoundaryPoints);
-                
-                // Right boundary
-                if (!_rightBoundaryRenderers.ContainsKey(trail.TrailId))
-                {
-                    GameObject rightObj = new GameObject($"Trail_{trail.TrailId}_RightBoundary");
-                    rightObj.transform.SetParent(transform);
-                    LineRenderer rightLr = rightObj.AddComponent<LineRenderer>();
-                    ConfigureBoundaryRenderer(rightLr);
-                    _rightBoundaryRenderers[trail.TrailId] = rightLr;
-                }
-                LineRenderer rightRenderer = _rightBoundaryRenderers[trail.TrailId];
-                rightRenderer.startColor = trailColor;
-                rightRenderer.endColor = trailColor;
-                rightRenderer.enabled = true;
-                UpdateLinePositions(rightRenderer, trail.RightBoundaryPoints);
+                // Boundaries as segments — only visible runs are drawn, hard cutoff at overlaps
+                var allTrails = _trailDrawer.TrailSystem.Trails;
+                var root = _trailRootObjects[trail.TrailId].transform;
+
+                if (!_leftBoundarySegments.ContainsKey(trail.TrailId))
+                    _leftBoundarySegments[trail.TrailId] = new List<LineRenderer>();
+                if (!_rightBoundarySegments.ContainsKey(trail.TrailId))
+                    _rightBoundarySegments[trail.TrailId] = new List<LineRenderer>();
+
+                ApplyOverlapSegments(_leftBoundarySegments[trail.TrailId], trail.LeftBoundaryPoints, trail.TrailId, allTrails, trailColor, root, "Left");
+                ApplyOverlapSegments(_rightBoundarySegments[trail.TrailId], trail.RightBoundaryPoints, trail.TrailId, allTrails, trailColor, root, "Right");
             }
         }
         
@@ -236,13 +214,103 @@ namespace SkiResortTycoon.UnityBridge
             lr.textureMode = LineTextureMode.Tile;
         }
         
+        /// <summary>
+        /// Splits a boundary into segments — only draws visible runs (points outside
+        /// other trails' corridors). Creates a hard cutoff at overlap boundaries.
+        /// </summary>
+        private void ApplyOverlapSegments(
+            List<LineRenderer> segments,
+            List<Vector3f> boundaryPoints,
+            int ownTrailId,
+            List<TrailData> allTrails,
+            Color baseColor,
+            Transform parent,
+            string sideName)
+        {
+            if (boundaryPoints.Count < 2) return;
+
+            // Mark points hidden if inside another trail's corridor
+            bool[] hidden = new bool[boundaryPoints.Count];
+            for (int i = 0; i < boundaryPoints.Count; i++)
+            {
+                var pt = boundaryPoints[i];
+                foreach (var other in allTrails)
+                {
+                    if (other.TrailId == ownTrailId || !other.IsValid) continue;
+                    if (other.WorldPathPoints == null || other.WorldPathPoints.Count < 2) continue;
+                    float unused;
+                    if (other.IsInsideCorridor(pt.X, pt.Z, out unused))
+                    {
+                        hidden[i] = true;
+                        break;
+                    }
+                }
+            }
+
+            // Find visible runs (consecutive visible points, length >= 2)
+            var runs = new List<(int start, int count)>();
+            int runStart = -1;
+            for (int i = 0; i < boundaryPoints.Count; i++)
+            {
+                if (!hidden[i])
+                {
+                    if (runStart < 0) runStart = i;
+                }
+                else
+                {
+                    if (runStart >= 0)
+                    {
+                        int count = i - runStart;
+                        if (count >= 2) runs.Add((runStart, count));
+                        runStart = -1;
+                    }
+                }
+            }
+            if (runStart >= 0)
+            {
+                int count = boundaryPoints.Count - runStart;
+                if (count >= 2) runs.Add((runStart, count));
+            }
+
+            // Ensure we have enough segment LineRenderers
+            while (segments.Count < runs.Count)
+            {
+                var go = new GameObject($"Boundary_{sideName}_Seg{segments.Count}");
+                go.transform.SetParent(parent);
+                var lr = go.AddComponent<LineRenderer>();
+                ConfigureBoundaryRenderer(lr);
+                segments.Add(lr);
+            }
+
+            // Assign each run to a segment
+            for (int s = 0; s < runs.Count; s++)
+            {
+                var (start, count) = runs[s];
+                var lr = segments[s];
+                lr.enabled = true;
+                lr.startColor = baseColor;
+                lr.endColor = baseColor;
+
+                var runPoints = new List<Vector3f>();
+                for (int i = start; i < start + count; i++)
+                    runPoints.Add(boundaryPoints[i]);
+                UpdateLinePositions(lr, runPoints);
+            }
+
+            // Disable excess segments
+            for (int s = runs.Count; s < segments.Count; s++)
+                segments[s].enabled = false;
+        }
+
         void OnDestroy()
         {
-            foreach (var kvp in _leftBoundaryRenderers)
-                if (kvp.Value != null) Destroy(kvp.Value.gameObject);
+            foreach (var kvp in _leftBoundarySegments)
+                foreach (var lr in kvp.Value)
+                    if (lr != null) Destroy(lr.gameObject);
             
-            foreach (var kvp in _rightBoundaryRenderers)
-                if (kvp.Value != null) Destroy(kvp.Value.gameObject);
+            foreach (var kvp in _rightBoundarySegments)
+                foreach (var lr in kvp.Value)
+                    if (lr != null) Destroy(lr.gameObject);
             
             foreach (var kvp in _trailRootObjects)
                 if (kvp.Value != null) Destroy(kvp.Value);

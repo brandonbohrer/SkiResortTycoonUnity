@@ -145,8 +145,24 @@ namespace SkiResortTycoon.Core
                 }
                 else
                 {
-                    if (i == 0) WorldPathPoints.Add(a.Position);
-                    WorldPathPoints.Add(b.Position);
+                    // Subdivide linear segments so intermediate points can be
+                    // terrain-projected, preventing the boundary lines from
+                    // floating between the two endpoints on long straight runs.
+                    float segLen = Vector3f.Distance(a.Position, b.Position);
+                    int samples = System.Math.Max(1, (int)(segLen / 2f));
+                    if (samples > BezierSamplesPerSegment)
+                        samples = BezierSamplesPerSegment;
+
+                    for (int s = 0; s <= samples; s++)
+                    {
+                        if (s == 0 && i > 0) continue;
+                        float t = s / (float)samples;
+                        WorldPathPoints.Add(new Vector3f(
+                            a.Position.X + (b.Position.X - a.Position.X) * t,
+                            a.Position.Y + (b.Position.Y - a.Position.Y) * t,
+                            a.Position.Z + (b.Position.Z - a.Position.Z) * t
+                        ));
+                    }
                 }
             }
 

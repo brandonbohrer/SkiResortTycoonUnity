@@ -382,12 +382,14 @@ namespace SkiResortTycoon.UnityBridge
             Ray ray = _camera.ScreenPointToRay(Input.mousePosition);
             SelectableStructure hitStructure = null;
             
-            // RaycastAll so we can prioritize skiers over trails when both are under the cursor.
-            // Trail corridor colliders are large; skiers have small sphere colliders.
-            // When a skier is on a trail, we want to select the skier, not the trail.
+            // RaycastAll so we can prioritize by type when multiple structures overlap.
+            // Priority: Skier > Lift > Trail/other. Skiers on lifts or trails select the skier.
+            // Lifts built over trails select the lift, not the trail.
             RaycastHit[] hits = Physics.RaycastAll(ray, _raycastDistance);
             SelectableStructure closestSkier = null;
             float closestSkierDist = float.MaxValue;
+            SelectableStructure closestLift = null;
+            float closestLiftDist = float.MaxValue;
             SelectableStructure closestAny = null;
             float closestAnyDist = float.MaxValue;
 
@@ -401,6 +403,11 @@ namespace SkiResortTycoon.UnityBridge
                     closestSkier = sel;
                     closestSkierDist = hit.distance;
                 }
+                if (sel.Type == StructureType.Lift && hit.distance < closestLiftDist)
+                {
+                    closestLift = sel;
+                    closestLiftDist = hit.distance;
+                }
                 if (hit.distance < closestAnyDist)
                 {
                     closestAny = sel;
@@ -408,7 +415,7 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
 
-            hitStructure = closestSkier != null ? closestSkier : closestAny;
+            hitStructure = closestSkier ?? closestLift ?? closestAny;
             
             // Handle hover state changes
             if (hitStructure != _hoveredStructure)

@@ -32,6 +32,7 @@ namespace SkiResortTycoon.Core
     public class Skier
     {
         public int SkierId { get; set; }
+        public string DisplayName { get; set; }
         public SkillLevel Skill { get; set; }
         public int RunsCompleted { get; set; }
         public bool WasServed { get; set; }  // Did they get to ski at least once?
@@ -53,6 +54,7 @@ namespace SkiResortTycoon.Core
         public Skier(int id, SkillLevel skill)
         {
             SkierId = id;
+            DisplayName = SkierNames.GetRandomName();
             Skill = skill;
             RunsCompleted = 0;
             WasServed = false;

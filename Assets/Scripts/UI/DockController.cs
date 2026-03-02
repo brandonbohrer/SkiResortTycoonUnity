@@ -123,6 +123,8 @@ namespace SkiResortTycoon.UI
                 _trailWidthSlider.value = 50f;
                 _trailWidthSlider.onValueChanged.AddListener(OnTrailWidthChanged);
                 RefreshWidthText(50f);
+                // Sync initial value so cursor reflects slider from the start
+                OnTrailWidthChanged(50f);
             }
 
             RefreshTrailModeButtons();
@@ -172,7 +174,14 @@ namespace SkiResortTycoon.UI
                 _skipNextToolClose = false;
                 return;
             }
-            if (tool != null) CloseDock();
+            if (tool != null)
+            {
+                // Sync trail width when trail tool becomes active so the cursor
+                // reflects the slider value immediately (slider starts at 50)
+                if (tool is TrailBuildTool && _trailWidthSlider != null)
+                    OnTrailWidthChanged(_trailWidthSlider.value);
+                CloseDock();
+            }
         }
 
         public void CloseDock()

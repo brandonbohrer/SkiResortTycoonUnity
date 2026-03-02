@@ -512,7 +512,7 @@ namespace SkiResortTycoon.UnityBridge
             }
 
             var skierObj = Instantiate(_skierPrefab, _skierParent);
-            skierObj.name = $"Skier_{skier.SkierId}_{skier.Skill}";
+            skierObj.name = skier.DisplayName;
 
             // Apply scale multiplier
             skierObj.transform.localScale = skierObj.transform.localScale * _skierSize;

@@ -163,7 +163,7 @@ namespace SkiResortTycoon.UnityBridge
         {
             _structureType = StructureType.Skier;
             _structureId   = skier.SkierId;
-            _structureName = $"Skier {skier.SkierId}";
+            _structureName = skier.DisplayName ?? $"Skier {skier.SkierId}";
             _skierData     = skier;
             
             // Add a small sphere collider so the raycast can hit this skier

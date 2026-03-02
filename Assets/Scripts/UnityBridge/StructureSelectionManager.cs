@@ -382,19 +382,33 @@ namespace SkiResortTycoon.UnityBridge
             Ray ray = _camera.ScreenPointToRay(Input.mousePosition);
             SelectableStructure hitStructure = null;
             
-            // Single closest-hit raycast. Each structure part (pillar, chair, turn
-            // wheel, lodge mesh) has its own tight BoxCollider, so the closest hit
-            // IS the thing directly under the cursor. No radius, no bounding-box
-            // approximation — pixel-precise.
-            if (Physics.Raycast(ray, out RaycastHit hit, _raycastDistance))
+            // RaycastAll so we can prioritize skiers over trails when both are under the cursor.
+            // Trail corridor colliders are large; skiers have small sphere colliders.
+            // When a skier is on a trail, we want to select the skier, not the trail.
+            RaycastHit[] hits = Physics.RaycastAll(ray, _raycastDistance);
+            SelectableStructure closestSkier = null;
+            float closestSkierDist = float.MaxValue;
+            SelectableStructure closestAny = null;
+            float closestAnyDist = float.MaxValue;
+
+            foreach (var hit in hits)
             {
-                // Walk up the hierarchy to find the SelectableStructure root
-                hitStructure = hit.collider.GetComponentInParent<SelectableStructure>();
+                var sel = hit.collider.GetComponentInParent<SelectableStructure>();
+                if (sel == null) continue;
+
+                if (sel.Type == StructureType.Skier && hit.distance < closestSkierDist)
+                {
+                    closestSkier = sel;
+                    closestSkierDist = hit.distance;
+                }
+                if (hit.distance < closestAnyDist)
+                {
+                    closestAny = sel;
+                    closestAnyDist = hit.distance;
+                }
             }
-            
-            // Trails now have capsule colliders along their path, so the raycast
-            // above handles them with the same precision as lifts. No screen-space
-            // fallback needed.
+
+            hitStructure = closestSkier != null ? closestSkier : closestAny;
             
             // Handle hover state changes
             if (hitStructure != _hoveredStructure)

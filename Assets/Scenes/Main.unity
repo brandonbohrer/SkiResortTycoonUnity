@@ -171168,7 +171168,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 1076513334}
   m_HandleRect: {fileID: 1076513333}
   m_Direction: 2
-  m_Value: 1
+  m_Value: 0
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -234236,8 +234236,6 @@ MonoBehaviour:
   _colorBlack: {r: 0.1, g: 0.1, b: 0.1, a: 1}
   _colorDoubleBlack: {r: 1, g: 0.009498768, b: 0, a: 1}
   _colorDrawing: {r: 1, g: 1, b: 0.5, a: 0.8}
-  _showBoundaries: 1
-  _boundaryColor: {r: 1, g: 0.5, b: 0, a: 0.5}
   _boundaryLineWidth: 0.3
 --- !u!114 &1091263535
 MonoBehaviour:
@@ -326126,11 +326124,6 @@ MonoBehaviour:
   _fieldOfView: 50
   _nearClip: 1
   _farClip: 2000
-  _useCustomStartingPosition: 1
-  _startingFocusPoint: {x: 300, y: 45, z: 125}
-  _startingYaw: NaN
-  _startingPitch: NaN
-  _startingDistance: 0
   _enableBounds: 1
   _boundsMinX: -100
   _boundsMaxX: 600

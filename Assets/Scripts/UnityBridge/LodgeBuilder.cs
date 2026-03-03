@@ -28,6 +28,9 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private float _treeClearRadius = 15f;
         [SerializeField] private int _buildCost = 25000;
 
+        [Header("Rotation")]
+        [SerializeField] private float _rotationSpeed = 90f;
+
         [Header("Snapping")]
         [SerializeField] private float _snapRadius = 10f;
         [SerializeField] private Color _snapColor = new Color(0f, 1f, 1f, 0.8f);
@@ -41,6 +44,7 @@ namespace SkiResortTycoon.UnityBridge
         private bool        _canPlace;
         private bool        _isPendingConfirmation;
         private Vector3     _pendingPosition;
+        private float       _rotationAngle;
         private MagneticCursor _magneticCursor;
 
         public override string ToolName        => "Lodge";
@@ -123,10 +127,13 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (_previewInstance == null) return;
 
+            Quaternion rot = Quaternion.Euler(0f, _rotationAngle, 0f);
+
             // Preview is frozen once the player clicks a position
             if (_isPendingConfirmation)
             {
                 _previewInstance.transform.position = _pendingPosition;
+                _previewInstance.transform.rotation = rot;
                 _previewInstance.SetActive(true);
                 return;
             }
@@ -156,6 +163,7 @@ namespace SkiResortTycoon.UnityBridge
                 }
 
                 _previewInstance.transform.position = placementPos;
+                _previewInstance.transform.rotation = rot;
                 _previewInstance.SetActive(true);
 
                 _canPlace = IsValidPlacement(placementPos);
@@ -189,6 +197,12 @@ namespace SkiResortTycoon.UnityBridge
 
         protected override void HandleInput()
         {
+            // Rotation: hold R to rotate clockwise
+            if (Input.GetKey(KeyCode.R))
+            {
+                _rotationAngle -= _rotationSpeed * Time.deltaTime;
+            }
+
             // While pending, let only the context window buttons act
             if (_isPendingConfirmation)
             {
@@ -285,7 +299,8 @@ namespace SkiResortTycoon.UnityBridge
                 _simulationRunner.Sim.State.Money -= _buildCost;
             }
 
-            GameObject lodgeObj = Instantiate(_lodgePrefab, pos, Quaternion.identity);
+            Quaternion rotation = Quaternion.Euler(0f, _rotationAngle, 0f);
+            GameObject lodgeObj = Instantiate(_lodgePrefab, pos, rotation);
             lodgeObj.name = $"Lodge_{Time.frameCount}";
 
             LodgeFacility facility = lodgeObj.AddComponent<LodgeFacility>();
@@ -299,7 +314,7 @@ namespace SkiResortTycoon.UnityBridge
 
             if (_liftBuilder?.Connectivity != null)
             {
-                RegisterFootprintSnapPoints(pos, facility);
+                RegisterFootprintSnapPoints(pos, rotation, facility);
                 _liftBuilder.Connectivity.RebuildConnections();
             }
 
@@ -316,7 +331,7 @@ namespace SkiResortTycoon.UnityBridge
 
         // ── Footprint Snap Points ────────────────────────────────────────────
 
-        private void RegisterFootprintSnapPoints(Vector3 lodgeCenter, LodgeFacility facility)
+        private void RegisterFootprintSnapPoints(Vector3 lodgeCenter, Quaternion rotation, LodgeFacility facility)
         {
             float radius    = facility.FootprintRadius;
             int   ownerId   = facility.GetInstanceID();
@@ -336,7 +351,8 @@ namespace SkiResortTycoon.UnityBridge
 
             foreach (var dir in directions)
             {
-                Vector3 edgePos = lodgeCenter + dir * radius;
+                Vector3 rotatedDir = rotation * dir;
+                Vector3 edgePos = lodgeCenter + rotatedDir * radius;
                 edgePos.y = lodgeCenter.y;
 
                 var snap = new SnapPoint(

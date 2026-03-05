@@ -216,7 +216,8 @@ namespace SkiResortTycoon.UnityBridge
         
         /// <summary>
         /// Splits a boundary into segments — only draws visible runs (points outside
-        /// other trails' corridors). Creates a hard cutoff at overlap boundaries.
+        /// other trails' corridors). At each visible/hidden transition, binary-searches
+        /// for the exact corridor edge so boundary lines meet perfectly with no gaps.
         /// </summary>
         private void ApplyOverlapSegments(
             List<LineRenderer> segments,
@@ -247,30 +248,49 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
 
-            // Find visible runs (consecutive visible points, length >= 2)
-            var runs = new List<(int start, int count)>();
-            int runStart = -1;
+            // Build runs of visible boundary points. At each hidden↔visible
+            // transition, binary-search for the corridor edge and include that
+            // point so the outline extends right up to the intersecting trail.
+            var runs = new List<List<Vector3f>>();
+            List<Vector3f> currentRun = null;
+
             for (int i = 0; i < boundaryPoints.Count; i++)
             {
                 if (!hidden[i])
                 {
-                    if (runStart < 0) runStart = i;
+                    if (currentRun == null)
+                    {
+                        currentRun = new List<Vector3f>();
+                        if (i > 0 && hidden[i - 1])
+                        {
+                            var edge = FindCorridorEdge(
+                                boundaryPoints[i - 1], boundaryPoints[i],
+                                ownTrailId, allTrails);
+                            if (edge.HasValue)
+                                currentRun.Add(edge.Value);
+                        }
+                    }
+                    currentRun.Add(boundaryPoints[i]);
                 }
                 else
                 {
-                    if (runStart >= 0)
+                    if (currentRun != null)
                     {
-                        int count = i - runStart;
-                        if (count >= 2) runs.Add((runStart, count));
-                        runStart = -1;
+                        var edge = FindCorridorEdge(
+                            boundaryPoints[i], boundaryPoints[i - 1],
+                            ownTrailId, allTrails);
+                        if (edge.HasValue)
+                            currentRun.Add(edge.Value);
+
+                        if (currentRun.Count >= 2)
+                            runs.Add(currentRun);
+                        currentRun = null;
                     }
                 }
             }
-            if (runStart >= 0)
-            {
-                int count = boundaryPoints.Count - runStart;
-                if (count >= 2) runs.Add((runStart, count));
-            }
+
+            if (currentRun != null && currentRun.Count >= 2)
+                runs.Add(currentRun);
 
             // Ensure we have enough segment LineRenderers
             while (segments.Count < runs.Count)
@@ -285,21 +305,59 @@ namespace SkiResortTycoon.UnityBridge
             // Assign each run to a segment
             for (int s = 0; s < runs.Count; s++)
             {
-                var (start, count) = runs[s];
                 var lr = segments[s];
                 lr.enabled = true;
                 lr.startColor = baseColor;
                 lr.endColor = baseColor;
-
-                var runPoints = new List<Vector3f>();
-                for (int i = start; i < start + count; i++)
-                    runPoints.Add(boundaryPoints[i]);
-                UpdateLinePositions(lr, runPoints);
+                UpdateLinePositions(lr, runs[s]);
             }
 
             // Disable excess segments
             for (int s = runs.Count; s < segments.Count; s++)
                 segments[s].enabled = false;
+        }
+
+        /// <summary>
+        /// Binary-searches between a hidden boundary point (inside another trail's
+        /// corridor) and a visible one (outside) to find the approximate position
+        /// where the boundary crosses the corridor edge. Returns a point just
+        /// inside the corridor so lines overlap slightly rather than leaving a gap.
+        /// </summary>
+        private Vector3f? FindCorridorEdge(
+            Vector3f insidePt, Vector3f outsidePt,
+            int ownTrailId, List<TrailData> allTrails)
+        {
+            Vector3f lo = insidePt;
+            Vector3f hi = outsidePt;
+
+            for (int iter = 0; iter < 8; iter++)
+            {
+                Vector3f mid = new Vector3f(
+                    (lo.X + hi.X) * 0.5f,
+                    (lo.Y + hi.Y) * 0.5f,
+                    (lo.Z + hi.Z) * 0.5f);
+
+                if (IsInsideAnyOtherCorridor(mid.X, mid.Z, ownTrailId, allTrails))
+                    lo = mid;
+                else
+                    hi = mid;
+            }
+
+            return lo;
+        }
+
+        private bool IsInsideAnyOtherCorridor(
+            float x, float z, int ownTrailId, List<TrailData> allTrails)
+        {
+            foreach (var other in allTrails)
+            {
+                if (other.TrailId == ownTrailId || !other.IsValid) continue;
+                if (other.WorldPathPoints == null || other.WorldPathPoints.Count < 2) continue;
+                float unused;
+                if (other.IsInsideCorridor(x, z, out unused))
+                    return true;
+            }
+            return false;
         }
 
         void OnDestroy()

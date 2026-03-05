@@ -183,12 +183,12 @@ namespace SkiResortTycoon.UI
             return amount.ToString();
         }
 
-        // ── Visitors ──────────────────────────────────────────────────────
+        // ── Visitors (active skiers on mountain, from SimulationState) ────
 
         private void UpdateVisitorDisplay(SimulationState state)
         {
             if (_visitorText != null)
-                _visitorText.text = state.VisitorsToday.ToString();
+                _visitorText.text = state.ActiveSkierCount.ToString();
         }
 
         // ── Trails / Lifts / Lodges ───────────────────────────────────────

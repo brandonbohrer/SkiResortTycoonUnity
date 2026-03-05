@@ -9,7 +9,8 @@ namespace SkiResortTycoon.Core
         // Core state
         public int DayIndex { get; set; } = 1;
         public float TimeMinutes { get; set; } = 540f; // Start at 9:00 AM
-        public int VisitorsToday { get; set; } = 0;
+        public int VisitorsToday { get; set; } = 0;   // Cumulative arrivals today (for economy / end-of-day)
+        public int ActiveSkierCount { get; set; } = 0; // Current skiers on mountain (set by Unity bridge for display)
         public int Money { get; set; } = 1000000;
         
         // Infrastructure counts (updated by systems)

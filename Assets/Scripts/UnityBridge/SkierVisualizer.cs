@@ -1027,7 +1027,19 @@ namespace SkiResortTycoon.UnityBridge
         /// </summary>
         private void OnTrailFinished(VisualSkier vs)
         {
-            Vector3 trailEndPos = vs.GameObject.transform.position;
+            // Use the trail's mathematical end point for infrastructure searches,
+            // not transform.position which can lag behind due to anti-teleport smoothing
+            var trailPts = vs.CurrentTrail.WorldPathPoints;
+            Vector3 trailEndPos;
+            if (trailPts != null && trailPts.Count > 0)
+            {
+                var lastPt = trailPts[trailPts.Count - 1];
+                trailEndPos = new Vector3(lastPt.X, lastPt.Y, lastPt.Z);
+            }
+            else
+            {
+                trailEndPos = vs.GameObject.transform.position;
+            }
             if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Finished {vs.CurrentTrail.Difficulty} trail {vs.CurrentTrail.TrailId} at {trailEndPos}");
 
             // Fire traffic event: skier completed trail
@@ -1331,6 +1343,37 @@ namespace SkiResortTycoon.UnityBridge
                 vs.Motion.SwitchTrail(chosenTrail, trailEndPos);
                 if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Continuing to trail {chosenTrail.TrailId}{(vs.IsReturningToBase ? " [returning]" : "")}");
                 return;
+            }
+
+            // PRIORITY 5b: Trail end is inside another trail's corridor (mid-trail merge)
+            {
+                var allTrails = _trailDrawer.TrailSystem.GetAllTrails();
+                TrailData corridorTrail = null;
+                float bestCorridorDist = float.MaxValue;
+                foreach (var trail in allTrails)
+                {
+                    if (!trail.IsValid || trail.TrailId == vs.CurrentTrail.TrailId) continue;
+                    if (trail.WorldPathPoints == null || trail.WorldPathPoints.Count < 2) continue;
+                    float corridorDist;
+                    if (trail.IsInsideCorridor(trailEndPos.x, trailEndPos.z, out corridorDist))
+                    {
+                        if (corridorDist < bestCorridorDist)
+                        {
+                            bestCorridorDist = corridorDist;
+                            corridorTrail = trail;
+                        }
+                    }
+                }
+                if (corridorTrail != null)
+                {
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Trail end inside corridor of trail {corridorTrail.TrailId}, merging");
+                    vs.CurrentTrail = corridorTrail;
+                    vs.TrailsSkied.Add(corridorTrail.TrailId);
+                    vs.Skier.CurrentTrailId = corridorTrail.TrailId;
+                    vs.Motion.SwitchTrail(corridorTrail, trailEndPos);
+                    if (Traffic != null) Traffic.FireTrailEntered(vs.Skier.SkierId, corridorTrail.TrailId);
+                    return;
+                }
             }
 
             // PRIORITY 6: Near base?

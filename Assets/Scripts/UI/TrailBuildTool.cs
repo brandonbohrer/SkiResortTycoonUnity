@@ -31,10 +31,12 @@ namespace SkiResortTycoon.UI
         [Header("Cursor Colors")]
         [SerializeField] private Color _cursorFillColor = new Color(0.29f, 0.56f, 0.85f, 0.15f);
         [SerializeField] private Color _cursorBorderColor = new Color(0.29f, 0.56f, 0.85f, 1f);
+        [SerializeField] private Color _snapBorderColor = new Color(0.2f, 0.8f, 0.2f, 1f);
 
         private Camera _cam;
         private bool _isPainting;
         private bool _penClickedThisFrame;
+        private Vector3? _lastSnappedWorldPos;
 
         public override string ToolName => "Trail";
         public override string ToolDescription => "Build a new ski trail";
@@ -64,6 +66,7 @@ namespace SkiResortTycoon.UI
             _trailDrawer.OnAnchorPlaced += HandleAnchorPlaced;
 
             SetCursorVisible(true);
+            DisableCursorRaycastTargets();
             NotificationManager.Instance?.ShowInfo("Click to place trail anchors");
         }
 
@@ -134,13 +137,22 @@ namespace SkiResortTycoon.UI
             }
         }
 
+        // ── Shared: get the best click position (snapped or raw) ────────
+
+        private Vector3? GetClickPosition()
+        {
+            if (_lastSnappedWorldPos.HasValue)
+                return _lastSnappedWorldPos.Value;
+            return _trailDrawer.GetMountainPositionUnderMouse();
+        }
+
         // ── Paint mode ───────────────────────────────────────────────────
 
         private void HandlePaintInput()
         {
             if (Input.GetMouseButtonDown(0))
             {
-                Vector3? pos = _trailDrawer.GetMountainPositionUnderMouse();
+                Vector3? pos = GetClickPosition();
                 if (!pos.HasValue) return;
 
                 if (_trailDrawer.State == TrailBuildState.Settled)
@@ -155,7 +167,7 @@ namespace SkiResortTycoon.UI
 
             if (Input.GetMouseButton(0) && _isPainting)
             {
-                Vector3? pos = _trailDrawer.GetMountainPositionUnderMouse();
+                Vector3? pos = GetClickPosition();
                 if (pos.HasValue)
                     _trailDrawer.AddPaintSample(pos.Value);
             }
@@ -173,7 +185,7 @@ namespace SkiResortTycoon.UI
         {
             if (Input.GetMouseButtonDown(0))
             {
-                Vector3? pos = _trailDrawer.GetMountainPositionUnderMouse();
+                Vector3? pos = GetClickPosition();
                 if (!pos.HasValue) return;
 
                 if (_trailDrawer.State == TrailBuildState.Settled)
@@ -192,7 +204,7 @@ namespace SkiResortTycoon.UI
         {
             if (Input.GetMouseButtonDown(0))
             {
-                Vector3? pos = _trailDrawer.GetMountainPositionUnderMouse();
+                Vector3? pos = GetClickPosition();
                 if (!pos.HasValue) return;
 
                 if (_trailDrawer.State == TrailBuildState.Settled)
@@ -241,9 +253,8 @@ namespace SkiResortTycoon.UI
         {
             if (_cursorCircle == null) return;
 
-            // Always keep the cursor visible and following the mouse
             _cursorCircle.gameObject.SetActive(true);
-            _cursorCircle.position = Input.mousePosition;
+            _lastSnappedWorldPos = null;
 
             // Size: trail width in world units → screen pixels
             float worldDiameter = _trailDrawer.TrailWidth;
@@ -251,12 +262,43 @@ namespace SkiResortTycoon.UI
             pixelDiameter = Mathf.Max(pixelDiameter, 16f);
             _cursorCircle.sizeDelta = new Vector2(pixelDiameter, pixelDiameter);
 
-            // Update trail drawer cursor position for preview (skip if over UI)
+            // Feed the raw world position to TrailDrawer for snap detection + preview
             if (!overUI)
             {
                 Vector3? worldPos = _trailDrawer.GetMountainPositionUnderMouse();
                 if (worldPos.HasValue)
+                {
                     _trailDrawer.UpdateCursorPosition(worldPos.Value);
+                    _lastSnappedWorldPos = _trailDrawer.CursorSnappedWorldPos;
+                }
+            }
+
+            // Position the cursor circle: use screen-space delta so it works
+            // regardless of Canvas render mode / scaler settings
+            if (_trailDrawer.IsCursorSnapped && _cam != null)
+            {
+                Vector3 rawScreen = _cam.WorldToScreenPoint(_trailDrawer.CursorRawWorldPos);
+                Vector3 snapScreen = _cam.WorldToScreenPoint(_trailDrawer.CursorSnappedWorldPos);
+                Vector3 delta = snapScreen - rawScreen;
+                _cursorCircle.position = Input.mousePosition + new Vector3(delta.x, delta.y, 0f);
+            }
+            else
+            {
+                _cursorCircle.position = Input.mousePosition;
+            }
+
+            // Color feedback
+            if (_cursorCircleBorder != null)
+            {
+                _cursorCircleBorder.color = _trailDrawer.IsCursorSnapped
+                    ? _snapBorderColor
+                    : _cursorBorderColor;
+            }
+            if (_cursorCircleImage != null)
+            {
+                _cursorCircleImage.color = _trailDrawer.IsCursorSnapped
+                    ? new Color(_snapBorderColor.r, _snapBorderColor.g, _snapBorderColor.b, 0.15f)
+                    : _cursorFillColor;
             }
         }
 
@@ -282,6 +324,12 @@ namespace SkiResortTycoon.UI
         {
             if (_cursorCircle != null)
                 _cursorCircle.gameObject.SetActive(visible);
+        }
+
+        private void DisableCursorRaycastTargets()
+        {
+            if (_cursorCircleImage != null) _cursorCircleImage.raycastTarget = false;
+            if (_cursorCircleBorder != null) _cursorCircleBorder.raycastTarget = false;
         }
 
         // ── Mode / width changes (called by DockController) ─────────────

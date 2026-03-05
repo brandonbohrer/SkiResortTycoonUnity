@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using SkiResortTycoon.Core;
+using SkiResortTycoon.UI;
 
 namespace SkiResortTycoon.UnityBridge
 {
@@ -41,7 +42,7 @@ namespace SkiResortTycoon.UnityBridge
         private MagneticCursor _magneticCursor;
         private TrailBuildState _state = TrailBuildState.Idle;
         private TrailDrawMode _mode = TrailDrawMode.Paint;
-        private float _trailWidth = 7.5f;
+        private float _trailWidth = 20f;
 
         private readonly List<TrailAnchorPoint> _anchors = new List<TrailAnchorPoint>();
         private Vector3 _cursorWorldPos;
@@ -77,6 +78,11 @@ namespace SkiResortTycoon.UnityBridge
         public float TrailWidth => _trailWidth;
         public int AnchorCount => _anchors.Count;
         public bool IsBuilding => _state != TrailBuildState.Idle;
+        public bool IsCursorSnapped => _magneticCursor != null && _magneticCursor.IsSnapped;
+        public Vector3 CursorSnappedWorldPos => _magneticCursor != null
+            ? _magneticCursor.SnappedPosition : _cursorWorldPos;
+        public Vector3 CursorRawWorldPos => _magneticCursor != null
+            ? _magneticCursor.RawPosition : _cursorWorldPos;
         // Legacy compat used by TrailVisualizer
         public TrailData CurrentTrail => null;
         public bool IsDrawing => false;
@@ -128,7 +134,21 @@ namespace SkiResortTycoon.UnityBridge
 
         public void UpdateCursorPosition(Vector3 worldPos)
         {
-            _cursorWorldPos = worldPos;
+            if (_magneticCursor != null && _state != TrailBuildState.Settled)
+            {
+                bool isStart = _anchors.Count == 0;
+                var types = isStart
+                    ? new[] { SnapPointType.BuildingEntrance, SnapPointType.LiftTop, SnapPointType.TrailEnd, SnapPointType.TrailPoint }
+                    : new[] { SnapPointType.BuildingEntrance, SnapPointType.LiftBottom,
+                              SnapPointType.BaseSpawn, SnapPointType.TrailStart, SnapPointType.TrailPoint };
+                _magneticCursor.Update(worldPos, types);
+                _cursorWorldPos = _magneticCursor.SnappedPosition;
+            }
+            else
+            {
+                _cursorWorldPos = worldPos;
+            }
+
             if (_state == TrailBuildState.Placing)
                 RebuildPreviewSegment();
         }
@@ -574,8 +594,8 @@ namespace SkiResortTycoon.UnityBridge
             if (_magneticCursor == null) return rawPos;
 
             var types = isStart
-                ? new[] { SnapPointType.BuildingEntrance, SnapPointType.LiftTop, SnapPointType.TrailEnd }
-                : new[] { SnapPointType.BuildingEntrance, SnapPointType.LiftBottom, SnapPointType.BaseSpawn, SnapPointType.TrailStart };
+                ? new[] { SnapPointType.BuildingEntrance, SnapPointType.LiftTop, SnapPointType.TrailEnd, SnapPointType.TrailPoint }
+                : new[] { SnapPointType.BuildingEntrance, SnapPointType.LiftBottom, SnapPointType.BaseSpawn, SnapPointType.TrailStart, SnapPointType.TrailPoint };
 
             _magneticCursor.Update(rawPos, types);
             return _magneticCursor.IsSnapped ? _magneticCursor.SnappedPosition : rawPos;

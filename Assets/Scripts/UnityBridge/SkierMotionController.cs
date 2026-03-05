@@ -354,7 +354,8 @@ namespace SkiResortTycoon.UnityBridge
             if (_distanceAlongTrail >= _trailTotalLength)
             {
                 _distanceAlongTrail = _trailTotalLength;
-                ReachedTrailEnd = true;
+                if (!_isTransitioning)
+                    ReachedTrailEnd = true;
             }
 
             // ── Dynamic lateral offset (Perlin drift) ──────────────

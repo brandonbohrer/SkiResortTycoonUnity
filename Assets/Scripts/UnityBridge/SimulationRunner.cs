@@ -13,7 +13,8 @@ namespace SkiResortTycoon.UnityBridge
         [Header("References")]
         [SerializeField] private LiftBuilder _liftBuilder;
         [SerializeField] private TrailDrawer _trailDrawer;
-        
+        [SerializeField] private SkierVisualizer _skierVisualizer;
+
         private Simulation _sim;
         private DailyFinancialRecord _lastFinancialRecord;
         private DayStats _lastDayStats;
@@ -35,6 +36,13 @@ namespace SkiResortTycoon.UnityBridge
             
             TryWireSystems();
             
+            if (_skierVisualizer == null)
+                _skierVisualizer = FindObjectOfType<SkierVisualizer>();
+            if (_skierVisualizer != null)
+                _sim.State.ActiveSkierCount = _skierVisualizer.ActiveSkierCount;
+            else
+                _sim.State.ActiveSkierCount = 0;
+
             bool dayEnded = _sim.Tick(Time.deltaTime);
             
             if (dayEnded)

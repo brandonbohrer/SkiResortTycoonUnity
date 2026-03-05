@@ -74,6 +74,9 @@ namespace SkiResortTycoon.UnityBridge
             SetupSnapZone();
         }
 
+        public void SetCapacity(int capacity) => _capacity = capacity;
+        public void SetRestDuration(float seconds) => _restDurationSeconds = seconds;
+
         /// <summary>
         /// Try to check a skier into the lodge. Returns false if full.
         /// </summary>

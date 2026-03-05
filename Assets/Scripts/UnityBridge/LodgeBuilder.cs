@@ -269,7 +269,8 @@ namespace SkiResortTycoon.UnityBridge
                 boundaryPoint.z + bestPerp.Z * _lodgeEdgeOffset * pushSign
             );
 
-            autoAngle = Mathf.Atan2(bestTangent.X, bestTangent.Z) * Mathf.Rad2Deg;
+            float tangentAngle = Mathf.Atan2(bestTangent.X, bestTangent.Z) * Mathf.Rad2Deg;
+            autoAngle = tangentAngle + 90f;
 
             return placementPos;
         }

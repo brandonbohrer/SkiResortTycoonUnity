@@ -55,6 +55,7 @@ namespace SkiResortTycoon.UnityBridge
         private const float SKI_HEIGHT_OFFSET = 2.0f;
 
         private List<VisualSkier> _activeSkiers = new List<VisualSkier>();
+        private int _nextSkierId = 0;
         private float _spawnTimer;
         private Material _skierMaterial;
         private bool _hasLoggedUpdate = false;
@@ -433,7 +434,7 @@ namespace SkiResortTycoon.UnityBridge
 
             // Create skier with random skill level
             var skillLevel = _distribution.GetRandomSkillLevel(new System.Random());
-            var skier = new Skier(_activeSkiers.Count, skillLevel);
+            var skier = new Skier(_nextSkierId++, skillLevel);
 
             // Use SkierAI to plan the skier's initial goal
             var goal = _skierAI.PlanNewGoal(skier);

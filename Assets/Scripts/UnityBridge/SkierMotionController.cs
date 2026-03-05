@@ -156,26 +156,29 @@ namespace SkiResortTycoon.UnityBridge
             SampleTrail(mergeDist, out mergePos, out mergeTangent, out mergeWidth);
 
             // Re-roll preferred lane for the new trail so the skier doesn't
-            // always ride the same side every run
+            // always ride the same side every run, then aim the arc directly
+            // at that lane so there's no lateral pop when the arc ends.
             _preferredLane = Random.Range(-0.7f, 0.7f);
 
-            // Offset the merge target laterally so the arc doesn't always
-            // aim dead-center — each skier enters the new trail at a unique spot
-            float mergeOffset = Random.Range(-0.5f, 0.5f);
             float halfW = mergeWidth * 0.5f;
             Vector3 mergePerp = new Vector3(-mergeTangent.z, 0f, mergeTangent.x);
             if (mergePerp.sqrMagnitude > 0.0001f) mergePerp.Normalize();
-            mergePos += mergePerp * (mergeOffset * halfW);
+            mergePos += mergePerp * (_preferredLane * halfW);
+
+            // Start the arc from the skier's actual visual position, not the
+            // logical position passed by the caller (which can be the trail's
+            // mathematical endpoint — far from where the model actually is).
+            Vector3 visualPos = _smoothedPosition;
 
             // Hermite → cubic bezier control points.
             // Handle length scales with XZ chord distance for proportional curvature.
             float chordXZ = Vector3.Distance(
-                new Vector3(currentWorldPos.x, 0f, currentWorldPos.z),
+                new Vector3(visualPos.x, 0f, visualPos.z),
                 new Vector3(mergePos.x, 0f, mergePos.z));
             float handleLen = Mathf.Max(chordXZ * 0.4f, 3f);
 
-            _arcP0 = currentWorldPos;
-            _arcP1 = currentWorldPos + oldTangent * handleLen;
+            _arcP0 = visualPos;
+            _arcP1 = visualPos + oldTangent * handleLen;
             _arcP2 = mergePos - mergeTangent * handleLen;
             _arcP3 = mergePos;
 
@@ -184,7 +187,7 @@ namespace SkiResortTycoon.UnityBridge
             _distanceAlongTrail = closestDist;
 
             _isTransitioning = true;
-            _lateralOffset = mergeOffset;
+            _lateralOffset = _preferredLane;
             ReachedTrailEnd = false;
         }
 
@@ -253,16 +256,21 @@ namespace SkiResortTycoon.UnityBridge
             }
 
             // ── Anti-teleport: cap per-frame movement ──────────────
-            float maxSpeed = Mathf.Max(BaseSkiSpeed, LiftSpeed, WalkSpeed) * 2f;
-            float maxStep = maxSpeed * dt;
-
+            // During arc transitions the bezier curve is already smooth —
+            // capping movement would fight the curvature and cause corner-cutting.
             if (!_positionInitialized)
             {
                 _smoothedPosition = targetPos;
                 _positionInitialized = true;
             }
+            else if (_isTransitioning)
+            {
+                _smoothedPosition = targetPos;
+            }
             else
             {
+                float maxSpeed = Mathf.Max(BaseSkiSpeed, LiftSpeed, WalkSpeed) * 2f;
+                float maxStep = maxSpeed * dt;
                 _smoothedPosition = Vector3.MoveTowards(_smoothedPosition, targetPos, maxStep);
             }
 

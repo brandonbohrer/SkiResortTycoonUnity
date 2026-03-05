@@ -33,6 +33,7 @@ namespace SkiResortTycoon.UnityBridge
 
         [Header("Snapping")]
         [SerializeField] private float _snapRadius = 10f;
+        [SerializeField] private float _trailSnapPushDistance = 22f;
         [SerializeField] private Color _snapColor = new Color(0f, 1f, 1f, 0.8f);
 
         [Header("Visual Feedback")]
@@ -157,7 +158,7 @@ namespace SkiResortTycoon.UnityBridge
                         Vector3 snapPos   = _magneticCursor.SnappedPosition;
                         Vector3 dirFromSnap = (hit.Value - snapPos).normalized;
                         if (dirFromSnap.sqrMagnitude < 0.01f) dirFromSnap = Vector3.forward;
-                        placementPos = snapPos + dirFromSnap * _treeClearRadius;
+                        placementPos = snapPos + dirFromSnap * _trailSnapPushDistance;
                         placementPos.y = hit.Value.y;
                     }
                 }

@@ -100,14 +100,12 @@ namespace SkiResortTycoon.Core
         /// </summary>
         private static int GetRandomDesiredRuns(SkillLevel skill)
         {
-            // Base runs plus skill modifier
-            int baseRuns = 5;
-            int skillBonus = (int)skill * 2; // 0, 2, 4, 6
+            int baseRuns = 8;
+            int skillBonus = (int)skill * 3; // 0, 3, 6, 9
             
-            // Add some randomness (+/- 3 runs)
-            int variance = new System.Random().Next(-3, 4);
+            int variance = new System.Random().Next(-2, 5);
             
-            return System.Math.Max(3, baseRuns + skillBonus + variance);
+            return System.Math.Max(5, baseRuns + skillBonus + variance);
         }
     }
 }

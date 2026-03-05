@@ -62,7 +62,7 @@ MonoBehaviour:
   junctionExplorationMinValue: 0.2
   trailStartSearchRadius: 25
   liftSearchRadius: 25
-  goalLiftWalkRadius: 40
+  goalLiftWalkRadius: 25
   junctionDetectionRadius: 15
   networkSnapRadius: 25
   beginnerPercent: 0.2

@@ -329,13 +329,15 @@ namespace SkiResortTycoon.UnityBridge
                     }
                 }
 
-                // Safety timeout: if returning-to-base skier can't reach base in 1 in-game day (480 game minutes), force despawn
+                // Safety timeout: if returning-to-base skier can't reach base in 1 in-game day,
+                // teleport them to base and despawn (they got hopelessly stuck)
                 if (skier.IsReturningToBase && effectiveGameMinutes > 0f)
                 {
-                    skier.ReturningToBaseTimer += effectiveGameMinutes; // Track in game minutes
-                    if (skier.ReturningToBaseTimer > 480f) // 1 in-game day = 480 game minutes
+                    skier.ReturningToBaseTimer += effectiveGameMinutes;
+                    if (skier.ReturningToBaseTimer > 480f && hasBase)
                     {
-                        if (_enableDebugLogs) Debug.Log($"[Skier {skier.Skier.SkierId}] Returning-to-base timeout (1 day) — force despawn");
+                        if (_enableDebugLogs) Debug.Log($"[Skier {skier.Skier.SkierId}] Returning-to-base timeout — teleporting to base");
+                        skier.GameObject.transform.position = cachedBasePos;
                         skier.IsFinished = true;
                     }
                 }
@@ -677,7 +679,12 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (vs.CurrentLift == null)
             {
-                vs.IsFinished = true;
+                // Lost our lift target — don't despawn, try to find a trail to ski down
+                vs.IsReturningToBase = true;
+                Vector3 pos = vs.GameObject.transform.position;
+                if (TryMergeOntoNearbyTrail(vs, pos))
+                    return;
+                ChooseNewDestination(vs);
                 return;
             }
 
@@ -923,7 +930,7 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
             
-            // ── Check for nearby LIFT BOTTOMS ──
+            // ── Check for nearby LIFT BOTTOMS (must be close and not significantly uphill) ──
             var allLifts = _liftBuilder.LiftSystem.GetAllLifts();
             foreach (var lift in allLifts)
             {
@@ -932,6 +939,8 @@ namespace SkiResortTycoon.UnityBridge
                 
                 Vector3 liftBottom = new Vector3(lift.StartPosition.X, lift.StartPosition.Y, lift.StartPosition.Z);
                 float dist = Vector3.Distance(pos, liftBottom);
+                float heightDiff = liftBottom.y - pos.y;
+                if (heightDiff > 5f) continue;
                 
                 if (dist <= exitRadius)
                 {
@@ -1234,7 +1243,7 @@ namespace SkiResortTycoon.UnityBridge
                         var liftBottomPos = new Vector3(goalLift.StartPosition.X, goalLift.StartPosition.Y + SKI_HEIGHT_OFFSET, goalLift.StartPosition.Z);
                         float distToGoalLift = Vector3.Distance(trailEndPos, liftBottomPos);
                         
-                        float goalWalkRadius = Config != null ? Config.goalLiftWalkRadius : 40f;
+                        float goalWalkRadius = Config != null ? Config.goalLiftWalkRadius : 25f;
                         if (distToGoalLift <= goalWalkRadius)
                         {
                             vs.CurrentLift = goalLift;
@@ -1277,6 +1286,8 @@ namespace SkiResortTycoon.UnityBridge
             var nearbyLifts = FindNearbyLifts(trailEndPos, liftSearchRadius);
             
             // Also include lifts from connection graph: trail END → lift BOTTOM
+            // But still enforce a max walk distance — graph connections can be stale
+            float maxGraphWalk = 40f;
             var graphLiftIds = _liftBuilder.Connectivity.Connections.GetLiftsAtTrailEnd(vs.CurrentTrail.TrailId);
             var liftIdSet = new HashSet<int>();
             foreach (var l in nearbyLifts) liftIdSet.Add(l.LiftId);
@@ -1288,8 +1299,12 @@ namespace SkiResortTycoon.UnityBridge
                     var lift = allLiftsData.Find(l => l.LiftId == lid);
                     if (lift != null && lift.IsValid)
                     {
-                        nearbyLifts.Add(lift);
-                        liftIdSet.Add(lid);
+                        Vector3 lBottom = new Vector3(lift.StartPosition.X, lift.StartPosition.Y, lift.StartPosition.Z);
+                        if (Vector3.Distance(trailEndPos, lBottom) <= maxGraphWalk)
+                        {
+                            nearbyLifts.Add(lift);
+                            liftIdSet.Add(lid);
+                        }
                     }
                 }
             }
@@ -1457,8 +1472,9 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
 
-            // LAST RESORT: walk to the nearest lift bottom on the entire mountain (no radius limit)
-            // Never teleport — skiers physically walk to their next lift.
+            // LAST RESORT: walk to the nearest lift bottom, but ONLY if close AND not uphill.
+            float maxRescueWalk = 30f;
+            float maxRescueClimb = 5f;
             var allLiftsForRescue = _liftBuilder.LiftSystem.GetAllLifts();
             LiftData nearestLift = null;
             float nearestDist = float.MaxValue;
@@ -1466,6 +1482,8 @@ namespace SkiResortTycoon.UnityBridge
             {
                 if (!lift.IsValid) continue;
                 Vector3 lBottom = new Vector3(lift.StartPosition.X, lift.StartPosition.Y, lift.StartPosition.Z);
+                float heightDiff = lBottom.y - trailEndPos.y;
+                if (heightDiff > maxRescueClimb) continue;
                 float d = Vector3.Distance(trailEndPos, lBottom);
                 if (d < nearestDist)
                 {
@@ -1474,9 +1492,9 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
             
-            if (nearestLift != null)
+            if (nearestLift != null && nearestDist <= maxRescueWalk)
             {
-                Debug.Log($"[Skier {vs.Skier.SkierId}] Stranded at {trailEndPos}. Walking to nearest lift {nearestLift.LiftId} ({nearestDist:F0}m away)");
+                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Walking short distance to lift {nearestLift.LiftId} ({nearestDist:F0}m)");
                 vs.CurrentLift = nearestLift;
                 vs.Phase = SkierPhase.WalkingToLift;
                 var rescuePos = new Vector3(
@@ -1489,9 +1507,16 @@ namespace SkiResortTycoon.UnityBridge
             }
             else
             {
-                // Truly no lifts on the mountain — finish the skier
-                Debug.LogWarning($"[Skier {vs.Skier.SkierId}] No lifts on mountain! Finishing.");
-                vs.IsFinished = true;
+                // No walkable lift — try to merge onto a nearby trail to ski downhill
+                vs.IsReturningToBase = true;
+                if (TryMergeOntoNearbyTrail(vs, trailEndPos))
+                {
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] No nearby lift ({nearestDist:F0}m away), merging onto trail to ski down");
+                }
+                else
+                {
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Stranded — no nearby lift or trail, will timeout-teleport to base");
+                }
             }
         }
 
@@ -1626,9 +1651,6 @@ namespace SkiResortTycoon.UnityBridge
                 // Fall through to pick a lift/trail like normal
             }
 
-            // Reset state to AtBase for proper pathfinding start point
-            vs.Skier.CurrentState = SkierState.AtBase;
-            
             var goal = _skierAI.PlanNewGoal(vs.Skier);
             vs.Skier.CurrentGoal = goal;
 
@@ -1652,23 +1674,47 @@ namespace SkiResortTycoon.UnityBridge
                 vs.UseGoalBasedAI = true;
             }
 
-            // Fallback: use the decision engine to pick a lift (not just nearest-to-base)
+            // Fallback: find the closest walkable lift — must be close AND not significantly uphill
             if (nextLift == null)
             {
+                Vector3 skierPos = vs.GameObject.transform.position;
+                float maxWalkDist = 30f;
+                float maxUphillClimb = 5f;
                 var validLifts = allLifts.FindAll(l => l.IsValid);
-                if (validLifts.Count > 0)
+                LiftData closest = null;
+                float closestDist = float.MaxValue;
+                foreach (var lift in validLifts)
                 {
-                    var ctx = BuildContext(vs);
-                    nextLift = SkierDecisionEngine.ChooseLift(
-                        validLifts, ctx, Config, Traffic?.State, _distribution, GetBestTrailValueAtLift
-                    );
-                    if (nextLift == null)
-                        nextLift = validLifts[Random.Range(0, validLifts.Count)];
+                    Vector3 lBottom = new Vector3(lift.StartPosition.X, lift.StartPosition.Y, lift.StartPosition.Z);
+                    float d = Vector3.Distance(skierPos, lBottom);
+                    float heightDiff = lBottom.y - skierPos.y;
+                    if (heightDiff > maxUphillClimb) continue;
+                    if (d < closestDist)
+                    {
+                        closestDist = d;
+                        closest = lift;
+                    }
+                }
+                if (closest != null && closestDist <= maxWalkDist)
+                {
+                    nextLift = closest;
                 }
                 vs.UseGoalBasedAI = false;
             }
 
-            if (nextLift == null) { vs.IsFinished = true; return; }
+            // No walkable lift found — try to merge onto a nearby trail to ski down
+            if (nextLift == null)
+            {
+                vs.IsReturningToBase = true;
+                Vector3 pos = vs.GameObject.transform.position;
+                if (TryMergeOntoNearbyTrail(vs, pos))
+                {
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] No nearby lift, merging onto trail to ski down");
+                    return;
+                }
+                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] No nearby lift or trail — stranded, will timeout-teleport to base");
+                return;
+            }
 
             if (nextTrail == null)
             {
@@ -1682,8 +1728,7 @@ namespace SkiResortTycoon.UnityBridge
 
             if (nextTrail == null)
             {
-                Debug.LogWarning($"[Skier {vs.Skier.SkierId}] Lift {nextLift.LiftId} has no connected trails!");
-                vs.IsFinished = true;
+                if (_enableDebugLogs) Debug.LogWarning($"[Skier {vs.Skier.SkierId}] Lift {nextLift.LiftId} has no connected trails, skipping");
                 return;
             }
 
@@ -2004,7 +2049,7 @@ namespace SkiResortTycoon.UnityBridge
         /// <summary>
         /// Find lifts within a specified radius of a position (for flexible boarding).
         /// </summary>
-        private List<LiftData> FindNearbyLifts(Vector3 position, float radius)
+        private List<LiftData> FindNearbyLifts(Vector3 position, float radius, float maxUphillClimb = 5f)
         {
             var nearbyLifts = new List<LiftData>();
             var allLifts = _liftBuilder.LiftSystem.GetAllLifts();
@@ -2012,6 +2057,7 @@ namespace SkiResortTycoon.UnityBridge
             foreach (var lift in allLifts)
             {
                 Vector3 liftBottom = new Vector3(lift.StartPosition.X, lift.StartPosition.Y, lift.StartPosition.Z);
+                if (liftBottom.y - position.y > maxUphillClimb) continue;
                 if (Vector3.Distance(position, liftBottom) <= radius)
                     nearbyLifts.Add(lift);
             }

@@ -309,10 +309,12 @@ namespace SkiResortTycoon.UnityBridge
             dir.y = 0;
             if (dir.sqrMagnitude > 0.001f) _currentTangent = dir.normalized;
 
-            if (Vector3.Distance(next, _walkTarget) < 0.5f)
+            Vector3 xzDiff = next - _walkTarget;
+            xzDiff.y = 0;
+            if (xzDiff.magnitude < 0.5f)
             {
                 ReachedLiftBottom = true;
-                return _walkTarget;
+                return GroundToTerrain(_walkTarget);
             }
 
             // Ground to terrain while walking

@@ -679,12 +679,30 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (vs.CurrentLift == null)
             {
-                // Lost our lift target — don't despawn, try to find a trail to ski down
-                vs.IsReturningToBase = true;
-                Vector3 pos = vs.GameObject.transform.position;
-                if (TryMergeOntoNearbyTrail(vs, pos))
+                // Walking to a trail edge — merge when we arrive
+                if (vs.PendingTrailMerge != null)
+                {
+                    if (vs.Motion.ReachedLiftBottom)
+                    {
+                        Vector3 pos = vs.GameObject.transform.position;
+                        if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Reached trail edge, merging onto trail {vs.PendingTrailMerge.TrailId}");
+                        DoTrailMerge(vs, vs.PendingTrailMerge);
+                    }
                     return;
-                ChooseNewDestination(vs);
+                }
+                if (vs.IsReturningToBase)
+                {
+                    // Walking to base rescue — just let the walk continue.
+                    // The continuous base proximity check in Update() will despawn when close.
+                    return;
+                }
+                // Lost our lift target — try to find a trail to ski down
+                vs.IsReturningToBase = true;
+                Vector3 pos2 = vs.GameObject.transform.position;
+                int excludeId = vs.CurrentTrail != null ? vs.CurrentTrail.TrailId : -1;
+                if (TryMergeOntoNearbyTrail(vs, pos2, excludeId, 100f))
+                    return;
+                WalkTowardBase(vs, pos2);
                 return;
             }
 
@@ -1507,15 +1525,17 @@ namespace SkiResortTycoon.UnityBridge
             }
             else
             {
-                // No walkable lift — try to merge onto a nearby trail to ski downhill
+                // No walkable lift — try to merge onto a DIFFERENT nearby trail (wide search)
                 vs.IsReturningToBase = true;
-                if (TryMergeOntoNearbyTrail(vs, trailEndPos))
+                int deadEndTrailId = vs.CurrentTrail != null ? vs.CurrentTrail.TrailId : -1;
+                if (TryMergeOntoNearbyTrail(vs, trailEndPos, deadEndTrailId, 100f))
                 {
-                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] No nearby lift ({nearestDist:F0}m away), merging onto trail to ski down");
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Dead end — merging onto different trail to ski down");
                 }
                 else
                 {
-                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Stranded — no nearby lift or trail, will timeout-teleport to base");
+                    // Truly stranded — walk toward the base lodge
+                    WalkTowardBase(vs, trailEndPos);
                 }
             }
         }
@@ -1707,12 +1727,13 @@ namespace SkiResortTycoon.UnityBridge
             {
                 vs.IsReturningToBase = true;
                 Vector3 pos = vs.GameObject.transform.position;
-                if (TryMergeOntoNearbyTrail(vs, pos))
+                int excludeId = vs.CurrentTrail != null ? vs.CurrentTrail.TrailId : -1;
+                if (TryMergeOntoNearbyTrail(vs, pos, excludeId, 100f))
                 {
                     if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] No nearby lift, merging onto trail to ski down");
                     return;
                 }
-                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] No nearby lift or trail — stranded, will timeout-teleport to base");
+                WalkTowardBase(vs, pos);
                 return;
             }
 
@@ -1891,24 +1912,26 @@ namespace SkiResortTycoon.UnityBridge
         /// via the motion controller's SwitchTrail arc. Returns true if a
         /// trail was found and the skier is now in SkiingTrail phase.
         /// </summary>
-        private bool TryMergeOntoNearbyTrail(VisualSkier vs, Vector3 lodgePos)
+        private bool TryMergeOntoNearbyTrail(VisualSkier vs, Vector3 fromPos, int excludeTrailId = -1, float searchRadius = 40f)
         {
-            var nearbyTrails = FindNearbyTrailSegments(lodgePos, 40f);
+            var nearbyTrails = FindNearbyTrailSegments(fromPos, searchRadius);
             if (nearbyTrails.Count == 0) return false;
 
             TrailData bestTrail = null;
             float bestDistSq = float.MaxValue;
             Vector3f bestClosest = default;
+            Vector3f bestPerp = default;
 
             foreach (var trail in nearbyTrails)
             {
                 if (!trail.IsValid || trail.WorldPathPoints == null || trail.WorldPathPoints.Count < 2)
                     continue;
+                if (trail.TrailId == excludeTrailId) continue;
 
                 Vector3f closest, tangent, perp;
                 int segIdx;
                 float segT, distSq;
-                trail.FindClosestPointOnPath(lodgePos.x, lodgePos.z,
+                trail.FindClosestPointOnPath(fromPos.x, fromPos.z,
                     out closest, out tangent, out perp, out segIdx, out segT, out distSq);
 
                 if (distSq < bestDistSq)
@@ -1916,31 +1939,54 @@ namespace SkiResortTycoon.UnityBridge
                     bestDistSq = distSq;
                     bestTrail = trail;
                     bestClosest = closest;
+                    bestPerp = perp;
                 }
             }
 
             if (bestTrail == null) return false;
 
-            Vector3 closestPoint = new Vector3(bestClosest.X, bestClosest.Y, bestClosest.Z);
-            Vector3 toTrail = closestPoint - lodgePos;
-            toTrail.y = 0;
-            if (toTrail.sqrMagnitude < 0.01f)
-                toTrail = Vector3.forward;
+            // Offset from center line to trail edge — toward the skier
+            Vector3 center = new Vector3(bestClosest.X, bestClosest.Y, bestClosest.Z);
+            Vector3 perpDir = new Vector3(bestPerp.X, 0f, bestPerp.Z).normalized;
+            Vector3 toSkier = fromPos - center;
+            toSkier.y = 0;
+            float halfWidth = bestTrail.TrailWidth * 0.5f;
+            // Pick the edge side closest to the skier
+            float sign = Vector3.Dot(toSkier.normalized, perpDir) >= 0 ? 1f : -1f;
+            Vector3 edgePoint = center + perpDir * sign * halfWidth;
 
-            vs.Motion.SetFacingDirection(toTrail);
-            vs.Motion.SwitchTrail(bestTrail, lodgePos);
+            float dist = Vector3.Distance(fromPos, edgePoint);
 
-            vs.CurrentTrail = bestTrail;
-            vs.PlannedTrails = new List<TrailData> { bestTrail };
+            if (dist < 3f)
+            {
+                DoTrailMerge(vs, bestTrail);
+                return true;
+            }
+
+            vs.PendingTrailMerge = bestTrail;
+            vs.CurrentLift = null;
+            vs.Phase = SkierPhase.WalkingToLift;
+            vs.Skier.CurrentState = SkierState.WalkingToLift;
+            vs.Motion.SetWalkTarget(edgePoint);
+            if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Walking {dist:F0}m to trail {bestTrail.TrailId} edge before merging");
+
+            return true;
+        }
+
+        private void DoTrailMerge(VisualSkier vs, TrailData trail)
+        {
+            Vector3 pos = vs.GameObject.transform.position;
+            vs.Motion.SwitchTrail(trail, pos);
+            vs.PendingTrailMerge = null;
+            vs.CurrentTrail = trail;
+            vs.PlannedTrails = new List<TrailData> { trail };
             vs.CurrentTrailIndex = 0;
             vs.Phase = SkierPhase.SkiingTrail;
             vs.HasSwitchedAtJunction = false;
             vs.EvaluatedLiftExits.Clear();
             vs.EvaluatedTrailExits.Clear();
             vs.Skier.CurrentState = SkierState.SkiingTrail;
-            vs.Skier.CurrentTrailId = bestTrail.TrailId;
-
-            return true;
+            vs.Skier.CurrentTrailId = trail.TrailId;
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -2002,6 +2048,33 @@ namespace SkiResortTycoon.UnityBridge
                     result.Add(trail);
             }
             return result;
+        }
+
+        /// <summary>
+        /// Rescue mechanism: stranded skier walks toward the base lodge.
+        /// Sets phase to WalkingToLift (reused as a generic walk phase) so
+        /// the skier is actively moving and won't retrigger OnTrailFinished.
+        /// The continuous base proximity check will despawn them when they arrive.
+        /// </summary>
+        private void WalkTowardBase(VisualSkier vs, Vector3 fromPos)
+        {
+            vs.IsReturningToBase = true;
+            var baseSpawns = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
+            if (baseSpawns.Count > 0)
+            {
+                Vector3 basePos = new Vector3(baseSpawns[0].Position.X, baseSpawns[0].Position.Y, baseSpawns[0].Position.Z);
+                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Stranded — walking toward base ({Vector3.Distance(fromPos, basePos):F0}m away)");
+
+                vs.CurrentLift = null;
+                vs.Phase = SkierPhase.WalkingToLift;
+                vs.Skier.CurrentState = SkierState.WalkingToLift;
+                vs.Motion.SetWalkTarget(basePos);
+            }
+            else
+            {
+                if (_enableDebugLogs) Debug.LogWarning($"[Skier {vs.Skier.SkierId}] Stranded and no base found — will timeout-teleport");
+                vs.Phase = SkierPhase.WalkingToLift;
+            }
         }
 
         /// <summary>
@@ -2493,6 +2566,9 @@ namespace SkiResortTycoon.UnityBridge
             // Lift wait tracking: accumulates real seconds spent waiting at lift bottom for a chair
             public bool IsWaitingForChair;
             public float CurrentLiftWaitSeconds;
+            
+            // Pending trail merge: skier is walking to a trail edge before merging onto it
+            public TrailData PendingTrailMerge;
         }
     }
 }

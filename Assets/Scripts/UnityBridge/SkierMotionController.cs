@@ -65,11 +65,11 @@ namespace SkiResortTycoon.UnityBridge
         private Vector3 _smoothedPosition;
         private bool _positionInitialized;
 
-        // ── Trail transition blending ─────────────────────────────────
+        // ── Arc transition (smooth bezier curve between trails) ────────
         private bool _isTransitioning;
-        private Vector3 _transitionOrigin;     // XZ position at moment of switch
-        private float _transitionTimer;
-        private float _transitionDuration;
+        private Vector3 _arcP0, _arcP1, _arcP2, _arcP3; // cubic bezier control points
+        private float _arcStartDist;   // _distanceAlongTrail at arc start
+        private float _arcMergeDist;   // _distanceAlongTrail where arc ends
 
         // ── Rotation state ──────────────────────────────────────────────
         private Vector3 _currentTangent = Vector3.forward;
@@ -126,33 +126,47 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         /// <summary>
-        /// Switch to a new trail mid-run with a smooth positional blend.
-        /// The skier's XZ position lerps from its current location to the new
-        /// trail's centerline over a short duration, while Y is always terrain-sampled.
+        /// Switch to a new trail via a smooth cubic-bezier arc.
+        /// Captures the skier's current facing (old trail tangent) and builds a
+        /// hermite-derived curve that ends at a point downstream on the new trail,
+        /// giving a natural carved turn rather than a lateral slide.
         /// </summary>
         public void SwitchTrail(TrailData newTrail, Vector3 currentWorldPos)
         {
-            _transitionOrigin = currentWorldPos;
+            Vector3 oldTangent = _currentTangent;
+
             _currentTrail = newTrail;
             CacheTrailLengths(newTrail);
-            _distanceAlongTrail = FindClosestDistanceOnTrail(currentWorldPos, newTrail);
 
-            // Measure how far the skier needs to move laterally to reach the new trail
-            Vector3 newCenter;
-            Vector3 newTangent;
-            float newWidth;
-            SampleTrail(_distanceAlongTrail, out newCenter, out newTangent, out newWidth);
+            float closestDist = FindClosestDistanceOnTrail(currentWorldPos, newTrail);
 
-            float gapXZ = Vector3.Distance(
-                new Vector3(currentWorldPos.x, 0, currentWorldPos.z),
-                new Vector3(newCenter.x, 0, newCenter.z));
+            // Pick a merge point downstream so the arc has room to curve naturally.
+            // Faster skiers get a wider turn radius.
+            float lookAhead = Mathf.Clamp(BaseSkiSpeed * 1.5f, 8f, 20f);
+            float mergeDist = Mathf.Min(closestDist + lookAhead, _trailTotalLength);
 
-            // Scale blend duration by gap size: tiny gaps blend fast, large gaps take longer
-            _transitionDuration = Mathf.Clamp(gapXZ / (BaseSkiSpeed * 1.5f), 0.15f, 0.8f);
-            _transitionTimer = 0f;
+            Vector3 mergePos, mergeTangent;
+            float mergeWidth;
+            SampleTrail(mergeDist, out mergePos, out mergeTangent, out mergeWidth);
+
+            // Hermite → cubic bezier control points.
+            // Handle length scales with XZ chord distance for proportional curvature.
+            float chordXZ = Vector3.Distance(
+                new Vector3(currentWorldPos.x, 0f, currentWorldPos.z),
+                new Vector3(mergePos.x, 0f, mergePos.z));
+            float handleLen = Mathf.Max(chordXZ * 0.4f, 3f);
+
+            _arcP0 = currentWorldPos;
+            _arcP1 = currentWorldPos + oldTangent * handleLen;
+            _arcP2 = mergePos - mergeTangent * handleLen;
+            _arcP3 = mergePos;
+
+            _arcStartDist = closestDist;
+            _arcMergeDist = mergeDist;
+            _distanceAlongTrail = closestDist;
+
             _isTransitioning = true;
-
-            _lateralOffset = Mathf.Sign(_lateralOffset) * Random.Range(0.1f, 0.7f);
+            _lateralOffset = 0f;
             ReachedTrailEnd = false;
         }
 
@@ -345,7 +359,6 @@ namespace SkiResortTycoon.UnityBridge
 
             // ── Slope-based speed ──────────────────────────────────
             float slope = GetSlopeAtCurrentDistance();
-            // Steeper → faster.  0.6x on flats, up to 1.8x on 45-degree steeps
             float speedMult = Mathf.Lerp(0.6f, 1.8f, Mathf.Clamp01(slope / 45f));
             float effectiveSpeed = BaseSkiSpeed * speedMult;
 
@@ -358,49 +371,52 @@ namespace SkiResortTycoon.UnityBridge
                     ReachedTrailEnd = true;
             }
 
-            // ── Dynamic lateral offset (Perlin drift) ──────────────
+            // ── Arc transition: follow bezier curve to new trail ────
+            if (_isTransitioning)
+            {
+                float arcSpan = _arcMergeDist - _arcStartDist;
+                float t = arcSpan > 0.01f
+                    ? Mathf.Clamp01((_distanceAlongTrail - _arcStartDist) / arcSpan)
+                    : 1f;
+
+                Vector3 arcPos = EvalBezier(_arcP0, _arcP1, _arcP2, _arcP3, t);
+                Vector3 arcTan = EvalBezierDerivative(_arcP0, _arcP1, _arcP2, _arcP3, t);
+                arcTan.y = 0f;
+                if (arcTan.sqrMagnitude > 0.001f)
+                    arcTan.Normalize();
+                else
+                    arcTan = _currentTangent;
+
+                _currentTangent = arcTan;
+
+                if (t >= 1f)
+                {
+                    _isTransitioning = false;
+                    _distanceAlongTrail = _arcMergeDist;
+                }
+
+                return GroundToTerrain(arcPos);
+            }
+
+            // ── Normal trail following ──────────────────────────────
             UpdateLateralOffset(dt);
 
-            // ── Sample position on trail ────────────────────────────
             Vector3 centerPos;
             Vector3 tangent;
             float trailWidth;
             SampleTrail(_distanceAlongTrail, out centerPos, out tangent, out trailWidth);
 
-            // Apply lateral offset perpendicular to tangent in XZ
             Vector3 perp = new Vector3(-tangent.z, 0f, tangent.x);
             if (perp.sqrMagnitude < 0.0001f)
-                perp = Vector3.right; // fallback
-
+                perp = Vector3.right;
             perp.Normalize();
 
             float halfW = trailWidth * 0.5f;
             Vector3 trailTarget = centerPos + perp * (_lateralOffset * halfW);
 
-            Vector3 finalPos = trailTarget;
-
-            // ── Transition blend: smoothly move from old position to new trail ──
-            if (_isTransitioning)
-            {
-                _transitionTimer += dt;
-                float t = Mathf.Clamp01(_transitionTimer / _transitionDuration);
-                // Smooth-step for natural ease-in/ease-out
-                t = t * t * (3f - 2f * t);
-
-                finalPos.x = Mathf.Lerp(_transitionOrigin.x, trailTarget.x, t);
-                finalPos.z = Mathf.Lerp(_transitionOrigin.z, trailTarget.z, t);
-
-                if (_transitionTimer >= _transitionDuration)
-                    _isTransitioning = false;
-            }
-
-            // Ground to terrain: use live raycast instead of baked trail Y
-            finalPos = GroundToTerrain(finalPos);
-
-            // Store tangent for rotation
             _currentTangent = tangent;
 
-            return finalPos;
+            return GroundToTerrain(trailTarget);
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -644,6 +660,26 @@ namespace SkiResortTycoon.UnityBridge
             }
 
             return bestAlong;
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        //  Bezier helpers (arc transitions)
+        // ─────────────────────────────────────────────────────────────────
+
+        private static Vector3 EvalBezier(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+        {
+            float u = 1f - t;
+            float uu = u * u;
+            float uuu = uu * u;
+            float tt = t * t;
+            float ttt = tt * t;
+            return uuu * p0 + 3f * uu * t * p1 + 3f * u * tt * p2 + ttt * p3;
+        }
+
+        private static Vector3 EvalBezierDerivative(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+        {
+            float u = 1f - t;
+            return 3f * u * u * (p1 - p0) + 6f * u * t * (p2 - p1) + 3f * t * t * (p3 - p2);
         }
 
         // ─────────────────────────────────────────────────────────────────

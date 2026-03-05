@@ -58,7 +58,9 @@ namespace SkiResortTycoon.UnityBridge
 
         // ── Lateral offset (corridor-aware) ───────────────────────────
         private float _lateralOffset;             // -1..1  normalised
-        private const float LATERAL_DRIFT_SPEED = 0.8f;
+        private float _preferredLane;             // per-skier baseline side bias (-0.7..0.7)
+        private float _carvingAmplitude;          // per-skier turn width multiplier (0.4..1.0)
+        private const float LATERAL_DRIFT_SPEED = 1.2f;
         private const float MAX_LATERAL_RATIO = 0.92f;  // nearly full corridor width
 
         // ── Anti-teleport smoothing ─────────────────────────────────────
@@ -108,7 +110,9 @@ namespace SkiResortTycoon.UnityBridge
             _transform = transform;
             _heightOffset = heightOffset;
             _terrainHeightSampler = terrainHeightSampler;
-            _lateralOffset = Random.Range(-0.6f, 0.6f);
+            _preferredLane = Random.Range(-0.7f, 0.7f);
+            _carvingAmplitude = Random.Range(0.4f, 1.0f);
+            _lateralOffset = _preferredLane;
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -123,6 +127,8 @@ namespace SkiResortTycoon.UnityBridge
             CacheTrailLengths(trail);
             ReachedTrailEnd = false;
             _isTransitioning = false;
+            _preferredLane = Random.Range(-0.7f, 0.7f);
+            _lateralOffset = _preferredLane;
         }
 
         /// <summary>
@@ -149,6 +155,18 @@ namespace SkiResortTycoon.UnityBridge
             float mergeWidth;
             SampleTrail(mergeDist, out mergePos, out mergeTangent, out mergeWidth);
 
+            // Re-roll preferred lane for the new trail so the skier doesn't
+            // always ride the same side every run
+            _preferredLane = Random.Range(-0.7f, 0.7f);
+
+            // Offset the merge target laterally so the arc doesn't always
+            // aim dead-center — each skier enters the new trail at a unique spot
+            float mergeOffset = Random.Range(-0.5f, 0.5f);
+            float halfW = mergeWidth * 0.5f;
+            Vector3 mergePerp = new Vector3(-mergeTangent.z, 0f, mergeTangent.x);
+            if (mergePerp.sqrMagnitude > 0.0001f) mergePerp.Normalize();
+            mergePos += mergePerp * (mergeOffset * halfW);
+
             // Hermite → cubic bezier control points.
             // Handle length scales with XZ chord distance for proportional curvature.
             float chordXZ = Vector3.Distance(
@@ -166,7 +184,7 @@ namespace SkiResortTycoon.UnityBridge
             _distanceAlongTrail = closestDist;
 
             _isTransitioning = true;
-            _lateralOffset = 0f;
+            _lateralOffset = mergeOffset;
             ReachedTrailEnd = false;
         }
 
@@ -535,11 +553,13 @@ namespace SkiResortTycoon.UnityBridge
             // Octave 2 — faster carving turns layered on top
             float micro = Mathf.PerlinNoise(_distanceAlongTrail * 0.15f, noiseSeed + 50f) * 2f - 1f;
 
-            // Speed-linked amplitude: faster = wider carves, slower = tighter to center
+            // Steeper slopes allow wider carves, but even on flats skiers use the corridor
             float slope = GetSlopeAtCurrentDistance();
-            float speedFactor = Mathf.Lerp(0.4f, 1.0f, Mathf.Clamp01(slope / 35f));
+            float speedFactor = Mathf.Lerp(0.65f, 1.0f, Mathf.Clamp01(slope / 35f));
 
-            float targetOffset = (macro * 0.65f + micro * 0.35f) * speedFactor;
+            // Carving oscillation centered on this skier's preferred lane
+            float carving = (macro * 0.65f + micro * 0.35f) * _carvingAmplitude * speedFactor;
+            float targetOffset = _preferredLane + carving;
 
             _lateralOffset = Mathf.MoveTowards(_lateralOffset, targetOffset, LATERAL_DRIFT_SPEED * dt);
 

@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 using SkiResortTycoon.Core;
 using SkiResortTycoon.UI;
 
@@ -12,6 +13,9 @@ namespace SkiResortTycoon.UnityBridge
     ///   Left-click on valid terrain → preview locks at that position (pending)
     ///   Confirm   → place lodge, deduct cost, switch to lodge-selected context window
     ///   Cancel    → destroy preview, exit build mode
+    ///
+    /// Snapping: the lodge preview hugs the outside edge of the nearest trail.
+    /// It auto-rotates to align with the trail and turns red if it would overlap.
     /// </summary>
     public class LodgeBuilder : BaseTool
     {
@@ -21,6 +25,7 @@ namespace SkiResortTycoon.UnityBridge
         [Header("References")]
         [SerializeField] private MountainManager _mountainManager;
         [SerializeField] private LiftBuilder _liftBuilder;
+        [SerializeField] private TrailDrawer _trailDrawer;
         [SerializeField] private SimulationRunner _simulationRunner;
         [SerializeField] private Camera _camera;
 
@@ -31,9 +36,10 @@ namespace SkiResortTycoon.UnityBridge
         [Header("Rotation")]
         [SerializeField] private float _rotationSpeed = 90f;
 
-        [Header("Snapping")]
-        [SerializeField] private float _snapRadius = 10f;
-        [SerializeField] private float _trailSnapPushDistance = 22f;
+        [Header("Trail Snapping")]
+        [SerializeField] private float _trailSnapRadius = 30f;
+        [SerializeField] private float _lodgeEdgeOffset = 10f;
+        [SerializeField] private float _trailOverlapClearance = 2f;
         [SerializeField] private Color _snapColor = new Color(0f, 1f, 1f, 0.8f);
 
         [Header("Visual Feedback")]
@@ -45,13 +51,12 @@ namespace SkiResortTycoon.UnityBridge
         private bool        _canPlace;
         private bool        _isPendingConfirmation;
         private Vector3     _pendingPosition;
+        private Quaternion  _pendingRotation;
         private float       _rotationAngle;
-        private MagneticCursor _magneticCursor;
+        private bool        _isSnappedToTrail;
 
         public override string ToolName        => "Lodge";
         public override string ToolDescription => "Place a lodge";
-
-        // ── BaseTool overrides ───────────────────────────────────────────────
 
         void Start()
         {
@@ -70,10 +75,6 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
 
-            if (_liftBuilder?.Connectivity != null)
-                _magneticCursor = new MagneticCursor(_liftBuilder.Connectivity.Registry, _snapRadius);
-
-            // Open context window immediately — preview follows cursor until first click
             ContextWindowController.Instance?.ShowLodgeBuildWindow(
                 _buildCost,
                 onConfirm: ConfirmLodge,
@@ -85,7 +86,6 @@ namespace SkiResortTycoon.UnityBridge
             base.OnDeactivate();
             _isPendingConfirmation = false;
             CleanupPreview();
-            _magneticCursor = null;
         }
 
         public override void OnCancel()
@@ -128,13 +128,10 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (_previewInstance == null) return;
 
-            Quaternion rot = Quaternion.Euler(0f, _rotationAngle, 0f);
-
-            // Preview is frozen once the player clicks a position
             if (_isPendingConfirmation)
             {
                 _previewInstance.transform.position = _pendingPosition;
-                _previewInstance.transform.rotation = rot;
+                _previewInstance.transform.rotation = _pendingRotation;
                 _previewInstance.SetActive(true);
                 return;
             }
@@ -144,24 +141,16 @@ namespace SkiResortTycoon.UnityBridge
             if (hit.HasValue)
             {
                 Vector3 placementPos = hit.Value;
+                float autoAngle = 0f;
+                _isSnappedToTrail = false;
 
-                if (_magneticCursor != null)
+                if (_trailDrawer != null && _trailDrawer.TrailSystem != null)
                 {
-                    SnapPointType[] validTypes = new[]
-                    {
-                        SnapPointType.TrailStart, SnapPointType.TrailEnd, SnapPointType.TrailPoint
-                    };
-                    _magneticCursor.Update(hit.Value, validTypes);
-
-                    if (_magneticCursor.IsSnapped)
-                    {
-                        Vector3 snapPos   = _magneticCursor.SnappedPosition;
-                        Vector3 dirFromSnap = (hit.Value - snapPos).normalized;
-                        if (dirFromSnap.sqrMagnitude < 0.01f) dirFromSnap = Vector3.forward;
-                        placementPos = snapPos + dirFromSnap * _trailSnapPushDistance;
-                        placementPos.y = hit.Value.y;
-                    }
+                    placementPos = ComputeTrailSnappedPosition(hit.Value, out autoAngle);
                 }
+
+                float finalAngle = _isSnappedToTrail ? (autoAngle + _rotationAngle) : _rotationAngle;
+                Quaternion rot = Quaternion.Euler(0f, finalAngle, 0f);
 
                 _previewInstance.transform.position = placementPos;
                 _previewInstance.transform.rotation = rot;
@@ -170,7 +159,7 @@ namespace SkiResortTycoon.UnityBridge
                 _canPlace = IsValidPlacement(placementPos);
 
                 Color tint;
-                if (_magneticCursor != null && _magneticCursor.IsSnapped)
+                if (_isSnappedToTrail)
                     tint = _canPlace ? _snapColor : _invalidColor;
                 else
                     tint = _canPlace ? _validColor : _invalidColor;
@@ -182,7 +171,7 @@ namespace SkiResortTycoon.UnityBridge
                     r.material.color = c;
                 }
 
-                var pts = new System.Collections.Generic.List<Vector3> { placementPos, placementPos };
+                var pts = new List<Vector3> { placementPos, placementPos };
                 TreeClearer.ClearTreesForPreview(pts, _treeClearRadius);
             }
             else
@@ -194,25 +183,118 @@ namespace SkiResortTycoon.UnityBridge
 
         protected override void HidePreview() => CleanupPreview();
 
+        // ── Trail Snapping ─────────────────────────────────────────────────
+
+        private Vector3 ComputeTrailSnappedPosition(Vector3 cursorHit, out float autoAngle)
+        {
+            autoAngle = 0f;
+            var allTrails = _trailDrawer.TrailSystem.GetAllTrails();
+            if (allTrails == null || allTrails.Count == 0)
+                return cursorHit;
+
+            TrailData bestTrail = null;
+            float bestDistSq = _trailSnapRadius * _trailSnapRadius;
+            Vector3f bestClosest = default;
+            Vector3f bestTangent = default;
+            Vector3f bestPerp = default;
+            int bestSegIdx = 0;
+            float bestSegT = 0f;
+
+            foreach (var trail in allTrails)
+            {
+                if (!trail.IsValid || trail.WorldPathPoints == null || trail.WorldPathPoints.Count < 2)
+                    continue;
+
+                Vector3f closest, tangent, perp;
+                int segIdx;
+                float segT, distSq;
+                trail.FindClosestPointOnPath(cursorHit.x, cursorHit.z,
+                    out closest, out tangent, out perp, out segIdx, out segT, out distSq);
+
+                if (distSq < bestDistSq)
+                {
+                    bestDistSq = distSq;
+                    bestTrail = trail;
+                    bestClosest = closest;
+                    bestTangent = tangent;
+                    bestPerp = perp;
+                    bestSegIdx = segIdx;
+                    bestSegT = segT;
+                }
+            }
+
+            if (bestTrail == null)
+                return cursorHit;
+
+            _isSnappedToTrail = true;
+
+            float dx = cursorHit.x - bestClosest.X;
+            float dz = cursorHit.z - bestClosest.Z;
+            float side = dx * bestPerp.X + dz * bestPerp.Z;
+            float pushSign = side >= 0f ? 1f : -1f;
+
+            Vector3 boundaryPoint;
+            if (bestTrail.LeftBoundaryPoints != null &&
+                bestTrail.LeftBoundaryPoints.Count == bestTrail.WorldPathPoints.Count &&
+                bestTrail.RightBoundaryPoints.Count == bestTrail.WorldPathPoints.Count)
+            {
+                var boundaryList = pushSign >= 0f
+                    ? bestTrail.LeftBoundaryPoints
+                    : bestTrail.RightBoundaryPoints;
+
+                var bA = boundaryList[bestSegIdx];
+                int nextIdx = bestSegIdx + 1;
+                if (nextIdx >= boundaryList.Count) nextIdx = boundaryList.Count - 1;
+                var bB = boundaryList[nextIdx];
+
+                boundaryPoint = new Vector3(
+                    bA.X + (bB.X - bA.X) * bestSegT,
+                    bA.Y + (bB.Y - bA.Y) * bestSegT,
+                    bA.Z + (bB.Z - bA.Z) * bestSegT
+                );
+            }
+            else
+            {
+                float halfW = bestTrail.TrailWidth * 0.5f;
+                boundaryPoint = new Vector3(
+                    bestClosest.X + bestPerp.X * halfW * pushSign,
+                    bestClosest.Y,
+                    bestClosest.Z + bestPerp.Z * halfW * pushSign
+                );
+            }
+
+            Vector3 placementPos = new Vector3(
+                boundaryPoint.x + bestPerp.X * _lodgeEdgeOffset * pushSign,
+                cursorHit.y,
+                boundaryPoint.z + bestPerp.Z * _lodgeEdgeOffset * pushSign
+            );
+
+            autoAngle = Mathf.Atan2(bestTangent.X, bestTangent.Z) * Mathf.Rad2Deg;
+
+            return placementPos;
+        }
+
         // ── Input ────────────────────────────────────────────────────────────
 
         protected override void HandleInput()
         {
-            // Rotation: hold R to rotate clockwise
             if (Input.GetKey(KeyCode.R))
             {
                 _rotationAngle -= _rotationSpeed * Time.deltaTime;
             }
 
-            // While pending, let only the context window buttons act
             if (_isPendingConfirmation)
             {
+                if (Input.GetKey(KeyCode.R))
+                {
+                    _pendingRotation = Quaternion.Euler(0f, _pendingRotation.eulerAngles.y - _rotationSpeed * Time.deltaTime, 0f);
+                }
                 if (Input.GetMouseButtonDown(1) || Input.GetKeyDown(KeyCode.Escape))
                     CancelLodge();
                 return;
             }
 
-            base.HandleInput(); // right-click cancel
+            base.HandleInput();
 
             if (IsMouseOverUI()) return;
 
@@ -220,8 +302,8 @@ namespace SkiResortTycoon.UnityBridge
             {
                 if (_previewInstance != null && _previewInstance.activeSelf && _canPlace)
                 {
-                    // Lock preview — wait for Confirm or Cancel
                     _pendingPosition       = _previewInstance.transform.position;
+                    _pendingRotation       = _previewInstance.transform.rotation;
                     _isPendingConfirmation = true;
                     TreeClearer.RestorePreviewTrees();
                 }
@@ -238,16 +320,16 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (!_isPendingConfirmation)
             {
-                // If no position locked yet, use current preview position
                 if (_previewInstance == null || !_previewInstance.activeSelf || !_canPlace)
                 {
                     NotificationManager.Instance?.ShowWarning("Place the lodge on the mountain first!");
                     return;
                 }
                 _pendingPosition = _previewInstance.transform.position;
+                _pendingRotation = _previewInstance.transform.rotation;
             }
 
-            var selectable = PlaceLodge(_pendingPosition);
+            var selectable = PlaceLodge(_pendingPosition, _pendingRotation);
 
             _isPendingConfirmation = false;
             CleanupPreview();
@@ -283,12 +365,24 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
 
+            if (_trailDrawer != null && _trailDrawer.TrailSystem != null)
+            {
+                foreach (var trail in _trailDrawer.TrailSystem.GetAllTrails())
+                {
+                    if (!trail.IsValid || trail.WorldPathPoints == null || trail.WorldPathPoints.Count < 2)
+                        continue;
+                    float unused;
+                    if (trail.IsInsideCorridor(pos.x, pos.z, out unused))
+                        return false;
+                }
+            }
+
             return true;
         }
 
         // ── Placement ────────────────────────────────────────────────────────
 
-        private SelectableStructure PlaceLodge(Vector3 pos)
+        private SelectableStructure PlaceLodge(Vector3 pos, Quaternion rotation)
         {
             if (_simulationRunner?.Sim?.State != null)
             {
@@ -300,7 +394,6 @@ namespace SkiResortTycoon.UnityBridge
                 _simulationRunner.Sim.State.Money -= _buildCost;
             }
 
-            Quaternion rotation = Quaternion.Euler(0f, _rotationAngle, 0f);
             GameObject lodgeObj = Instantiate(_lodgePrefab, pos, rotation);
             lodgeObj.name = $"Lodge_{Time.frameCount}";
 

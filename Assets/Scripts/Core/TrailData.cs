@@ -303,6 +303,75 @@ namespace SkiResortTycoon.Core
         }
         
         /// <summary>
+        /// Finds the closest point on this trail's centerline to the given XZ position.
+        /// Returns the 3D closest point, tangent direction, XZ perpendicular (left-hand normal),
+        /// the segment index + parametric t, and the squared XZ distance.
+        /// </summary>
+        public void FindClosestPointOnPath(float x, float z,
+            out Vector3f closestPoint, out Vector3f tangent, out Vector3f perpendicular,
+            out int segmentIndex, out float segmentT, out float distanceSq)
+        {
+            closestPoint = default;
+            tangent = new Vector3f(0, 0, 1);
+            perpendicular = new Vector3f(1, 0, 0);
+            segmentIndex = 0;
+            segmentT = 0f;
+            distanceSq = float.MaxValue;
+
+            if (WorldPathPoints == null || WorldPathPoints.Count < 2) return;
+
+            for (int i = 0; i < WorldPathPoints.Count - 1; i++)
+            {
+                var pA = WorldPathPoints[i];
+                var pB = WorldPathPoints[i + 1];
+
+                float ax = pA.X, az = pA.Z;
+                float bx = pB.X, bz = pB.Z;
+                float abx = bx - ax, abz = bz - az;
+                float segLenSq = abx * abx + abz * abz;
+
+                float t = 0f;
+                if (segLenSq > 0.0001f)
+                {
+                    t = ((x - ax) * abx + (z - az) * abz) / segLenSq;
+                    if (t < 0f) t = 0f;
+                    else if (t > 1f) t = 1f;
+                }
+
+                float cx = ax + abx * t;
+                float cz = az + abz * t;
+                float dx = x - cx;
+                float dz2 = z - cz;
+                float dSq = dx * dx + dz2 * dz2;
+
+                if (dSq < distanceSq)
+                {
+                    distanceSq = dSq;
+                    segmentIndex = i;
+                    segmentT = t;
+                }
+            }
+
+            var segA = WorldPathPoints[segmentIndex];
+            var segB = WorldPathPoints[segmentIndex + 1];
+            closestPoint = new Vector3f(
+                segA.X + (segB.X - segA.X) * segmentT,
+                segA.Y + (segB.Y - segA.Y) * segmentT,
+                segA.Z + (segB.Z - segA.Z) * segmentT
+            );
+
+            float tdx = segB.X - segA.X;
+            float tdz = segB.Z - segA.Z;
+            float tLen = (float)System.Math.Sqrt(tdx * tdx + tdz * tdz);
+            if (tLen > 0.0001f)
+            {
+                tangent = new Vector3f(tdx / tLen, 0f, tdz / tLen);
+            }
+
+            perpendicular = new Vector3f(-tangent.Z, 0f, tangent.X);
+        }
+
+        /// <summary>
         /// Checks whether the XZ position (x, z) lies inside this trail's corridor
         /// (within half-width of the centerline, ignoring Y). If inside, sets
         /// <paramref name="distanceAlong"/> to the arc-length distance along the

@@ -41064,11 +41064,15 @@ MonoBehaviour:
   _lodgePrefab: {fileID: 559485324864349688, guid: 8437e63cf93f74108bc76b2fb8b1d84e, type: 3}
   _mountainManager: {fileID: 1571617882}
   _liftBuilder: {fileID: 1504220261}
+  _trailDrawer: {fileID: 1091263535}
   _simulationRunner: {fileID: 1670639974}
   _camera: {fileID: 1543875374}
   _treeClearRadius: 15
   _buildCost: 25000
-  _snapRadius: 10
+  _rotationSpeed: 90
+  _trailSnapRadius: 30
+  _lodgeEdgeOffset: 10
+  _trailOverlapClearance: 2
   _snapColor: {r: 0, g: 1, b: 1, a: 0.8}
   _validColor: {r: 0, g: 1, b: 0, a: 0.5}
   _invalidColor: {r: 1, g: 0, b: 0, a: 0.5}
@@ -216182,6 +216186,7 @@ MonoBehaviour:
   _cursorCircleBorder: {fileID: 489586792}
   _cursorFillColor: {r: 0.29, g: 0.56, b: 0.85, a: 0.15}
   _cursorBorderColor: {r: 0.29, g: 0.56, b: 0.85, a: 1}
+  _snapBorderColor: {r: 0.2, g: 0.8, b: 0.2, a: 1}
 --- !u!1001 &1014031714
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -351484,6 +351489,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SimulationRunner
   _liftBuilder: {fileID: 1504220261}
   _trailDrawer: {fileID: 1091263535}
+  _skierVisualizer: {fileID: 0}
 --- !u!1001 &1671222272
 PrefabInstance:
   m_ObjectHideFlags: 0

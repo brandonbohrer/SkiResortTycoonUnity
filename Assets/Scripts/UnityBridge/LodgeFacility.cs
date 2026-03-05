@@ -34,7 +34,11 @@ namespace SkiResortTycoon.UnityBridge
         private SphereCollider _snapZoneTrigger;
         private readonly HashSet<int> _occupiedSlots = new HashSet<int>();
         private readonly Dictionary<int, float> _restTimers = new Dictionary<int, float>();
+        private readonly Dictionary<int, float> _realTimeCounters = new Dictionary<int, float>();
         private LodgePricing _pricing;
+        private SimulationRunner _cachedSimRunner;
+        
+        private const float MAX_REAL_TIME_IN_LODGE = 90f;
 
         // ── Public API ──────────────────────────────────────────────────
 
@@ -83,6 +87,7 @@ namespace SkiResortTycoon.UnityBridge
 
             _occupiedSlots.Add(skierId);
             _restTimers[skierId] = _restDurationSeconds;
+            _realTimeCounters[skierId] = 0f;
 
             if (_enableDebugLogs) Debug.Log($"[Lodge] Skier {skierId} entered. {CurrentOccupancy}/{_capacity}");
             return true;
@@ -100,6 +105,7 @@ namespace SkiResortTycoon.UnityBridge
         {
             _occupiedSlots.Remove(skierId);
             _restTimers.Remove(skierId);
+            _realTimeCounters.Remove(skierId);
         }
 
         // ── Lifecycle ───────────────────────────────────────────────────
@@ -113,32 +119,48 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (_restTimers.Count == 0) return;
 
-            // Use effective delta time so lodge timers respect pause and game speed
-            float dt = Time.deltaTime;
-            SimulationRunner simRunner = FindObjectOfType<SimulationRunner>();
-            if (simRunner?.Sim?.TimeController != null)
-            {
-                dt = simRunner.Sim.TimeController.GetEffectiveDeltaTime(Time.deltaTime);
-            }
-            
-            if (dt <= 0f) return; // Paused
+            float realDt = Time.deltaTime;
+            float dt = realDt;
 
-            // Collect finished skiers first, THEN mutate -- avoids
-            // InvalidOperationException from modifying dict during iteration.
+            if (_cachedSimRunner == null)
+                _cachedSimRunner = FindObjectOfType<SimulationRunner>();
+
+            if (_cachedSimRunner?.Sim?.TimeController != null)
+            {
+                dt = _cachedSimRunner.Sim.TimeController.GetEffectiveDeltaTime(realDt);
+            }
+
             List<int> finished = null;
             List<KeyValuePair<int, float>> snapshot = new List<KeyValuePair<int, float>>(_restTimers);
 
             foreach (var kvp in snapshot)
             {
-                float remaining = kvp.Value - dt;
-                if (remaining <= 0f)
+                int skierId = kvp.Key;
+
+                if (dt > 0f)
                 {
-                    if (finished == null) finished = new List<int>();
-                    finished.Add(kvp.Key);
+                    float remaining = kvp.Value - dt;
+                    if (remaining <= 0f)
+                    {
+                        if (finished == null) finished = new List<int>();
+                        finished.Add(skierId);
+                        continue;
+                    }
+                    _restTimers[skierId] = remaining;
                 }
-                else
+
+                if (_realTimeCounters.ContainsKey(skierId))
                 {
-                    _restTimers[kvp.Key] = remaining;
+                    _realTimeCounters[skierId] += realDt;
+                    if (_realTimeCounters[skierId] >= MAX_REAL_TIME_IN_LODGE)
+                    {
+                        if (finished == null) finished = new List<int>();
+                        if (!finished.Contains(skierId))
+                        {
+                            finished.Add(skierId);
+                            if (_enableDebugLogs) Debug.LogWarning($"[Lodge] Skier {skierId} force-exited after {MAX_REAL_TIME_IN_LODGE}s real time");
+                        }
+                    }
                 }
             }
 
@@ -148,6 +170,7 @@ namespace SkiResortTycoon.UnityBridge
                 {
                     _occupiedSlots.Remove(id);
                     _restTimers.Remove(id);
+                    _realTimeCounters.Remove(id);
                     if (_enableDebugLogs) Debug.Log($"[Lodge] Skier {id} finished resting. {CurrentOccupancy}/{_capacity}");
                 }
             }

@@ -1698,8 +1698,19 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
             
-            // Check if rest time is complete (lodge handles timing)
-            if (!vs.TargetLodge.ContainsSkier(vs.Skier.SkierId))
+            vs.LodgeRestTimer += Time.deltaTime;
+            
+            bool timerExpired = !vs.TargetLodge.ContainsSkier(vs.Skier.SkierId);
+            bool failsafe = vs.LodgeRestTimer >= 120f;
+            
+            if (failsafe && !timerExpired)
+            {
+                vs.TargetLodge.ForceExitSkier(vs.Skier.SkierId);
+                Debug.LogWarning($"[Skier {vs.Skier.SkierId}] Lodge failsafe triggered after {vs.LodgeRestTimer:F0}s real time");
+                timerExpired = true;
+            }
+            
+            if (timerExpired)
             {
                 // ── Fulfill needs based on lodge amenities ──────────────
                 bool usedBathroom = false;

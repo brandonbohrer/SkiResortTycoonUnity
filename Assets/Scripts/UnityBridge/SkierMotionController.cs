@@ -119,6 +119,13 @@ namespace SkiResortTycoon.UnityBridge
         //  Public setters (called by SkierVisualizer on phase changes)
         // ─────────────────────────────────────────────────────────────────
 
+        /// <summary>Override the skier's current facing direction (e.g. after teleport).</summary>
+        public void SetFacingDirection(Vector3 direction)
+        {
+            if (direction.sqrMagnitude > 0.001f)
+                _currentTangent = direction.normalized;
+        }
+
         /// <summary>Assign the trail the skier is about to ski.</summary>
         public void SetTrail(TrailData trail, float startDistance = 0f)
         {

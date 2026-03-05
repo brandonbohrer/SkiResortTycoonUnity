@@ -275,10 +275,12 @@ namespace SkiResortTycoon.UnityBridge
                     && !skier.TargetLodge.ContainsSkier(skier.Skier.SkierId))
                 {
                     skier.GameObject.SetActive(true);
-                    skier.GameObject.transform.position = skier.TargetLodge.Position;
-                    skier.Motion.Teleport(skier.TargetLodge.Position);
+                    Vector3 exitPos = skier.TargetLodge.Position;
+                    skier.GameObject.transform.position = exitPos;
+                    skier.Motion.Teleport(exitPos);
                     skier.TargetLodge = null;
-                    ChooseNewDestination(skier);
+                    if (!TryMergeOntoNearbyTrail(skier, exitPos))
+                        ChooseNewDestination(skier);
                 }
 
                 // Continuous base proximity check: returning skiers despawn when near base (any phase)
@@ -1693,9 +1695,11 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (vs.TargetLodge == null)
             {
-                // Lodge was destroyed, exit immediately
                 vs.GameObject.SetActive(true);
-                ChooseNewDestination(vs);
+                Vector3 exitPos = vs.GameObject.transform.position;
+                vs.Motion.Teleport(exitPos);
+                if (!TryMergeOntoNearbyTrail(vs, exitPos))
+                    ChooseNewDestination(vs);
                 return;
             }
             
@@ -1759,21 +1763,83 @@ namespace SkiResortTycoon.UnityBridge
                     if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Lodge visit: charged ${charge:F0}, satisfaction impact {satisfactionImpact:F2}");
                 }
                 
-                // ── Respawn and continue ─────────────────────────────────
+                // ── Respawn and merge onto nearest trail ──────────────────
                 vs.GameObject.SetActive(true);
                 
-                // Position at lodge exit
-                vs.GameObject.transform.position = vs.TargetLodge.Position;
-                vs.Motion.Teleport(vs.TargetLodge.Position);
+                Vector3 lodgePos = vs.TargetLodge.Position;
+                vs.GameObject.transform.position = lodgePos;
+                vs.Motion.Teleport(lodgePos);
                 
-                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Left lodge, choosing new destination");
-                
-                // Clear lodge reference
+                LodgeFacility exitLodge = vs.TargetLodge;
                 vs.TargetLodge = null;
                 
-                // Choose new destination
-                ChooseNewDestination(vs);
+                if (TryMergeOntoNearbyTrail(vs, lodgePos))
+                {
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Left lodge, merging onto trail {vs.CurrentTrail.TrailId}");
+                }
+                else
+                {
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Left lodge, no nearby trail — choosing new destination");
+                    ChooseNewDestination(vs);
+                }
             }
+        }
+
+        /// <summary>
+        /// After exiting a lodge, find the nearest trail and merge onto it
+        /// via the motion controller's SwitchTrail arc. Returns true if a
+        /// trail was found and the skier is now in SkiingTrail phase.
+        /// </summary>
+        private bool TryMergeOntoNearbyTrail(VisualSkier vs, Vector3 lodgePos)
+        {
+            var nearbyTrails = FindNearbyTrailSegments(lodgePos, 40f);
+            if (nearbyTrails.Count == 0) return false;
+
+            TrailData bestTrail = null;
+            float bestDistSq = float.MaxValue;
+            Vector3f bestClosest = default;
+
+            foreach (var trail in nearbyTrails)
+            {
+                if (!trail.IsValid || trail.WorldPathPoints == null || trail.WorldPathPoints.Count < 2)
+                    continue;
+
+                Vector3f closest, tangent, perp;
+                int segIdx;
+                float segT, distSq;
+                trail.FindClosestPointOnPath(lodgePos.x, lodgePos.z,
+                    out closest, out tangent, out perp, out segIdx, out segT, out distSq);
+
+                if (distSq < bestDistSq)
+                {
+                    bestDistSq = distSq;
+                    bestTrail = trail;
+                    bestClosest = closest;
+                }
+            }
+
+            if (bestTrail == null) return false;
+
+            Vector3 closestPoint = new Vector3(bestClosest.X, bestClosest.Y, bestClosest.Z);
+            Vector3 toTrail = closestPoint - lodgePos;
+            toTrail.y = 0;
+            if (toTrail.sqrMagnitude < 0.01f)
+                toTrail = Vector3.forward;
+
+            vs.Motion.SetFacingDirection(toTrail);
+            vs.Motion.SwitchTrail(bestTrail, lodgePos);
+
+            vs.CurrentTrail = bestTrail;
+            vs.PlannedTrails = new List<TrailData> { bestTrail };
+            vs.CurrentTrailIndex = 0;
+            vs.Phase = SkierPhase.SkiingTrail;
+            vs.HasSwitchedAtJunction = false;
+            vs.EvaluatedLiftExits.Clear();
+            vs.EvaluatedTrailExits.Clear();
+            vs.Skier.CurrentState = SkierState.SkiingTrail;
+            vs.Skier.CurrentTrailId = bestTrail.TrailId;
+
+            return true;
         }
 
         // ─────────────────────────────────────────────────────────────────

@@ -52,7 +52,7 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private bool _enableDebugLogs = false; // Toggle console spam
 
         // Height offset to keep skis on top of snow (not buried)
-        private const float SKI_HEIGHT_OFFSET = 2.0f;
+        private const float SKI_HEIGHT_OFFSET = 1.2f;
 
         private List<VisualSkier> _activeSkiers = new List<VisualSkier>();
         private int _nextSkierId = 0;

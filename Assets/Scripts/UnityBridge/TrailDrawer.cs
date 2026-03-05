@@ -100,11 +100,13 @@ namespace SkiResortTycoon.UnityBridge
             {
                 SnapRegistry registry = null;
                 if (_liftBuilder != null && _liftBuilder.Connectivity != null)
-                {
                     registry = _liftBuilder.Connectivity.Registry;
-                    _magneticCursor = new MagneticCursor(registry, _snapRadius);
-                }
                 _trailSystem = new TrailSystem(_mountainManager.TerrainData, registry);
+            }
+
+            if (_magneticCursor == null && _liftBuilder != null && _liftBuilder.Connectivity != null)
+            {
+                _magneticCursor = new MagneticCursor(_liftBuilder.Connectivity.Registry, _snapRadius);
             }
         }
 

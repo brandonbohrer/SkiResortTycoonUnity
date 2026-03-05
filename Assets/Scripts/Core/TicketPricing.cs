@@ -9,7 +9,7 @@ namespace SkiResortTycoon.Core
     /// </summary>
     public class TicketPricing
     {
-        private float _ticketPrice = 50f;
+        private float _ticketPrice = 30f;
         
         /// <summary>
         /// Player-settable ticket price in dollars.

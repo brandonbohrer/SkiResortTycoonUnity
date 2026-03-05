@@ -450,9 +450,9 @@ namespace SkiResortTycoon.Core
         }
         
         // ── Trail build cost ──────────────────────────────────────────────
-        public int TrailBaseCost { get; set; } = 3000;
-        public int TrailCostPerPoint { get; set; } = 200;
-        public int TrailCostPerDropUnit { get; set; } = 100;
+        public int TrailBaseCost { get; set; } = 2000;
+        public int TrailCostPerPoint { get; set; } = 100;
+        public int TrailCostPerDropUnit { get; set; } = 50;
         
         /// <summary>
         /// Calculates the build cost for a trail based on its length and elevation.

@@ -89096,7 +89096,7 @@ MonoBehaviour:
   _baseName: Base Lodge
   _perimeterHalfSize: 25
   _pointSpacing: 8
-  _showPerimeterLine: 1
+  _showPerimeterLine: 0
   _lineColor: {r: 0, g: 1, b: 1, a: 1}
   _lineWidth: 0.3
 --- !u!114 &423603415
@@ -94958,7 +94958,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: On hand
+  m_text: in Upkeep
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -301458,7 +301458,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Cash
+  m_text: Expenses
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -418238,7 +418238,6 @@ MonoBehaviour:
   _trailDrawer: {fileID: 1091263535}
   _skierColor: {r: 1, g: 0.2, b: 0.2, a: 1}
   _skierSize: 1.5
-  _maxActiveSkiers: 50
   _skierMaterialTemplate: {fileID: 0}
   _skierPrefab: {fileID: 1341620292782584, guid: 40290f336ccbb6644ac5ebf86b4522fe, type: 3}
   _skierParent: {fileID: 1000882485}

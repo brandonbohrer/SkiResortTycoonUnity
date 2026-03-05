@@ -71,6 +71,9 @@ namespace SkiResortTycoon.UnityBridge
         // Downstream value cache (cleared when mountain topology changes)
         private Dictionary<(SkillLevel, int), float> _downstreamCache = new Dictionary<(SkillLevel, int), float>();
         
+        // Cached guest stats for UI (updated every 2s alongside satisfaction)
+        private GuestSatisfactionStats _cachedGuestStats = new GuestSatisfactionStats();
+        
         // Shorthand for config and traffic manager
         private SkierAIConfig Config => _aiConfig;
         private ResortTrafficManager Traffic => ResortTrafficManager.Instance;
@@ -79,6 +82,12 @@ namespace SkiResortTycoon.UnityBridge
         /// Number of skiers currently active on the mountain
         /// </summary>
         public int ActiveSkierCount => _activeSkiers?.Count ?? 0;
+        
+        /// <summary>
+        /// Aggregated guest satisfaction stats for the Guests tab UI.
+        /// Updated every 2 seconds alongside resort satisfaction.
+        /// </summary>
+        public GuestSatisfactionStats GuestStats => _cachedGuestStats;
 
         /// <summary>
         /// Returns the count of active skiers per skill level.
@@ -112,7 +121,6 @@ namespace SkiResortTycoon.UnityBridge
             if (_activeSkiers.Count == 0 || _simRunner?.Sim?.Satisfaction == null)
                 return;
             
-            // Collect all active Skier objects
             var skiers = new List<Skier>(_activeSkiers.Count);
             foreach (var vs in _activeSkiers)
             {
@@ -121,6 +129,24 @@ namespace SkiResortTycoon.UnityBridge
             }
             
             _simRunner.Sim.Satisfaction.UpdateFromActiveSkiers(skiers);
+            
+            // Also compute aggregated guest stats for the UI
+            float priceRatio = _simRunner.Sim.EconomySystem != null 
+                ? _simRunner.Sim.EconomySystem.GetPriceRatio() : 1f;
+            
+            int distinctDiffs = 0;
+            int trailCount = 0;
+            if (_trailDrawer?.TrailSystem != null)
+            {
+                var trails = _trailDrawer.TrailSystem.GetAllTrails();
+                trailCount = trails.Count;
+                var diffs = new HashSet<TrailDifficulty>();
+                foreach (var t in trails)
+                    if (t.IsValid) diffs.Add(t.Difficulty);
+                distinctDiffs = diffs.Count;
+            }
+            
+            _cachedGuestStats = GuestSatisfactionStats.ComputeFrom(skiers, priceRatio, distinctDiffs, trailCount);
         }
 
         /// <summary>

@@ -31,7 +31,7 @@ namespace SkiResortTycoon.UnityBridge
 
         [Header("Build Settings")]
         [SerializeField] private float _treeClearRadius = 15f;
-        [SerializeField] private int _buildCost = 25000;
+        [SerializeField] private int _buildCost = 50000;
 
         [Header("Rotation")]
         [SerializeField] private float _rotationSpeed = 90f;

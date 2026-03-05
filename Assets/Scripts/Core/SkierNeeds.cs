@@ -62,6 +62,9 @@ namespace SkiResortTycoon.Core
         /// <summary>Runs completed this session (synced from Skier for factor access).</summary>
         public int RunsCompleted { get; set; }
         
+        /// <summary>Runs completed on preferred difficulty trails.</summary>
+        public int PreferredRunsCompleted { get; set; }
+        
         /// <summary>Desired runs for this session (synced from Skier for factor access).</summary>
         public int DesiredRuns { get; set; }
         

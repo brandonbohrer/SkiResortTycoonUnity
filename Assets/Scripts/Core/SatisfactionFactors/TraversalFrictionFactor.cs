@@ -1,35 +1,42 @@
 namespace SkiResortTycoon.Core.SatisfactionFactors
 {
     /// <summary>
-    /// Satisfaction factor based on how much unnecessary walking/traversal
-    /// a skier has to do to get around the resort.
-    /// 
-    /// Captures the "this resort is poorly laid out" frustration.
+    /// Satisfaction factor based on walking friction and lift wait times.
     /// Long walks between trails, lifts, and lodges reduce satisfaction.
+    /// Long lift waits are a MAJOR frustration source — the #1 complaint
+    /// at real resorts. Even moderate waits should noticeably tank satisfaction.
     /// </summary>
     public class TraversalFrictionFactor : ISatisfactionFactor
     {
         public string Name => "TraversalFriction";
-        public float Weight => 0.8f; // Major frustration source
+        public float Weight => 1.0f;
         
-        // Max walking distance before satisfaction bottoms out
-        private const float MaxPenaltyDistance = 500f; // meters
-        private const float MaxPenalty = 0.5f;
+        private const float MaxPenaltyDistance = 500f;
+        private const float MaxWalkPenalty = 0.4f;
+        
+        // Wait time thresholds (in seconds of effective game time at lift bottom)
+        // 30s effective wait → noticeable, 120s → major frustration, 300s → rage quit
+        private const float MaxWaitPenalty = 0.6f;
+        private const float WaitPenaltyScale = 150f;
         
         public float Evaluate(SkierNeeds needs)
         {
-            if (needs.TotalWalkingDistance <= 0f)
-                return 1.0f; // No walking = perfect
+            float score = 1.0f;
             
-            // Linear penalty: 0m = 1.0, 500m+ = 0.5
-            float walkPenalty = System.Math.Min(MaxPenalty, 
-                (needs.TotalWalkingDistance / MaxPenaltyDistance) * MaxPenalty);
+            if (needs.TotalWalkingDistance > 0f)
+            {
+                float walkPenalty = System.Math.Min(MaxWalkPenalty, 
+                    (needs.TotalWalkingDistance / MaxPenaltyDistance) * MaxWalkPenalty);
+                score -= walkPenalty;
+            }
             
-            // Also factor in wait time (for future lift line support)
-            // 0 seconds = no penalty, 300+ seconds total waiting = -0.3
-            float waitPenalty = System.Math.Min(0.3f, needs.TotalWaitTime / 1000f);
+            if (needs.TotalWaitTime > 0f)
+            {
+                float waitPenalty = System.Math.Min(MaxWaitPenalty, 
+                    needs.TotalWaitTime / WaitPenaltyScale * MaxWaitPenalty);
+                score -= waitPenalty;
+            }
             
-            float score = 1.0f - walkPenalty - waitPenalty;
             return System.Math.Max(0f, System.Math.Min(1f, score));
         }
     }

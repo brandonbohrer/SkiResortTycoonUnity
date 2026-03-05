@@ -43,6 +43,9 @@ namespace SkiResortTycoon.UnityBridge
             else
                 _sim.State.ActiveSkierCount = 0;
 
+            // Update lodge count for visitor system
+            _sim.State.LodgesBuilt = LodgeManager.Instance != null ? LodgeManager.Instance.AllLodges.Count : 0;
+
             bool dayEnded = _sim.Tick(Time.deltaTime);
             
             if (dayEnded)

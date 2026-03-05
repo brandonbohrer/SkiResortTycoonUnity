@@ -397,6 +397,22 @@ namespace SkiResortTycoon.UnityBridge
             RegisterTrailSnapPoints(trail);
 
             var stats = _trailSystem.CalculateDifficulty(trail);
+            
+            // Deduct trail build cost
+            int trailCost = _trailSystem.CalculateTrailCost(trail);
+            var simRunner = FindObjectOfType<SimulationRunner>();
+            if (simRunner?.Sim?.State != null)
+            {
+                if (simRunner.Sim.State.Money < trailCost)
+                {
+                    NotificationManager.Instance?.ShowError($"Not enough money! Trail costs ${trailCost:N0}");
+                    _trailSystem.RemoveTrail(trail);
+                    CancelBuilding();
+                    return;
+                }
+                simRunner.Sim.State.Money -= trailCost;
+            }
+            
             trail.GenerateBoundaries();
 
             // Project boundary points onto terrain so the edge lines sit on the surface

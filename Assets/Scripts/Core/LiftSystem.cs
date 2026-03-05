@@ -15,9 +15,9 @@ namespace SkiResortTycoon.Core
         private SnapRegistry _snapRegistry;
         
         // Configurable costs and constraints
-        public int BaseCost { get; set; } = 5000;           // Base cost per lift
-        public int CostPerTile { get; set; } = 100;         // Additional cost per tile length
-        public int CostPerHeightUnit { get; set; } = 200;   // Additional cost per height unit
+        public int BaseCost { get; set; } = 25000;          // Base cost per lift
+        public int CostPerTile { get; set; } = 500;         // Additional cost per tile length
+        public int CostPerHeightUnit { get; set; } = 800;   // Additional cost per height unit
         public int MaxLength { get; set; } = 50;            // Max horizontal distance
         public int MinElevationGain { get; set; } = 2;      // Minimum height gain required
         

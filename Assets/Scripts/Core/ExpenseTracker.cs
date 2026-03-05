@@ -8,9 +8,9 @@ namespace SkiResortTycoon.Core
     public class ExpenseTracker
     {
         // ── Per-day cost rates (tunable) ────────────────────────────────
-        public float CostPerLift { get; set; } = 500f;
-        public float CostPerLodge { get; set; } = 300f;
-        public float CostPerTrail { get; set; } = 100f;
+        public float CostPerLift { get; set; } = 1500f;
+        public float CostPerLodge { get; set; } = 800f;
+        public float CostPerTrail { get; set; } = 250f;
         
         /// <summary>
         /// Calculates itemized daily expenses.

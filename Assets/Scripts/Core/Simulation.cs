@@ -70,9 +70,10 @@ namespace SkiResortTycoon.Core
                 _state.TrailsBuilt = _trailSystem.Trails.Count;
             }
             
-            // Update visitor system multipliers
+            // Update visitor system multipliers and lodge count
             _visitorSystem.SatisfactionMultiplier = _satisfaction.GetVisitorMultiplier();
             _visitorSystem.PriceMultiplier = _economySystem.GetDemandMultiplier();
+            _visitorSystem.LodgeCount = _state.LodgesBuilt;
             
             // Only advance time and visitors if the day is still active
             if (!_timeSystem.IsDayOver(_state))

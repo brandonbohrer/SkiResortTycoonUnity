@@ -24,7 +24,6 @@ namespace SkiResortTycoon.UnityBridge
         [Header("Visual Settings")]
         [SerializeField] private Color _skierColor = new Color(1f, 0.2f, 0.2f); // Red
         [SerializeField] private float _skierSize = 1.5f; // Bigger so we can see them
-        [SerializeField] private int _maxActiveSkiers = 50;
         [Tooltip("Material template for skier dots (Unlit/Color). Must be assigned — Shader.Find is not used in builds.")]
         [SerializeField] private Material _skierMaterialTemplate;
 
@@ -216,9 +215,13 @@ namespace SkiResortTycoon.UnityBridge
                 isPaused = _simRunner.Sim.TimeController.IsPaused;
             }
 
-            // Spawn new skiers periodically
+            // Spawn new skiers periodically — target count driven by economy
+            int targetSkiers = 10;
+            if (_simRunner.Sim != null)
+                targetSkiers = _simRunner.Sim.VisitorSystem.TargetActiveSkiers;
+            
             _spawnTimer += effectiveDeltaTime;
-            if (_spawnTimer >= _spawnInterval && _activeSkiers.Count < _maxActiveSkiers)
+            if (_spawnTimer >= _spawnInterval && _activeSkiers.Count < targetSkiers)
             {
                 _spawnTimer = 0f;
                 TrySpawnSkier();
@@ -264,6 +267,12 @@ namespace SkiResortTycoon.UnityBridge
                     {
                         float walkDistance = skier.Motion.WalkSpeed * effectiveDeltaTime;
                         skier.Skier.Needs.AddWalkingDistance(walkDistance);
+                    }
+                    
+                    // Recover fatigue while riding lifts (resting on the chair)
+                    if (skier.Phase == SkierPhase.RidingLift)
+                    {
+                        skier.Skier.Needs.RecoverFatigue(effectiveGameMinutes);
                     }
                 }
                 
@@ -563,6 +572,7 @@ namespace SkiResortTycoon.UnityBridge
             skier.SatisfactionTracker.AddFactor(new TraversalFrictionFactor());
             skier.SatisfactionTracker.AddFactor(new ReturnToBaseFactor());
             skier.SatisfactionTracker.AddFactor(new TicketValueFactor());
+            skier.SatisfactionTracker.AddFactor(new SkillMatchFactor(skier.Skill));
             
             // Set ticket value tracking on needs (for TicketValueFactor)
             if (_simRunner.Sim != null && _simRunner.Sim.EconomySystem != null)
@@ -666,10 +676,27 @@ namespace SkiResortTycoon.UnityBridge
                 // No chair available → stay at bottom, wait in queue, retry next frame
                 if (chairMover == null || chairIndex < 0)
                 {
-                    // Keep ReachedLiftBottom true so we retry next frame
-                    // Skier stays at the lift base position, visually waiting
+                    // Track wait time — accumulate real-time seconds (game speed already affects game minutes)
+                    vs.IsWaitingForChair = true;
+                    float effectiveDelta = Time.deltaTime;
+                    if (_simRunner.Sim?.TimeController != null)
+                        effectiveDelta = _simRunner.Sim.TimeController.GetEffectiveDeltaTime(Time.deltaTime);
+                    vs.CurrentLiftWaitSeconds += effectiveDelta;
+                    vs.Skier.Needs.AddWaitTime(effectiveDelta);
                     return;
                 }
+
+                // Chair claimed — log total wait if they waited
+                if (vs.IsWaitingForChair && vs.CurrentLiftWaitSeconds > 0f)
+                {
+                    float waitGameMinutes = 0f;
+                    if (_simRunner.Sim?.TimeSystem != null)
+                        waitGameMinutes = vs.CurrentLiftWaitSeconds * _simRunner.Sim.TimeSystem.SpeedMinutesPerSecond;
+                    _skierAI.OnLiftWait(vs.Skier, waitGameMinutes);
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Waited {vs.CurrentLiftWaitSeconds:F1}s ({waitGameMinutes:F0} game min) for lift {vs.CurrentLift.LiftId}");
+                }
+                vs.IsWaitingForChair = false;
+                vs.CurrentLiftWaitSeconds = 0f;
 
                 // Chair claimed — now transition to riding
                 vs.LiftsRidden.Add(vs.CurrentLift.LiftId);
@@ -809,8 +836,6 @@ namespace SkiResortTycoon.UnityBridge
             vs.HasSwitchedAtJunction = false;
             vs.EvaluatedLiftExits.Clear();
             vs.EvaluatedTrailExits.Clear();
-            vs.Skier.RunsCompleted++;
-            vs.Skier.Needs.RunsCompleted = vs.Skier.RunsCompleted;
             
             // Update skier state
             vs.Skier.CurrentState = SkierState.SkiingTrail;
@@ -1044,6 +1069,11 @@ namespace SkiResortTycoon.UnityBridge
                 trailEndPos = vs.GameObject.transform.position;
             }
             if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Finished {vs.CurrentTrail.Difficulty} trail {vs.CurrentTrail.TrailId} at {trailEndPos}");
+
+            // Run completed — apply fatigue, satisfaction bonuses/penalties, increment count
+            _skierAI.OnRunCompleted(vs.Skier, vs.CurrentTrail);
+            vs.Skier.Needs.RunsCompleted = vs.Skier.RunsCompleted;
+            vs.Skier.Needs.PreferredRunsCompleted = vs.Skier.PreferredRunsCompleted;
 
             // Fire traffic event: skier completed trail
             if (Traffic != null) Traffic.FireTrailCompleted(vs.Skier.SkierId, vs.CurrentTrail.TrailId);
@@ -1746,16 +1776,16 @@ namespace SkiResortTycoon.UnityBridge
                 {
                     float charge = pricing.CalculateCharge(usedBathroom, usedFood, usedRest);
                     float satisfactionImpact = pricing.CalculateSatisfactionImpact(usedBathroom, usedFood, usedRest);
-                    
-                    // Record revenue
+
+                    // Record revenue on the lodge (collected at end-of-day by EconomySystem)
                     pricing.RecordVisit(charge);
-                    
-                    // Add revenue to resort
+
+                    // Track running total for live display only — actual money is applied at end-of-day
                     if (_simRunner?.Sim?.State != null)
                     {
-                        _simRunner.Sim.State.Money += (int)charge;
+                        _simRunner.Sim.State.TodayLodgeRevenue += charge;
                     }
-                    
+
                     // Apply satisfaction penalty from pricing
                     vs.Skier.Needs.AddPricePenalty(satisfactionImpact);
                     vs.Skier.Needs.LodgeVisitCount++;
@@ -2387,6 +2417,10 @@ namespace SkiResortTycoon.UnityBridge
             // Returning to base: skier is done skiing and heading for the base lodge to leave
             public bool IsReturningToBase;
             public float ReturningToBaseTimer; // Safety timeout (game minutes, 480 = 1 in-game day)
+            
+            // Lift wait tracking: accumulates real seconds spent waiting at lift bottom for a chair
+            public bool IsWaitingForChair;
+            public float CurrentLiftWaitSeconds;
         }
     }
 }

@@ -448,6 +448,22 @@ namespace SkiResortTycoon.Core
         {
             return _trails.Find(t => t.TrailId == trailId);
         }
+        
+        // ── Trail build cost ──────────────────────────────────────────────
+        public int TrailBaseCost { get; set; } = 3000;
+        public int TrailCostPerPoint { get; set; } = 200;
+        public int TrailCostPerDropUnit { get; set; } = 100;
+        
+        /// <summary>
+        /// Calculates the build cost for a trail based on its length and elevation.
+        /// </summary>
+        public int CalculateTrailCost(TrailData trail)
+        {
+            int points = trail.WorldPathPoints != null ? trail.WorldPathPoints.Count : trail.PathPoints.Count;
+            int cost = TrailBaseCost + points * TrailCostPerPoint;
+            cost += (int)(trail.TotalElevationDrop * TrailCostPerDropUnit);
+            return System.Math.Max(TrailBaseCost, cost);
+        }
     }
     
     /// <summary>

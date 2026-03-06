@@ -187,6 +187,12 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
 
+            if (_isFollowing)
+            {
+                UpdateFollowMode();
+                return;
+            }
+
             HandleOrbit();
             HandleKeyboardRotation();
             HandlePanKeyboard();
@@ -465,6 +471,72 @@ namespace SkiResortTycoon.UnityBridge
                    col.transform.IsChildOf(_mountainMeshObj.transform);
         }
 
+        // ─── Follow mode ────────────────────────────────────────────────
+
+        private void UpdateFollowMode()
+        {
+            if (_followTarget == null)
+            {
+                StopFollowing();
+                return;
+            }
+
+            // Auto-exit when skier enters a lodge
+            if (_followSkier != null &&
+                _followSkier.CurrentState == SkiResortTycoon.Core.SkierState.AtAmenity)
+            {
+                StopFollowing();
+                return;
+            }
+
+            // Exit on Escape
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                StopFollowing();
+                return;
+            }
+
+            // Exit on WASD / arrow pan keys
+            if (!IsTypingInInputField &&
+                (Input.GetKeyDown(KeyCode.W) || Input.GetKeyDown(KeyCode.A) ||
+                 Input.GetKeyDown(KeyCode.S) || Input.GetKeyDown(KeyCode.D) ||
+                 Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow) ||
+                 Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.RightArrow)))
+            {
+                StopFollowing();
+                return;
+            }
+
+            // Allow look-around: right-click drag orbits the view direction
+            if (Input.GetMouseButton(_orbitMouseButton))
+            {
+                if (Input.GetMouseButtonDown(_orbitMouseButton))
+                    _lastMousePosition = Input.mousePosition;
+
+                Vector3 delta = Input.mousePosition - _lastMousePosition;
+                _followYaw += delta.x * _orbitSensitivity;
+                _followPitch -= delta.y * _orbitSensitivity;
+                _followPitch = Mathf.Clamp(_followPitch, -80f, 80f);
+                _lastMousePosition = Input.mousePosition;
+            }
+
+            // Q/E keyboard rotation
+            if (!IsTypingInInputField)
+            {
+                if (Input.GetKey(KeyCode.Q))
+                    _followYaw -= _keyboardRotateSpeed * Time.deltaTime;
+                if (Input.GetKey(KeyCode.E))
+                    _followYaw += _keyboardRotateSpeed * Time.deltaTime;
+            }
+
+            // Position camera at skier's head
+            Vector3 headPos = _followTarget.position + Vector3.up * _followHeightOffset;
+            transform.position = headPos;
+
+            Quaternion lookRotation = Quaternion.Euler(_followPitch, _followYaw, 0f);
+            transform.rotation = lookRotation;
+        }
+
         // ─── Utility ────────────────────────────────────────────────────
 
         private Vector3 GetMouseWorldPosition()
@@ -478,6 +550,21 @@ namespace SkiResortTycoon.UnityBridge
 
             return _focusPoint;
         }
+
+        // ─── Follow-mode state ─────────────────────────────────────────
+        private Transform _followTarget;
+        private SkiResortTycoon.Core.Skier _followSkier;
+        private bool _isFollowing;
+        private float _followYaw;
+        private float _followPitch;
+        private float _followHeightOffset = 1.8f;
+
+        public bool IsFollowing => _isFollowing;
+
+        /// <summary>
+        /// Event raised when follow mode ends (for UI to react).
+        /// </summary>
+        public event System.Action OnFollowEnded;
 
         // ─── Public API ─────────────────────────────────────────────────
 
@@ -500,6 +587,58 @@ namespace SkiResortTycoon.UnityBridge
             _focusPoint.x = x;
             _focusPoint.z = z;
             UpdateCameraTransform();
+        }
+
+        /// <summary>
+        /// Smoothly moves the camera to look at the given world position at a close zoom level.
+        /// </summary>
+        public void FindTarget(Vector3 worldPosition, float zoomDistance = 40f)
+        {
+            StopFollowing();
+            _focusPoint = worldPosition;
+            _targetDistance = zoomDistance;
+            _distance = zoomDistance;
+            UpdateCameraTransform();
+        }
+
+        /// <summary>
+        /// Enters first-person follow mode: camera is locked to the target transform's
+        /// position (at eye height) and the player can look around with right-click / Q/E.
+        /// Automatically exits when the skier enters a lodge (AtAmenity state).
+        /// </summary>
+        public void StartFollowing(Transform target, SkiResortTycoon.Core.Skier skierData = null)
+        {
+            if (target == null) return;
+            _followTarget = target;
+            _followSkier = skierData;
+            _isFollowing = true;
+            _followYaw = _yaw;
+            _followPitch = 10f;
+        }
+
+        /// <summary>
+        /// Exits follow mode and returns to normal orbit camera.
+        /// </summary>
+        public void StopFollowing()
+        {
+            if (!_isFollowing) return;
+
+            _isFollowing = false;
+
+            if (_followTarget != null)
+            {
+                _focusPoint = _followTarget.position;
+                _targetDistance = 40f;
+                _distance = 40f;
+            }
+
+            _yaw = _followYaw;
+            _pitch = _defaultPitch;
+            _followTarget = null;
+            _followSkier = null;
+
+            UpdateCameraTransform();
+            OnFollowEnded?.Invoke();
         }
 
         public Vector3 FocusPoint => _focusPoint;

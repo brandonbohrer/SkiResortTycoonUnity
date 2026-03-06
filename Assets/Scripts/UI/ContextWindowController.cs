@@ -1085,12 +1085,57 @@ namespace SkiResortTycoon.UI
 
         private void OnFindClicked()
         {
-            // Not yet implemented
+            if (_current == null) return;
+
+            var cam = FindObjectOfType<CameraController>();
+            if (cam == null) return;
+
+            Vector3 target;
+            switch (_current.Type)
+            {
+                case StructureType.Trail:
+                {
+                    var pts = _current.TrailData?.WorldPathPoints;
+                    if (pts == null || pts.Count == 0) return;
+                    var mid = pts[pts.Count / 2];
+                    target = MountainManager.ToUnityVector3(mid);
+                    break;
+                }
+                case StructureType.Lift:
+                {
+                    var lift = _current.LiftData;
+                    if (lift == null) return;
+                    var s = MountainManager.ToUnityVector3(lift.StartPosition);
+                    var e = MountainManager.ToUnityVector3(lift.EndPosition);
+                    target = (s + e) * 0.5f;
+                    break;
+                }
+                case StructureType.Lodge:
+                {
+                    if (_current.Lodge == null) return;
+                    target = _current.Lodge.transform.position;
+                    break;
+                }
+                case StructureType.Skier:
+                {
+                    target = _current.transform.position;
+                    break;
+                }
+                default:
+                    return;
+            }
+
+            cam.FindTarget(target);
         }
 
         private void OnFollowClicked()
         {
-            // Not yet implemented
+            if (_current == null || _current.Type != StructureType.Skier) return;
+
+            var cam = FindObjectOfType<CameraController>();
+            if (cam == null) return;
+
+            cam.StartFollowing(_current.transform, _current.SkierData);
         }
         
         private void SetupTooltip(Button button, string header, string content)

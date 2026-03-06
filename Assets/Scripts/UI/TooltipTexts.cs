@@ -114,7 +114,7 @@ namespace SkiResortTycoon.UI
             public const string FindContent = "Center the camera on this structure.";
             
             public const string FollowHeader = "Follow";
-            public const string FollowContent = "Follow this structure with the camera.\n(Coming soon)";
+            public const string FollowContent = "Enter first-person view and see through this skier's eyes.\nExit with Escape or WASD.";
             
             // Build Buttons
             public const string ConfirmHeader = "Confirm";

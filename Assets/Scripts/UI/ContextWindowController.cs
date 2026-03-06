@@ -1125,7 +1125,14 @@ namespace SkiResortTycoon.UI
                     return;
             }
 
-            cam.FindTarget(target);
+            float zoom;
+            switch (_current.Type)
+            {
+                case StructureType.Lift:  zoom = 60f;  break;
+                case StructureType.Skier: zoom = 13f;  break;
+                default:                  zoom = 40f;  break;
+            }
+            cam.FindTarget(target, zoom);
         }
 
         private void OnFollowClicked()

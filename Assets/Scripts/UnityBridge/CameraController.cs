@@ -193,6 +193,12 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
 
+            if (_isFindAnimating)
+            {
+                UpdateFindAnimation();
+                return;
+            }
+
             HandleOrbit();
             HandleKeyboardRotation();
             HandlePanKeyboard();
@@ -377,6 +383,13 @@ namespace SkiResortTycoon.UnityBridge
             }
         }
 
+        private void SnapFocusHeight()
+        {
+            float? terrainY = GetTerrainHeightAt(_focusPoint);
+            if (terrainY.HasValue)
+                _focusPoint.y = terrainY.Value + _focusHeightOffset;
+        }
+
         // ─── Core: position camera from yaw/pitch/distance ──────────────
 
         private void UpdateCameraTransform()
@@ -471,6 +484,46 @@ namespace SkiResortTycoon.UnityBridge
                    col.transform.IsChildOf(_mountainMeshObj.transform);
         }
 
+        // ─── Find animation ─────────────────────────────────────────────
+
+        private void UpdateFindAnimation()
+        {
+            _findT += Time.deltaTime / FIND_ANIM_DURATION;
+
+            // Any user input cancels the animation and snaps to destination
+            bool userInterrupted =
+                Input.GetMouseButtonDown(_orbitMouseButton) ||
+                Input.GetMouseButtonDown(_panMouseButton) ||
+                Input.mouseScrollDelta.y != 0f ||
+                (!IsTypingInInputField &&
+                 (Input.GetKeyDown(KeyCode.W) || Input.GetKeyDown(KeyCode.A) ||
+                  Input.GetKeyDown(KeyCode.S) || Input.GetKeyDown(KeyCode.D)));
+
+            if (_findT >= 1f || userInterrupted)
+            {
+                _focusPoint.x = _findEndFocus.x;
+                _focusPoint.z = _findEndFocus.z;
+                _distance = _findEndDist;
+                _targetDistance = _findEndDist;
+                _isFindAnimating = false;
+                SnapFocusHeight();
+                UpdateCameraTransform();
+                return;
+            }
+
+            // Smooth ease-in-out curve
+            float t = _findT < 0.5f
+                ? 2f * _findT * _findT
+                : 1f - Mathf.Pow(-2f * _findT + 2f, 2f) / 2f;
+
+            _focusPoint.x = Mathf.Lerp(_findStartFocus.x, _findEndFocus.x, t);
+            _focusPoint.z = Mathf.Lerp(_findStartFocus.z, _findEndFocus.z, t);
+            _distance = Mathf.Lerp(_findStartDist, _findEndDist, t);
+            _targetDistance = _distance;
+            SnapFocusHeight();
+            UpdateCameraTransform();
+        }
+
         // ─── Follow mode ────────────────────────────────────────────────
 
         private void UpdateFollowMode()
@@ -507,34 +560,64 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
 
-            // Allow look-around: right-click drag orbits the view direction
+            // Track whether the player is actively rotating the camera
+            bool playerRotated = false;
+
             if (Input.GetMouseButton(_orbitMouseButton))
             {
                 if (Input.GetMouseButtonDown(_orbitMouseButton))
                     _lastMousePosition = Input.mousePosition;
 
                 Vector3 delta = Input.mousePosition - _lastMousePosition;
-                _followYaw += delta.x * _orbitSensitivity;
-                _followPitch -= delta.y * _orbitSensitivity;
-                _followPitch = Mathf.Clamp(_followPitch, -80f, 80f);
+                if (delta.sqrMagnitude > 0.1f)
+                {
+                    _followYaw += delta.x * _orbitSensitivity;
+                    _followPitch -= delta.y * _orbitSensitivity;
+                    _followPitch = Mathf.Clamp(_followPitch, -80f, 80f);
+                    playerRotated = true;
+                }
                 _lastMousePosition = Input.mousePosition;
             }
 
-            // Q/E keyboard rotation
             if (!IsTypingInInputField)
             {
                 if (Input.GetKey(KeyCode.Q))
+                {
                     _followYaw -= _keyboardRotateSpeed * Time.deltaTime;
+                    playerRotated = true;
+                }
                 if (Input.GetKey(KeyCode.E))
+                {
                     _followYaw += _keyboardRotateSpeed * Time.deltaTime;
+                    playerRotated = true;
+                }
             }
 
-            // Position camera at skier's head
+            // Compute the skier's facing yaw from their transform
+            Vector3 skierForward = _followTarget.forward;
+            float skierYaw = Mathf.Atan2(skierForward.x, skierForward.z) * Mathf.Rad2Deg;
+
+            if (playerRotated)
+            {
+                _followIdleTimer = 0f;
+            }
+            else
+            {
+                _followIdleTimer += Time.deltaTime;
+
+                // After idle timeout, smoothly return to the skier's facing direction
+                if (_followIdleTimer >= FOLLOW_IDLE_TIMEOUT)
+                {
+                    _followYaw = Mathf.LerpAngle(_followYaw, skierYaw,
+                        FOLLOW_RETURN_SPEED * Time.deltaTime);
+                    _followPitch = Mathf.Lerp(_followPitch, 10f,
+                        FOLLOW_RETURN_SPEED * Time.deltaTime);
+                }
+            }
+
             Vector3 headPos = _followTarget.position + Vector3.up * _followHeightOffset;
             transform.position = headPos;
-
-            Quaternion lookRotation = Quaternion.Euler(_followPitch, _followYaw, 0f);
-            transform.rotation = lookRotation;
+            transform.rotation = Quaternion.Euler(_followPitch, _followYaw, 0f);
         }
 
         // ─── Utility ────────────────────────────────────────────────────
@@ -558,6 +641,18 @@ namespace SkiResortTycoon.UnityBridge
         private float _followYaw;
         private float _followPitch;
         private float _followHeightOffset = 1.8f;
+        private float _followIdleTimer;
+        private const float FOLLOW_IDLE_TIMEOUT = 5f;
+        private const float FOLLOW_RETURN_SPEED = 1.5f;
+
+        // ─── Find-target animation state ────────────────────────────────
+        private bool _isFindAnimating;
+        private Vector3 _findStartFocus;
+        private Vector3 _findEndFocus;
+        private float _findStartDist;
+        private float _findEndDist;
+        private float _findT;
+        private const float FIND_ANIM_DURATION = 0.6f;
 
         public bool IsFollowing => _isFollowing;
 
@@ -590,15 +685,17 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         /// <summary>
-        /// Smoothly moves the camera to look at the given world position at a close zoom level.
+        /// Smoothly pans and zooms the camera to look at the given world position.
         /// </summary>
         public void FindTarget(Vector3 worldPosition, float zoomDistance = 40f)
         {
             StopFollowing();
-            _focusPoint = worldPosition;
-            _targetDistance = zoomDistance;
-            _distance = zoomDistance;
-            UpdateCameraTransform();
+            _isFindAnimating = true;
+            _findStartFocus = _focusPoint;
+            _findEndFocus = worldPosition;
+            _findStartDist = _distance;
+            _findEndDist = zoomDistance;
+            _findT = 0f;
         }
 
         /// <summary>
@@ -612,8 +709,12 @@ namespace SkiResortTycoon.UnityBridge
             _followTarget = target;
             _followSkier = skierData;
             _isFollowing = true;
-            _followYaw = _yaw;
+            _isFindAnimating = false;
+
+            Vector3 fwd = target.forward;
+            _followYaw = Mathf.Atan2(fwd.x, fwd.z) * Mathf.Rad2Deg;
             _followPitch = 10f;
+            _followIdleTimer = FOLLOW_IDLE_TIMEOUT;
         }
 
         /// <summary>
@@ -624,6 +725,7 @@ namespace SkiResortTycoon.UnityBridge
             if (!_isFollowing) return;
 
             _isFollowing = false;
+            _isFindAnimating = false;
 
             if (_followTarget != null)
             {

@@ -46,6 +46,7 @@ namespace SkiResortTycoon.UnityBridge
 
         private readonly List<TrailAnchorPoint> _anchors = new List<TrailAnchorPoint>();
         private Vector3 _cursorWorldPos;
+        private bool _isSnappedToLastAnchor;
 
         // Paint mode accumulator
         private readonly List<Vector3> _paintPoints = new List<Vector3>();
@@ -78,9 +79,10 @@ namespace SkiResortTycoon.UnityBridge
         public float TrailWidth => _trailWidth;
         public int AnchorCount => _anchors.Count;
         public bool IsBuilding => _state != TrailBuildState.Idle;
-        public bool IsCursorSnapped => _magneticCursor != null && _magneticCursor.IsSnapped;
-        public Vector3 CursorSnappedWorldPos => _magneticCursor != null
-            ? _magneticCursor.SnappedPosition : _cursorWorldPos;
+        public bool IsCursorSnapped => _isSnappedToLastAnchor || (_magneticCursor != null && _magneticCursor.IsSnapped);
+        public Vector3 CursorSnappedWorldPos => _isSnappedToLastAnchor
+            ? _cursorWorldPos
+            : (_magneticCursor != null ? _magneticCursor.SnappedPosition : _cursorWorldPos);
         public Vector3 CursorRawWorldPos => _magneticCursor != null
             ? _magneticCursor.RawPosition : _cursorWorldPos;
         // Legacy compat used by TrailVisualizer
@@ -136,7 +138,7 @@ namespace SkiResortTycoon.UnityBridge
 
         public void UpdateCursorPosition(Vector3 worldPos)
         {
-            if (_magneticCursor != null && _state != TrailBuildState.Settled)
+            if (_magneticCursor != null)
             {
                 bool isStart = _anchors.Count == 0;
                 var types = isStart
@@ -149,6 +151,18 @@ namespace SkiResortTycoon.UnityBridge
             else
             {
                 _cursorWorldPos = worldPos;
+            }
+
+            _isSnappedToLastAnchor = false;
+            if (_state == TrailBuildState.Settled && _anchors.Count > 0)
+            {
+                var lastAnchor = _anchors[_anchors.Count - 1];
+                Vector3 lastPos = MountainManager.ToUnityVector3(lastAnchor.Position);
+                if (Vector3.Distance(worldPos, lastPos) <= _snapRadius)
+                {
+                    _cursorWorldPos = lastPos;
+                    _isSnappedToLastAnchor = true;
+                }
             }
 
             if (_state == TrailBuildState.Placing)
@@ -510,7 +524,17 @@ namespace SkiResortTycoon.UnityBridge
                 _previewSegCache.Add(ProjectOntoTerrain(_cursorWorldPos));
             }
 
-            _previewRenderer.SetPreviewSegment(_previewSegCache, _trailWidth);
+            // Combine committed path + preview into a single continuous mesh so
+            // the outline perpendiculars are averaged properly at the junction.
+            var combined = new List<Vector3>(_committedPathCache.Count + _previewSegCache.Count);
+            combined.AddRange(_committedPathCache);
+            int skip = _committedPathCache.Count > 0 ? 1 : 0;
+            for (int i = skip; i < _previewSegCache.Count; i++)
+                combined.Add(_previewSegCache[i]);
+
+            if (combined.Count >= 2)
+                _previewRenderer.SetCommittedPath(combined, _trailWidth);
+            _previewRenderer.HidePreview();
         }
 
         private void RebuildPaintPreview()

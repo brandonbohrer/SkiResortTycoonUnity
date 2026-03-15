@@ -56,6 +56,17 @@ namespace SkiResortTycoon.UnityBridge
         // ── Walk-to-lift target ─────────────────────────────────────────
         private Vector3 _walkTarget;
 
+        /// <summary>Horizontal distance from current position to the walk target.</summary>
+        public float DistanceToWalkTarget
+        {
+            get
+            {
+                Vector3 d = _smoothedPosition - _walkTarget;
+                d.y = 0f;
+                return d.magnitude;
+            }
+        }
+
         // ── Lateral offset (corridor-aware) ───────────────────────────
         private float _lateralOffset;             // -1..1  normalised
         private float _preferredLane;             // per-skier baseline side bias (-0.7..0.7)

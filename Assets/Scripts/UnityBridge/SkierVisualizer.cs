@@ -2752,7 +2752,10 @@ namespace SkiResortTycoon.UnityBridge
                         break;
                 }
             }
+
         }
+
+        private const float QUEUE_ARRIVED_DISTANCE = 0.6f;
 
         private SkierAnimState DetermineDesiredAnimState(VisualSkier vs)
         {
@@ -2760,7 +2763,10 @@ namespace SkiResortTycoon.UnityBridge
             {
                 case SkierPhase.WalkingToLift:
                     if (vs.IsWaitingForChair || vs.Skier.CurrentState == SkierState.InQueue)
-                        return SkierAnimState.Idle;
+                    {
+                        bool atSlot = vs.Motion.DistanceToWalkTarget < QUEUE_ARRIVED_DISTANCE;
+                        return atSlot ? SkierAnimState.Idle : SkierAnimState.Glide;
+                    }
                     return SkierAnimState.Glide;
 
                 case SkierPhase.RidingLift:

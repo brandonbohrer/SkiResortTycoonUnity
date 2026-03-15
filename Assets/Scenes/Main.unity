@@ -279867,6 +279867,7 @@ MonoBehaviour:
   _toolIcon: {fileID: 0}
   _toolDescription: Description
   _liftBuilder: {fileID: 0}
+  _defaultLiftType: 0
 --- !u!1 &1324440720
 GameObject:
   m_ObjectHideFlags: 0
@@ -312313,6 +312314,11 @@ MonoBehaviour:
   _penModeButton: {fileID: 1912590420}
   _trailWidthSlider: {fileID: 5855499}
   _trailWidthText: {fileID: 1906354107}
+  _liftBuildTool: {fileID: 1324266414}
+  _oneSeatLowSpeedButton: {fileID: 1530522153}
+  _oneSeatHighSpeedButton: {fileID: 446651476}
+  _twoSeatLowSpeedButton: {fileID: 1268008277}
+  _twoSeatHighSpeedButton: {fileID: 985962626}
 --- !u!1001 &1489983976
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -314669,6 +314675,7 @@ MonoBehaviour:
   _buildModeKey: 108
   _debugMode: 0
   _snapRadius: 5
+  _selectedLiftType: 0
   _snapColor: {r: 0, g: 1, b: 0, a: 1}
   _defaultColor: {r: 1, g: 1, b: 1, a: 1}
   _cursorMaterialTemplate: {fileID: 0}
@@ -314732,6 +314739,9 @@ MonoBehaviour:
   _pillarSpacing: 20
   _chairSpacing: 8
   _corridorWidth: 8
+  _lowSpeedChairSpeed: 3
+  _highSpeedMultiplier: 1.5
+  _oneSeatSpacingMultiplier: 2
   _cableUpX: 1.5
   _cableDownX: -1.5
   _cableY: 7.8
@@ -319388,7 +319398,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1530522150}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e52b40d0c365c4eb9a1c6651b1447349, type: 3}
   m_Name: 

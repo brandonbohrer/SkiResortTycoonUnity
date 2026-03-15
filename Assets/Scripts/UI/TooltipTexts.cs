@@ -71,6 +71,18 @@ namespace SkiResortTycoon.UI
             
             public const string TrailWidthHeader = "Trail Width";
             public const string TrailWidthContent = "Adjust the width of trails you're drawing.";
+
+            public const string OneSeatLowSpeedHeader = "1-Seat Low Speed";
+            public const string OneSeatLowSpeedContent = "Build a 1-seat low-speed lift.\nLowest capacity option.";
+
+            public const string OneSeatHighSpeedHeader = "1-Seat High Speed";
+            public const string OneSeatHighSpeedContent = "Build a 1-seat high-speed lift.\n1.5x chair speed and higher capacity than low-speed.";
+
+            public const string TwoSeatLowSpeedHeader = "2-Seat Low Speed";
+            public const string TwoSeatLowSpeedContent = "Build a 2-seat low-speed lift.\nNot implemented yet.";
+
+            public const string TwoSeatHighSpeedHeader = "2-Seat High Speed";
+            public const string TwoSeatHighSpeedContent = "Build a 2-seat high-speed lift.\nNot implemented yet.";
             
             public static string GetCategoryContent(string categoryName)
             {

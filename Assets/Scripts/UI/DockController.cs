@@ -40,12 +40,23 @@ namespace SkiResortTycoon.UI
         [SerializeField] private Slider _trailWidthSlider;
         [Tooltip("Text label showing current width value.")]
         [SerializeField] private TextMeshProUGUI _trailWidthText;
+        
+        // ── Lift Build Type UI (drag from LiftsSubRow) ──────────────────────
+        [Header("Lift Build Type UI")]
+        [Tooltip("The LiftBuildTool component in the scene.")]
+        [SerializeField] private LiftBuildTool _liftBuildTool;
+        [SerializeField] private Button _oneSeatLowSpeedButton;
+        [SerializeField] private Button _oneSeatHighSpeedButton;
+        [SerializeField] private Button _twoSeatLowSpeedButton;
+        [SerializeField] private Button _twoSeatHighSpeedButton;
 
         // ── Runtime state ────────────────────────────────────────────────────
         private int _activeIndex = -1;
         private Color[] _originalColors;
         private TrailDrawMode _activeTrailMode = TrailDrawMode.Paint;
         private Color _paintOriginal, _lineOriginal, _penOriginal;
+        private LiftType _selectedLiftType = LiftType.OneSeatLowSpeed;
+        private Color _oneSeatLowOriginal, _oneSeatHighOriginal, _twoSeatLowOriginal, _twoSeatHighOriginal;
         private bool _skipNextToolClose;
 
         private const float WidthMin = 10f;
@@ -94,6 +105,12 @@ namespace SkiResortTycoon.UI
             CacheButtonColor(_lineModeButton,  out _lineOriginal);
             CacheButtonColor(_penModeButton,   out _penOriginal);
 
+            // Lift type buttons
+            CacheButtonColor(_oneSeatLowSpeedButton,  out _oneSeatLowOriginal);
+            CacheButtonColor(_oneSeatHighSpeedButton, out _oneSeatHighOriginal);
+            CacheButtonColor(_twoSeatLowSpeedButton,  out _twoSeatLowOriginal);
+            CacheButtonColor(_twoSeatHighSpeedButton, out _twoSeatHighOriginal);
+
             if (_paintModeButton != null)
             {
                 _paintModeButton.onClick.AddListener(() => SetTrailMode(TrailDrawMode.Paint));
@@ -127,7 +144,30 @@ namespace SkiResortTycoon.UI
                 OnTrailWidthChanged(50f);
             }
 
+            // Lift type buttons - wire up click handlers
+            if (_oneSeatLowSpeedButton != null)
+            {
+                _oneSeatLowSpeedButton.onClick.AddListener(() => OnLiftTypeClicked(LiftType.OneSeatLowSpeed));
+                SetupTooltip(_oneSeatLowSpeedButton, TooltipTexts.Dock.OneSeatLowSpeedHeader, TooltipTexts.Dock.OneSeatLowSpeedContent);
+            }
+            if (_oneSeatHighSpeedButton != null)
+            {
+                _oneSeatHighSpeedButton.onClick.AddListener(() => OnLiftTypeClicked(LiftType.OneSeatHighSpeed));
+                SetupTooltip(_oneSeatHighSpeedButton, TooltipTexts.Dock.OneSeatHighSpeedHeader, TooltipTexts.Dock.OneSeatHighSpeedContent);
+            }
+            if (_twoSeatLowSpeedButton != null)
+            {
+                _twoSeatLowSpeedButton.onClick.AddListener(() => OnLiftTypeClicked(LiftType.TwoSeatLowSpeed));
+                SetupTooltip(_twoSeatLowSpeedButton, TooltipTexts.Dock.TwoSeatLowSpeedHeader, TooltipTexts.Dock.TwoSeatLowSpeedContent);
+            }
+            if (_twoSeatHighSpeedButton != null)
+            {
+                _twoSeatHighSpeedButton.onClick.AddListener(() => OnLiftTypeClicked(LiftType.TwoSeatHighSpeed));
+                SetupTooltip(_twoSeatHighSpeedButton, TooltipTexts.Dock.TwoSeatHighSpeedHeader, TooltipTexts.Dock.TwoSeatHighSpeedContent);
+            }
+
             RefreshTrailModeButtons();
+            RefreshLiftTypeButtons();
 
             var uiManager = UIManager.Instance;
             if (uiManager != null)
@@ -250,6 +290,14 @@ namespace SkiResortTycoon.UI
             SetModeButtonColor(_penModeButton,   _penOriginal,   _activeTrailMode == TrailDrawMode.Pen);
         }
 
+        private void RefreshLiftTypeButtons()
+        {
+            SetModeButtonColor(_oneSeatLowSpeedButton,  _oneSeatLowOriginal,  _selectedLiftType == LiftType.OneSeatLowSpeed);
+            SetModeButtonColor(_oneSeatHighSpeedButton, _oneSeatHighOriginal, _selectedLiftType == LiftType.OneSeatHighSpeed);
+            SetModeButtonColor(_twoSeatLowSpeedButton,  _twoSeatLowOriginal,  _selectedLiftType == LiftType.TwoSeatLowSpeed);
+            SetModeButtonColor(_twoSeatHighSpeedButton, _twoSeatHighOriginal, _selectedLiftType == LiftType.TwoSeatHighSpeed);
+        }
+
         private static void SetModeButtonColor(Button btn, Color original, bool active)
         {
             if (btn == null) return;
@@ -264,6 +312,31 @@ namespace SkiResortTycoon.UI
             if (btn == null) return;
             var img = btn.targetGraphic as Image;
             if (img != null) color = img.color;
+        }
+        
+        private void OnLiftTypeClicked(LiftType liftType)
+        {
+            // Set selected type and refresh button highlights
+            _selectedLiftType = liftType;
+            RefreshLiftTypeButtons();
+
+            // Show warning for unimplemented types, but still allow selection
+            if (!LiftTypeSpecs.IsImplemented(liftType))
+            {
+                NotificationManager.Instance?.ShowWarning($"{LiftTypeSpecs.GetDisplayName(liftType)} is not implemented yet.");
+            }
+
+            // Only activate the tool if it's not already active
+            if (_liftBuildTool != null && UIManager.Instance != null
+                && !UIManager.Instance.IsToolActive(_liftBuildTool))
+            {
+                _skipNextToolClose = true;
+                UIManager.Instance.ActivateTool(_liftBuildTool);
+            }
+
+            // Update the active tool's lift type
+            var tool = UIManager.Instance?.ActiveTool as LiftBuildTool;
+            tool?.SetLiftType(liftType);
         }
 
         // ── Public API ───────────────────────────────────────────────────────

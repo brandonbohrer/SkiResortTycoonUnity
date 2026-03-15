@@ -1,13 +1,46 @@
 namespace SkiResortTycoon.Core
 {
     /// <summary>
-    /// Types of lifts (for future expansion).
+    /// Supported lift variants.
     /// </summary>
     public enum LiftType
     {
-        ChairLift = 0,
-        Gondola = 1,
-        TSBar = 2
+        OneSeatLowSpeed = 0,
+        OneSeatHighSpeed = 1,
+        TwoSeatLowSpeed = 2,
+        TwoSeatHighSpeed = 3
+    }
+
+    public static class LiftTypeSpecs
+    {
+        public static int GetCapacityPerHour(LiftType type)
+        {
+            switch (type)
+            {
+                case LiftType.OneSeatLowSpeed:  return 900;
+                case LiftType.OneSeatHighSpeed: return 1300;
+                case LiftType.TwoSeatLowSpeed:  return 1800;
+                case LiftType.TwoSeatHighSpeed: return 2400;
+                default:                        return 900;
+            }
+        }
+
+        public static string GetDisplayName(LiftType type)
+        {
+            switch (type)
+            {
+                case LiftType.OneSeatLowSpeed:  return "1-Seat Low Speed";
+                case LiftType.OneSeatHighSpeed: return "1-Seat High Speed";
+                case LiftType.TwoSeatLowSpeed:  return "2-Seat Low Speed";
+                case LiftType.TwoSeatHighSpeed: return "2-Seat High Speed";
+                default:                        return "Lift";
+            }
+        }
+
+        public static bool IsImplemented(LiftType type)
+        {
+            return type == LiftType.OneSeatLowSpeed || type == LiftType.OneSeatHighSpeed;
+        }
     }
     
     /// <summary>
@@ -38,8 +71,8 @@ namespace SkiResortTycoon.Core
         {
             LiftId = liftId;
             Name = $"Lift {liftId}";
-            Type = LiftType.ChairLift;
-            Capacity = 1000; // Default capacity
+            Type = LiftType.OneSeatLowSpeed;
+            Capacity = LiftTypeSpecs.GetCapacityPerHour(Type);
             IsValid = false;
         }
     }

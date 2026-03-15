@@ -39,8 +39,13 @@ namespace SkiResortTycoon.UnityBridge
 
         [Header("Spacing")]
         [SerializeField] private float _pillarSpacing = 20f;   // metres between pillars
-        [SerializeField] private float _chairSpacing = 16f;    // metres between chairs per lane (was 8)
+        [SerializeField] private float _chairSpacing = 16f;    // baseline spacing before per-type multiplier
         [SerializeField] private float _corridorWidth = 8f;    // tree-clearing width
+        
+        [Header("Lift Type Tuning")]
+        [SerializeField] private float _lowSpeedChairSpeed = 3f;
+        [SerializeField] private float _highSpeedMultiplier = 1.5f;
+        [SerializeField] private float _oneSeatSpacingMultiplier = 2f; // doubles chair spacing vs old baseline
 
         [Header("Lane Offsets (local-space, perpendicular to lift direction)")]
         [SerializeField] private float _cableUpX = 1.5f;
@@ -83,14 +88,22 @@ namespace SkiResortTycoon.UnityBridge
             Vector3 basePos = MountainManager.ToUnityVector3(lift.StartPosition);
             Vector3 topPos  = MountainManager.ToUnityVector3(lift.EndPosition);
 
-            var inst = CreateLiftHierarchy(basePos, topPos, $"LiftRoot_{lift.LiftId}");
+            var inst = CreateLiftHierarchy(basePos, topPos, $"LiftRoot_{lift.LiftId}", lift.Type);
             inst.LiftId = lift.LiftId;
             _builtLifts[lift.LiftId] = inst;
 
             // Attach chair mover component
             var mover = inst.Root.GetComponent<LiftChairMover>();
             if (mover == null) mover = inst.Root.AddComponent<LiftChairMover>();
-            mover.Initialise(inst, basePos, topPos, _chairUpX, _chairDownX, _cableY, _simulationRunner);
+            mover.Initialise(
+                inst,
+                basePos,
+                topPos,
+                _chairUpX,
+                _chairDownX,
+                _cableY,
+                _simulationRunner,
+                GetChairSpeedForType(lift.Type));
 
             // Attach selectable structure component for management
             var selectable = inst.Root.GetComponent<SelectableStructure>();
@@ -118,12 +131,12 @@ namespace SkiResortTycoon.UnityBridge
         /// Create or update the live preview while the user drags the top
         /// point during placement.  Cheap: reuses/recreates the hierarchy.
         /// </summary>
-        public void UpdatePreview(Vector3 basePos, Vector3 topPos)
+        public void UpdatePreview(Vector3 basePos, Vector3 topPos, LiftType liftType)
         {
             // Tear down old preview
             DestroyPreview();
 
-            _preview = CreateLiftHierarchy(basePos, topPos, "LiftPreview");
+            _preview = CreateLiftHierarchy(basePos, topPos, "LiftPreview", liftType);
             // No chair mover on preview (static snapshot)
         }
 
@@ -165,7 +178,7 @@ namespace SkiResortTycoon.UnityBridge
         //  Hierarchy construction
         // ─────────────────────────────────────────────────────────────────
 
-        private LiftInstance CreateLiftHierarchy(Vector3 basePos, Vector3 topPos, string rootName)
+        private LiftInstance CreateLiftHierarchy(Vector3 basePos, Vector3 topPos, string rootName, LiftType liftType)
         {
             var inst = new LiftInstance();
 
@@ -308,7 +321,8 @@ namespace SkiResortTycoon.UnityBridge
 
             if (_chairPrefab != null)
             {
-                int chairCount = Mathf.Max(1, Mathf.FloorToInt(length / _chairSpacing));
+                float effectiveChairSpacing = GetChairSpacingForType(liftType);
+                int chairCount = Mathf.Max(1, Mathf.FloorToInt(length / effectiveChairSpacing));
 
                 // Right perpendicular in world space (for lane offsets)
                 Vector3 right2 = Vector3.Cross(Vector3.up, dir).normalized;
@@ -356,6 +370,35 @@ namespace SkiResortTycoon.UnityBridge
             }
 
             return inst;
+        }
+
+        private float GetChairSpacingForType(LiftType type)
+        {
+            switch (type)
+            {
+                case LiftType.OneSeatLowSpeed:
+                case LiftType.OneSeatHighSpeed:
+                    return Mathf.Max(1f, _chairSpacing * _oneSeatSpacingMultiplier);
+                case LiftType.TwoSeatLowSpeed:
+                case LiftType.TwoSeatHighSpeed:
+                    return Mathf.Max(1f, _chairSpacing * _oneSeatSpacingMultiplier);
+                default:
+                    return Mathf.Max(1f, _chairSpacing * _oneSeatSpacingMultiplier);
+            }
+        }
+
+        private float GetChairSpeedForType(LiftType type)
+        {
+            switch (type)
+            {
+                case LiftType.OneSeatHighSpeed:
+                case LiftType.TwoSeatHighSpeed:
+                    return _lowSpeedChairSpeed * _highSpeedMultiplier;
+                case LiftType.OneSeatLowSpeed:
+                case LiftType.TwoSeatLowSpeed:
+                default:
+                    return _lowSpeedChairSpeed;
+            }
         }
 
         /// <summary>

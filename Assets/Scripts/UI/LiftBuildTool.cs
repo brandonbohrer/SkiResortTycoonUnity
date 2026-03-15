@@ -19,12 +19,11 @@ namespace SkiResortTycoon.UI
     {
         [Header("Tool References")]
         [SerializeField] private LiftBuilder _liftBuilder;
+        [SerializeField] private LiftType _defaultLiftType = LiftType.OneSeatLowSpeed;
         
         private FieldInfo _isBuildModeField;
         private bool _previousBuildMode = false;
-        
-        public override string ToolName => "Lift";
-        public override string ToolDescription => "Build a new ski lift";
+        private bool _hasExplicitTypeSelectionForNextActivate = false;
         
         // ── Activation ───────────────────────────────────────────────────────
 
@@ -42,6 +41,12 @@ namespace SkiResortTycoon.UI
                     return;
                 }
             }
+
+            // If the tool was activated directly (not via a specific lift-type button),
+            // default to 1-seat low speed so the "low-speed" action is deterministic.
+            if (!_hasExplicitTypeSelectionForNextActivate)
+                _liftBuilder.SetSelectedLiftType(_defaultLiftType);
+            _hasExplicitTypeSelectionForNextActivate = false;
             
             // Enable _isBuildMode via reflection (field is private on LiftBuilder)
             if (_isBuildModeField == null)
@@ -176,6 +181,23 @@ namespace SkiResortTycoon.UI
 
             UIManager.Instance?.DeactivateTool();
             ContextWindowController.Instance?.Hide();
+        }
+
+        // ── Lift type selection API (called by UI buttons) ───────────────────
+
+        public void SetLiftType(LiftType liftType)
+        {
+            if (_liftBuilder == null)
+                _liftBuilder = FindObjectOfType<LiftBuilder>();
+
+            if (_liftBuilder == null)
+            {
+                NotificationManager.Instance?.ShowError("Lift system not available");
+                return;
+            }
+
+            _hasExplicitTypeSelectionForNextActivate = true;
+            _liftBuilder.SetSelectedLiftType(liftType);
         }
     }
 }

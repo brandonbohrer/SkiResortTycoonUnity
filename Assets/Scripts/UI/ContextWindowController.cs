@@ -460,7 +460,6 @@ namespace SkiResortTycoon.UI
             if (!_visible) return;
 
             int totalCost = baseCost + addedCost;
-            SetText(_liftBuildTypeValue,       "--");
             SetText(_liftBuildBaseCostValue,   $"${baseCost:N0}");
             SetText(_liftBuildLengthCostValue, $"${addedCost:N0}");
             SetText(_liftBuildTotalCostValue,  $"${totalCost:N0}");
@@ -485,7 +484,7 @@ namespace SkiResortTycoon.UI
 
             if (liftData != null)
             {
-                SetText(_liftBuildTypeValue,       "--");
+                SetText(_liftBuildTypeValue,       LiftTypeSpecs.GetDisplayName(liftData.Type));
                 SetText(_liftBuildBaseCostValue,   $"${baseCost:N0}");
                 SetText(_liftBuildLengthCostValue, $"${lengthAddedCost:N0}");
                 SetText(_liftBuildTotalCostValue,  $"${liftData.BuildCost:N0}");
@@ -627,13 +626,7 @@ namespace SkiResortTycoon.UI
 
         private string LiftTypeLabel(LiftType type)
         {
-            switch (type)
-            {
-                case LiftType.ChairLift: return "Chairlift";
-                case LiftType.Gondola:   return "Gondola";
-                case LiftType.TSBar:     return "T-Bar";
-                default:                 return "Lift";
-            }
+            return LiftTypeSpecs.GetDisplayName(type);
         }
 
         // ─────────────────────────────────────────────────────────────

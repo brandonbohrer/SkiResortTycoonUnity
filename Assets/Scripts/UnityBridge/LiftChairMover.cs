@@ -61,7 +61,7 @@ namespace SkiResortTycoon.UnityBridge
         /// Called by LiftPrefabBuilder after hierarchy is built.
         /// </summary>
         public void Initialise(LiftInstance inst, Vector3 basePos, Vector3 topPos,
-            float upX, float downX, float chairY, SimulationRunner simulationRunner)
+            float upX, float downX, float chairY, SimulationRunner simulationRunner, float chairSpeed)
         {
             _basePos = basePos;
             _topPos  = topPos;
@@ -69,6 +69,8 @@ namespace SkiResortTycoon.UnityBridge
             _downX   = downX;
             _chairY  = chairY;
             _simulationRunner = simulationRunner;
+            if (chairSpeed > 0.01f)
+                _speed = chairSpeed;
 
             Vector3 delta = topPos - basePos;
             _length = delta.magnitude;

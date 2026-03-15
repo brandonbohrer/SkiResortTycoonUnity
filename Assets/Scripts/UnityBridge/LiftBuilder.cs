@@ -25,6 +25,7 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private KeyCode _buildModeKey = KeyCode.L;
         [SerializeField] private bool _debugMode = true;
         [SerializeField] private float _snapRadius = 5f;
+        [SerializeField] private LiftType _selectedLiftType = LiftType.OneSeatLowSpeed;
         
         [Header("Visual Feedback")]
         [SerializeField] private Color _snapColor = Color.green;
@@ -82,6 +83,7 @@ namespace SkiResortTycoon.UnityBridge
         public Vector3? BottomWorldPosition => _hasBottomStation && _currentLift != null
             ? (Vector3?)MountainManager.ToUnityVector3(_currentLift.StartPosition) : null;
         public LiftPrefabBuilder PrefabBuilder => _prefabBuilder;
+        public LiftType SelectedLiftType => _selectedLiftType;
         
         void Start()
         {
@@ -185,7 +187,7 @@ namespace SkiResortTycoon.UnityBridge
                 if (topWorld.y > baseWorld.y)
                 {
                     if (_prefabBuilder != null)
-                        _prefabBuilder.UpdatePreview(baseWorld, topWorld);
+                        _prefabBuilder.UpdatePreview(baseWorld, topWorld, _selectedLiftType);
                     
                     float length = Vector3.Distance(baseWorld, topWorld);
                     int samples = Mathf.Max(2, Mathf.CeilToInt(length / 3f) + 1);
@@ -236,9 +238,17 @@ namespace SkiResortTycoon.UnityBridge
 
         private void PlaceBottomStation(Vector3 worldPosition)
         {
+            if (!LiftTypeSpecs.IsImplemented(_selectedLiftType))
+            {
+                NotificationManager.Instance?.ShowWarning($"{LiftTypeSpecs.GetDisplayName(_selectedLiftType)} is not implemented yet.");
+                return;
+            }
+
             _hasBottomStation = true;
             _currentLift = _liftSystem.CreateLift();
             _currentLift.StartPosition = MountainManager.ToVector3f(worldPosition);
+            _currentLift.Type = _selectedLiftType;
+            _currentLift.Capacity = LiftTypeSpecs.GetCapacityPerHour(_selectedLiftType);
             
             int tileX = Mathf.RoundToInt(worldPosition.x / _tileSize);
             int tileY = Mathf.RoundToInt(worldPosition.z / _tileSize);
@@ -399,6 +409,16 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (_camera == null || _mountainManager == null) return null;
             return _mountainManager.RaycastMountain(_camera, Input.mousePosition);
+        }
+
+        public void SetSelectedLiftType(LiftType liftType)
+        {
+            _selectedLiftType = liftType;
+            if (_currentLift != null)
+            {
+                _currentLift.Type = liftType;
+                _currentLift.Capacity = LiftTypeSpecs.GetCapacityPerHour(liftType);
+            }
         }
         
         void OnGUI()

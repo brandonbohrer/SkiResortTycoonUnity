@@ -243,8 +243,9 @@ namespace SkiResortTycoon.UnityBridge
         /// <summary>
         /// Advance movement for one frame.
         /// <paramref name="phase"/> tells the controller which motion mode to use.
+        /// Animation state is managed by SkierVisualizer.UpdateSkierAnimation().
         /// </summary>
-        public void Tick(float dt, int phase, Animator animator)
+        public void Tick(float dt, int phase)
         {
             // Reset per-frame flags
             ReachedLiftBottom = false;
@@ -285,13 +286,6 @@ namespace SkiResortTycoon.UnityBridge
 
             // ── Rotation from tangent ──────────────────────────────
             ApplyRotation(dt, phase);
-
-            // ── Animation parameters ───────────────────────────────
-            if (animator != null)
-            {
-                animator.SetBool("IsRidingLift", phase == 1);
-                animator.SetBool("IsSkiing", phase == 2);
-            }
         }
 
         // ─────────────────────────────────────────────────────────────────

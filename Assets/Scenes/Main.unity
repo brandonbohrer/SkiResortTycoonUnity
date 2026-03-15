@@ -418257,6 +418257,15 @@ MonoBehaviour:
   _lodgeCheckRadius: 30
   _lodgeVisitChance: 0.15
   _aiConfig: {fileID: 11400000, guid: 1647284333a2a4771a84642f6262eb80, type: 2}
+  _skierAnimations:
+    beginnerSkiing: {fileID: 7400000, guid: 45c227bf10dae466b8b266fdf80cbae5, type: 2}
+    intermediateSkiing: {fileID: 7400000, guid: 8e076bce3f6d5412c804f5de3184b399, type: 2}
+    advancedSkiing: {fileID: 7400000, guid: f7455166985bc44bd8293085e4ac14de, type: 2}
+    expertSkiing: {fileID: 7400000, guid: 2de7845d6fb8b412a89d5340cc5eee57, type: 2}
+    glide: {fileID: 7400000, guid: 9aa7990f22d0443e3a439852979c1866, type: 2}
+    idle: {fileID: 7400000, guid: f36a3ff15bee042d99445af17c3566ad, type: 2}
+    falling: {fileID: 7400000, guid: 7d075e7817f5349c0b11b4871791b9e7, type: 2}
+    fallen: {fileID: 7400000, guid: 0482e215a2ee2456385bf0926697e869, type: 2}
   _enableDebugLogs: 0
 --- !u!4 &1971900456
 Transform:

@@ -7,6 +7,53 @@ using SkiResortTycoon.ScriptableObjects;
 namespace SkiResortTycoon.UnityBridge
 {
     /// <summary>
+    /// Holds all AnimationClip references for skier animations.
+    /// Drag clips into these fields via the Unity Inspector.
+    /// </summary>
+    [System.Serializable]
+    public class SkierAnimationClips
+    {
+        [Header("Skiing Animations (by Skill Level)")]
+        [Tooltip("Played when Beginner skiers are actively skiing a trail")]
+        public AnimationClip beginnerSkiing;
+
+        [Tooltip("Played when Intermediate skiers are actively skiing a trail")]
+        public AnimationClip intermediateSkiing;
+
+        [Tooltip("Played when Advanced skiers are actively skiing a trail")]
+        public AnimationClip advancedSkiing;
+
+        [Tooltip("Played when Expert skiers are actively skiing a trail")]
+        public AnimationClip expertSkiing;
+
+        [Header("Movement")]
+        [Tooltip("Played when skiers are walking/gliding to the lift")]
+        public AnimationClip glide;
+
+        [Tooltip("Played when skiers are waiting in the lift queue")]
+        public AnimationClip idle;
+
+        [Header("Falling (not yet implemented)")]
+        [Tooltip("Played when a skier is in the process of falling")]
+        public AnimationClip falling;
+
+        [Tooltip("Played after a skier has fallen and is on the ground")]
+        public AnimationClip fallen;
+
+        public AnimationClip GetSkiingClip(SkillLevel skill)
+        {
+            switch (skill)
+            {
+                case SkillLevel.Beginner:     return beginnerSkiing;
+                case SkillLevel.Intermediate: return intermediateSkiing;
+                case SkillLevel.Advanced:     return advancedSkiing;
+                case SkillLevel.Expert:       return expertSkiing;
+                default:                      return beginnerSkiing;
+            }
+        }
+    }
+
+    /// <summary>
     /// Spawns and animates cosmetic skier dots to visualize visitor flow.
     /// These are purely visual - actual simulation runs at end-of-day.
     ///
@@ -47,6 +94,10 @@ namespace SkiResortTycoon.UnityBridge
         [Header("AI Config")]
         [SerializeField] private SkierAIConfig _aiConfig; // Assign a SkierAIConfig ScriptableObject asset
         
+        [Header("Skier Animations")]
+        [Tooltip("Drag animation clips here. Each skill level gets its own skiing animation.")]
+        [SerializeField] private SkierAnimationClips _skierAnimations;
+
         [Header("Debug")]
         [SerializeField] private bool _enableDebugLogs = false; // Toggle console spam
 
@@ -595,8 +646,29 @@ namespace SkiResortTycoon.UnityBridge
             var colliders = skierObj.GetComponentsInChildren<Collider>(true);
             foreach (var c in colliders) Destroy(c);
 
-            // Find Animator component
+            // Find Animator component and set up override controller for per-skier clip swapping
             var animator = skierObj.GetComponentInChildren<Animator>(true);
+            AnimatorOverrideController overrideController = null;
+            AnimationClip originalGlideClip = null;
+            AnimationClip originalIdleClip = null;
+            if (animator != null && animator.runtimeAnimatorController != null)
+            {
+                overrideController = new AnimatorOverrideController(animator.runtimeAnimatorController);
+                animator.runtimeAnimatorController = overrideController;
+
+                // Cache original clip references so we can override by reference, not name
+                var clipPairs = new List<KeyValuePair<AnimationClip, AnimationClip>>(overrideController.overridesCount);
+                overrideController.GetOverrides(clipPairs);
+                foreach (var pair in clipPairs)
+                {
+                    if (pair.Key == null) continue;
+                    if (pair.Key.name == "AN_Skier_Glide") originalGlideClip = pair.Key;
+                    if (pair.Key.name == "AN_Skier_Idle")  originalIdleClip = pair.Key;
+                }
+
+                if (_skierAnimations != null && _skierAnimations.idle != null && originalIdleClip != null)
+                    overrideController[originalIdleClip] = _skierAnimations.idle;
+            }
 
             // Set initial position at base
             var baseCoord = new TileCoord((int)baseSpawnPosition.x, (int)baseSpawnPosition.y);
@@ -661,6 +733,10 @@ namespace SkiResortTycoon.UnityBridge
                 ReachableTrails = allTrails,
                 UseGoalBasedAI = (goal != null && goal.PlannedPath.Count > 0),
                 Animator = animator,
+                OverrideController = overrideController,
+                CurrentAnimState = SkierAnimState.None,
+                OriginalGlideClip = originalGlideClip,
+                OriginalIdleClip = originalIdleClip,
                 Motion = motion,
                 PersonalityOffsets = SkierContext.GeneratePersonality(skier.SkierId)
             };
@@ -690,7 +766,7 @@ namespace SkiResortTycoon.UnityBridge
             }
 
             // ── Let the motion controller do position / rotation ────
-            vs.Motion.Tick(deltaTime, (int)vs.Phase, vs.Animator);
+            vs.Motion.Tick(deltaTime, (int)vs.Phase);
 
             // ── React to motion-controller completion flags ─────────
             switch (vs.Phase)
@@ -715,6 +791,9 @@ namespace SkiResortTycoon.UnityBridge
                     HandleInLodge(vs);
                     break;
             }
+
+            // ── Drive animation state AFTER phase handlers update queue flags ──
+            UpdateSkierAnimation(vs);
         }
 
         // ── WalkingToLift ───────────────────────────────────────────────
@@ -2618,6 +2697,90 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         // ─────────────────────────────────────────────────────────────────
+        //  Animation state management
+        // ─────────────────────────────────────────────────────────────────
+
+        private const float ANIM_CROSSFADE = 0.15f;
+
+        private void UpdateSkierAnimation(VisualSkier vs)
+        {
+            if (vs.Animator == null) return;
+            if (vs.GameObject == null || !vs.GameObject.activeInHierarchy) return;
+
+            SkierAnimState desired = DetermineDesiredAnimState(vs);
+
+            // Always drive the animator bools so the state machine stays in sync
+            bool useMotionState = desired == SkierAnimState.Glide || desired == SkierAnimState.Skiing;
+            vs.Animator.SetBool("IsSkiing", useMotionState);
+            vs.Animator.SetBool("IsRidingLift", desired == SkierAnimState.LiftRide);
+
+            if (desired == vs.CurrentAnimState) return;
+            vs.CurrentAnimState = desired;
+
+            // Swap override clips using cached original references (not name strings)
+            if (vs.OverrideController != null && _skierAnimations != null && vs.OriginalGlideClip != null)
+            {
+                switch (desired)
+                {
+                    case SkierAnimState.Glide:
+                        if (_skierAnimations.glide != null)
+                            vs.OverrideController[vs.OriginalGlideClip] = _skierAnimations.glide;
+                        break;
+
+                    case SkierAnimState.Skiing:
+                        var skiClip = _skierAnimations.GetSkiingClip(vs.Skier.Skill);
+                        if (skiClip != null)
+                            vs.OverrideController[vs.OriginalGlideClip] = skiClip;
+                        break;
+                }
+            }
+
+            // Force-play the target state so we don't depend on transition timing
+            if (vs.Animator.isActiveAndEnabled)
+            {
+                switch (desired)
+                {
+                    case SkierAnimState.Idle:
+                        vs.Animator.CrossFadeInFixedTime("AN_Skier_Idle", ANIM_CROSSFADE);
+                        break;
+                    case SkierAnimState.Glide:
+                    case SkierAnimState.Skiing:
+                        vs.Animator.CrossFadeInFixedTime("AN_Skier_Glide", ANIM_CROSSFADE);
+                        break;
+                    case SkierAnimState.LiftRide:
+                        vs.Animator.CrossFadeInFixedTime("AN_Lift_Ride", ANIM_CROSSFADE);
+                        break;
+                }
+            }
+        }
+
+        private SkierAnimState DetermineDesiredAnimState(VisualSkier vs)
+        {
+            switch (vs.Phase)
+            {
+                case SkierPhase.WalkingToLift:
+                    if (vs.IsWaitingForChair || vs.Skier.CurrentState == SkierState.InQueue)
+                        return SkierAnimState.Idle;
+                    return SkierAnimState.Glide;
+
+                case SkierPhase.RidingLift:
+                    return SkierAnimState.LiftRide;
+
+                case SkierPhase.SkiingTrail:
+                    return SkierAnimState.Skiing;
+
+                case SkierPhase.WalkingToLodge:
+                    return SkierAnimState.Glide;
+
+                case SkierPhase.InLodge:
+                    return SkierAnimState.Idle;
+
+                default:
+                    return SkierAnimState.Idle;
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
         //  Types
         // ─────────────────────────────────────────────────────────────────
 
@@ -2628,6 +2791,17 @@ namespace SkiResortTycoon.UnityBridge
             SkiingTrail = 2,
             WalkingToLodge = 3,
             InLodge = 4
+        }
+
+        private enum SkierAnimState
+        {
+            None,
+            Idle,
+            Glide,
+            Skiing,
+            LiftRide,
+            Falling,
+            Fallen
         }
 
         private class VisualSkier
@@ -2665,6 +2839,10 @@ namespace SkiResortTycoon.UnityBridge
 
             // Animation
             public Animator Animator;
+            public AnimatorOverrideController OverrideController;
+            public SkierAnimState CurrentAnimState;
+            public AnimationClip OriginalGlideClip;
+            public AnimationClip OriginalIdleClip;
 
             // Motion controller (owns all position / rotation math)
             public SkierMotionController Motion;

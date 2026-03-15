@@ -70,6 +70,7 @@ namespace SkiResortTycoon.UnityBridge
         
         // Downstream value cache (cleared when mountain topology changes)
         private Dictionary<(SkillLevel, int), float> _downstreamCache = new Dictionary<(SkillLevel, int), float>();
+        private LiftQueueManager _liftQueueManager;
         
         // Cached guest stats for UI (updated every 2s alongside satisfaction)
         private GuestSatisfactionStats _cachedGuestStats = new GuestSatisfactionStats();
@@ -225,6 +226,7 @@ namespace SkiResortTycoon.UnityBridge
             {
                 InitializeSkierAI();
             }
+            EnsureLiftQueueManager();
             
             // Sync config values to distribution
             SyncConfigIfNeeded();
@@ -345,6 +347,8 @@ namespace SkiResortTycoon.UnityBridge
                 // Remove if finished
                 if (skier.IsFinished)
                 {
+                    ClearQueueForSkier(skier);
+
                     // If skier was inside a lodge, free the slot and make visible before destroying
                     if (skier.TargetLodge != null)
                     {
@@ -436,6 +440,31 @@ namespace SkiResortTycoon.UnityBridge
             
             // Apply config immediately
             SyncConfigIfNeeded();
+        }
+
+        private void EnsureLiftQueueManager()
+        {
+            if (_liftQueueManager != null)
+                return;
+
+            var mountainMgr = _trailDrawer != null ? _trailDrawer.GridRenderer : null;
+            System.Func<Vector3, float?> heightSampler = mountainMgr != null
+                ? (System.Func<Vector3, float?>)(pos => mountainMgr.GetHeightAtWorldPos(pos))
+                : null;
+            _liftQueueManager = new LiftQueueManager(heightSampler);
+        }
+
+        private void ClearQueueForSkier(VisualSkier vs)
+        {
+            if (vs == null)
+                return;
+
+            if (vs.IsQueuedForLift && _liftQueueManager != null)
+                _liftQueueManager.RemoveSkier(vs.Skier.SkierId);
+
+            vs.IsQueuedForLift = false;
+            vs.QueuedLiftId = -1;
+            vs.QueuedTrailId = int.MinValue;
         }
         
         /// <summary>
@@ -650,6 +679,16 @@ namespace SkiResortTycoon.UnityBridge
 
         private void UpdateSkier(VisualSkier vs, float deltaTime)
         {
+            if (vs.IsQueuedForLift)
+            {
+                bool shouldStayQueued =
+                    vs.Phase == SkierPhase.WalkingToLift &&
+                    vs.CurrentLift != null &&
+                    vs.QueuedLiftId == vs.CurrentLift.LiftId;
+                if (!shouldStayQueued)
+                    ClearQueueForSkier(vs);
+            }
+
             // ── Let the motion controller do position / rotation ────
             vs.Motion.Tick(deltaTime, (int)vs.Phase, vs.Animator);
 
@@ -684,6 +723,8 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (vs.CurrentLift == null)
             {
+                ClearQueueForSkier(vs);
+
                 // Walking to a trail edge — merge when we arrive
                 if (vs.PendingTrailMerge != null)
                 {
@@ -711,8 +752,75 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
 
-            if (vs.Motion.ReachedLiftBottom)
+            // Capture this frame's arrival flag before we potentially retarget.
+            // SetWalkTarget() clears ReachedLiftBottom, so we need to preserve it.
+            bool reachedQueueSlotThisFrame = vs.Motion.ReachedLiftBottom;
+
+            int feederTrailId = vs.CurrentTrail != null ? vs.CurrentTrail.TrailId : -1;
+            bool queueContextChanged =
+                !vs.IsQueuedForLift ||
+                vs.QueuedLiftId != vs.CurrentLift.LiftId ||
+                vs.QueuedTrailId != feederTrailId;
+            if (queueContextChanged)
             {
+                ClearQueueForSkier(vs);
+                _liftQueueManager.EnsureSkierQueued(vs.Skier.SkierId, vs.CurrentLift, feederTrailId, vs.CurrentTrail);
+                vs.IsQueuedForLift = true;
+                vs.QueuedLiftId = vs.CurrentLift.LiftId;
+                vs.QueuedTrailId = feederTrailId;
+            }
+
+            if (_liftQueueManager.TryGetAssignedSlotWorldPosition(vs.Skier.SkierId, out Vector3 queueSlotPos))
+            {
+                queueSlotPos.y += SKI_HEIGHT_OFFSET;
+                vs.Motion.SetWalkTarget(queueSlotPos);
+                vs.Skier.CurrentState = SkierState.InQueue;
+                vs.Skier.CurrentLiftId = vs.CurrentLift.LiftId;
+
+                // Robust arrival check in case flag timing misses exact frame.
+                if (!reachedQueueSlotThisFrame)
+                {
+                    Vector3 deltaToSlot = vs.GameObject.transform.position - queueSlotPos;
+                    deltaToSlot.y = 0f;
+                    reachedQueueSlotThisFrame = deltaToSlot.magnitude <= 0.75f;
+                }
+            }
+            else
+            {
+                // Defensive fallback: if queue lookup fails, head to lift bottom.
+                var liftBottom = new Vector3(
+                    vs.CurrentLift.StartPosition.X,
+                    vs.CurrentLift.StartPosition.Y + SKI_HEIGHT_OFFSET,
+                    vs.CurrentLift.StartPosition.Z
+                );
+                vs.Motion.SetWalkTarget(liftBottom);
+            }
+
+            // While queued, always face the lift boarding direction.
+            Vector3 liftBottomPos = new Vector3(
+                vs.CurrentLift.StartPosition.X,
+                vs.GameObject.transform.position.y,
+                vs.CurrentLift.StartPosition.Z
+            );
+            Vector3 faceTowardLift = liftBottomPos - vs.GameObject.transform.position;
+            faceTowardLift.y = 0f;
+            if (faceTowardLift.sqrMagnitude > 0.001f)
+                vs.Motion.SetFacingDirection(faceTowardLift.normalized);
+
+            if (reachedQueueSlotThisFrame)
+            {
+                if (!_liftQueueManager.CanSkierAttemptBoarding(vs.Skier.SkierId, vs.CurrentLift.LiftId))
+                {
+                    // Not this queue's turn yet. Stay queued and keep counting wait.
+                    vs.IsWaitingForChair = true;
+                    float effectiveDelta = Time.deltaTime;
+                    if (_simRunner.Sim?.TimeController != null)
+                        effectiveDelta = _simRunner.Sim.TimeController.GetEffectiveDeltaTime(Time.deltaTime);
+                    vs.CurrentLiftWaitSeconds += effectiveDelta;
+                    vs.Skier.Needs.AddWaitTime(effectiveDelta);
+                    return;
+                }
+
                 // Try to claim a chair BEFORE transitioning to RidingLift
                 LiftChairMover chairMover = null;
                 int chairIndex = -1;
@@ -753,6 +861,10 @@ namespace SkiResortTycoon.UnityBridge
                 }
                 vs.IsWaitingForChair = false;
                 vs.CurrentLiftWaitSeconds = 0f;
+                _liftQueueManager.NotifySkierBoarded(vs.Skier.SkierId);
+                vs.IsQueuedForLift = false;
+                vs.QueuedLiftId = -1;
+                vs.QueuedTrailId = int.MinValue;
 
                 // Chair claimed — now transition to riding
                 vs.LiftsRidden.Add(vs.CurrentLift.LiftId);
@@ -2571,6 +2683,9 @@ namespace SkiResortTycoon.UnityBridge
             // Lift wait tracking: accumulates real seconds spent waiting at lift bottom for a chair
             public bool IsWaitingForChair;
             public float CurrentLiftWaitSeconds;
+            public bool IsQueuedForLift;
+            public int QueuedLiftId;
+            public int QueuedTrailId;
             
             // Pending trail merge: skier is walking to a trail edge before merging onto it
             public TrailData PendingTrailMerge;

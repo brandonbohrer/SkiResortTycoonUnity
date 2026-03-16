@@ -718,6 +718,15 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         /// <summary>
+        /// Exits follow mode only if the camera is currently following the given target.
+        /// </summary>
+        public void StopFollowingIfTarget(Transform target)
+        {
+            if (_isFollowing && _followTarget == target)
+                StopFollowing();
+        }
+
+        /// <summary>
         /// Exits follow mode and returns to normal orbit camera.
         /// </summary>
         public void StopFollowing()

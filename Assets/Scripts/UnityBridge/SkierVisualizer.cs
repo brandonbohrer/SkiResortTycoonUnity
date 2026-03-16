@@ -418,10 +418,10 @@ namespace SkiResortTycoon.UnityBridge
                         skier.TargetLodge = null;
                     }
                     
-                    // Exit follow mode if camera was following this skier
+                    // Exit follow mode only if camera was following this specific skier
                     var cam = FindObjectOfType<CameraController>();
-                    if (cam != null && cam.IsFollowing)
-                        cam.StopFollowing();
+                    if (cam != null)
+                        cam.StopFollowingIfTarget(skier.GameObject.transform);
 
                     // Deselect if this skier was selected in the context window
                     if (StructureSelectionManager.Instance != null)

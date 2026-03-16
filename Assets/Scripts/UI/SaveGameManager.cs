@@ -57,7 +57,7 @@ namespace SkiResortTycoon.UI
 
         private void Awake()
         {
-            if (_inputRow != null) _inputRow.SetActive(false);
+            HideInputRow();
             if (_confirmDialogPanel != null) _confirmDialogPanel.SetActive(false);
 
             if (_newSaveButton != null) _newSaveButton.onClick.AddListener(OnNewSaveClicked);
@@ -81,7 +81,7 @@ namespace SkiResortTycoon.UI
         {
             _inputMode = InputMode.None;
             _renameSlot = null;
-            if (_inputRow != null) _inputRow.SetActive(false);
+            HideInputRow();
             RefreshSlotList();
         }
 
@@ -140,7 +140,7 @@ namespace SkiResortTycoon.UI
                 _nameInputField.text = "";
                 _nameInputField.interactable = true;
             }
-            if (_inputRow != null) _inputRow.SetActive(true);
+            ShowInputRow();
             FocusInputField();
         }
 
@@ -153,8 +153,16 @@ namespace SkiResortTycoon.UI
                 _nameInputField.text = slot.DisplayName ?? "";
                 _nameInputField.interactable = true;
             }
-            if (_inputRow != null) _inputRow.SetActive(true);
+            ShowInputRow();
             FocusInputField();
+        }
+
+        private void ShowInputRow()
+        {
+            if (_inputRow != null) _inputRow.SetActive(true);
+            if (_nameInputField != null) _nameInputField.gameObject.SetActive(true);
+            if (_acceptButton != null) _acceptButton.gameObject.SetActive(true);
+            if (_cancelButton != null) _cancelButton.gameObject.SetActive(true);
         }
 
         private void FocusInputField()
@@ -202,6 +210,9 @@ namespace SkiResortTycoon.UI
             _inputMode = InputMode.None;
             _renameSlot = null;
             if (_inputRow != null) _inputRow.SetActive(false);
+            if (_nameInputField != null) _nameInputField.gameObject.SetActive(false);
+            if (_acceptButton != null) _acceptButton.gameObject.SetActive(false);
+            if (_cancelButton != null) _cancelButton.gameObject.SetActive(false);
         }
 
         private void OnSaveSlotClicked(SaveSlotInfo slot)

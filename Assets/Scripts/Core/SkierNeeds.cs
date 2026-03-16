@@ -54,6 +54,14 @@ namespace SkiResortTycoon.Core
         /// <summary>Number of lodge visits this session.</summary>
         public int LodgeVisitCount { get; set; }
         
+        // ── Fall tracking (read by FallingFactor) ─────────────────────────
+        
+        /// <summary>Total number of falls this session.</summary>
+        public int FallCount { get; set; }
+        
+        /// <summary>Falls on trails where the displayed difficulty was lower than the actual slope difficulty (player override).</summary>
+        public int FallsOnMislabeledTrails { get; set; }
+        
         // ── Ticket value tracking (read by TicketValueFactor) ───────────
         
         /// <summary>Ticket price ratio (ticketPrice / fairPrice) at time of spawn.</summary>
@@ -204,6 +212,17 @@ namespace SkiResortTycoon.Core
         public void AddPricePenalty(float penalty)
         {
             CumulativePricePenalty += penalty;
+        }
+        
+        /// <summary>
+        /// Record a fall. If the trail's displayed difficulty was lower than its
+        /// actual slope difficulty (player override), mark it as mislabeled.
+        /// </summary>
+        public void RecordFall(bool wasMislabeled)
+        {
+            FallCount++;
+            if (wasMislabeled)
+                FallsOnMislabeledTrails++;
         }
     }
 }

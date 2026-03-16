@@ -104,6 +104,17 @@ namespace SkiResortTycoon.UnityBridge
         // Height offset to keep skis on top of snow (not buried)
         private const float SKI_HEIGHT_OFFSET = 1.2f;
 
+        // Fall probability by [SkillLevel, SlopeDifficulty]
+        private static readonly float[,] FallChance =
+        {
+            { 0.10f, 0.25f, 0.60f, 0.90f }, // Beginner
+            { 0.05f, 0.10f, 0.30f, 0.60f }, // Intermediate
+            { 0.02f, 0.05f, 0.10f, 0.50f }, // Advanced
+            { 0.01f, 0.025f, 0.05f, 0.10f } // Expert
+        };
+        private const float FALL_ANIM_DURATION = 1.5f;   // real-time seconds for the falling animation
+        private const float FALLEN_RECOVERY_MINUTES = 10f; // game minutes on the ground
+
         private List<VisualSkier> _activeSkiers = new List<VisualSkier>();
         private int _nextSkierId = 0;
         private float _spawnTimer;
@@ -659,15 +670,26 @@ namespace SkiResortTycoon.UnityBridge
                 // Cache original clip references so we can override by reference, not name
                 var clipPairs = new List<KeyValuePair<AnimationClip, AnimationClip>>(overrideController.overridesCount);
                 overrideController.GetOverrides(clipPairs);
+                AnimationClip originalFallClip = null;
+                AnimationClip originalFallenClip = null;
                 foreach (var pair in clipPairs)
                 {
                     if (pair.Key == null) continue;
-                    if (pair.Key.name == "AN_Skier_Glide") originalGlideClip = pair.Key;
-                    if (pair.Key.name == "AN_Skier_Idle")  originalIdleClip = pair.Key;
+                    if (pair.Key.name == "AN_Skier_Glide")  originalGlideClip = pair.Key;
+                    if (pair.Key.name == "AN_Skier_Idle")   originalIdleClip = pair.Key;
+                    if (pair.Key.name == "AN_Skier_Fall")   originalFallClip = pair.Key;
+                    if (pair.Key.name == "AN_Skier_Fallen") originalFallenClip = pair.Key;
                 }
 
-                if (_skierAnimations != null && _skierAnimations.idle != null && originalIdleClip != null)
-                    overrideController[originalIdleClip] = _skierAnimations.idle;
+                if (_skierAnimations != null)
+                {
+                    if (_skierAnimations.idle != null && originalIdleClip != null)
+                        overrideController[originalIdleClip] = _skierAnimations.idle;
+                    if (_skierAnimations.falling != null && originalFallClip != null)
+                        overrideController[originalFallClip] = _skierAnimations.falling;
+                    if (_skierAnimations.fallen != null && originalFallenClip != null)
+                        overrideController[originalFallenClip] = _skierAnimations.fallen;
+                }
             }
 
             // Set initial position at base
@@ -707,7 +729,8 @@ namespace SkiResortTycoon.UnityBridge
             skier.SatisfactionTracker.AddFactor(new ReturnToBaseFactor());
             skier.SatisfactionTracker.AddFactor(new TicketValueFactor());
             skier.SatisfactionTracker.AddFactor(new SkillMatchFactor(skier.Skill));
-            
+            skier.SatisfactionTracker.AddFactor(new FallingFactor());
+
             // Set ticket value tracking on needs (for TicketValueFactor)
             if (_simRunner.Sim != null && _simRunner.Sim.EconomySystem != null)
             {
@@ -763,6 +786,14 @@ namespace SkiResortTycoon.UnityBridge
                     vs.QueuedLiftId == vs.CurrentLift.LiftId;
                 if (!shouldStayQueued)
                     ClearQueueForSkier(vs);
+            }
+
+            // ── Falling / fallen: freeze in place ────────────────────
+            if (vs.IsFalling || vs.HasFallen)
+            {
+                HandleFallState(vs, deltaTime);
+                UpdateSkierAnimation(vs);
+                return;
             }
 
             // ── Let the motion controller do position / rotation ────
@@ -1092,6 +1123,7 @@ namespace SkiResortTycoon.UnityBridge
             if (Traffic != null) Traffic.FireTrailEntered(vs.Skier.SkierId, chosenTrail.TrailId);
 
             vs.Motion.SetTrail(chosenTrail, 0f);
+            RollForFall(vs, chosenTrail);
         }
 
         // ── SkiingTrail ─────────────────────────────────────────────────
@@ -1105,12 +1137,86 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
 
+            // ── Fall check ──────────────────────────────────────────
+            if (vs.WillFallOnTrail && !vs.IsFalling && !vs.HasFallen
+                && vs.Motion.TrailProgress >= vs.FallAtProgress)
+            {
+                TriggerFall(vs);
+                return;
+            }
+
             // ── Mid-trail exit detection ─────────────────────────────
             // While skiing, check if we're passing a LIFT BOTTOM or a TRAIL START.
             // If so, offer the skier the choice to exit (using the decision engine).
             // This is NOT the old TryJunctionSwitch which detected random trail segments.
             // This only triggers at structurally meaningful exit points.
             TryMidTrailExits(vs);
+        }
+
+        private void RollForFall(VisualSkier vs, TrailData trail)
+        {
+            vs.WillFallOnTrail = false;
+            vs.IsFalling = false;
+            vs.HasFallen = false;
+            vs.FallenTimerMinutes = 0f;
+            vs.FallAnimTimer = 0f;
+
+            int skill = (int)vs.Skier.Skill;
+            int difficulty = (int)trail.SlopeDifficulty;
+            float chance = FallChance[
+                System.Math.Min(skill, FallChance.GetLength(0) - 1),
+                System.Math.Min(difficulty, FallChance.GetLength(1) - 1)];
+
+            if (Random.value < chance)
+            {
+                vs.WillFallOnTrail = true;
+                vs.FallAtProgress = Random.Range(0.1f, 0.9f);
+            }
+        }
+
+        private void TriggerFall(VisualSkier vs)
+        {
+            vs.IsFalling = true;
+            vs.WillFallOnTrail = false;
+
+            bool mislabeled = vs.CurrentTrail != null
+                && vs.CurrentTrail.Difficulty < vs.CurrentTrail.SlopeDifficulty;
+            vs.Skier.Needs.RecordFall(mislabeled);
+
+            if (_enableDebugLogs)
+                Debug.Log($"[Skier {vs.Skier.SkierId}] Fell on trail {vs.CurrentTrail?.TrailId}" +
+                    $" (slope={vs.CurrentTrail?.SlopeDifficulty}, label={vs.CurrentTrail?.Difficulty})" +
+                    (mislabeled ? " [MISLABELED]" : ""));
+        }
+
+        private void HandleFallState(VisualSkier vs, float deltaTime)
+        {
+            if (vs.IsFalling)
+            {
+                vs.FallAnimTimer += deltaTime;
+                if (vs.FallAnimTimer >= FALL_ANIM_DURATION)
+                {
+                    vs.IsFalling = false;
+                    vs.HasFallen = true;
+                    vs.FallenTimerMinutes = 0f;
+                }
+                return;
+            }
+
+            if (vs.HasFallen)
+            {
+                float gameMinutes = 0f;
+                if (_simRunner.Sim?.TimeSystem != null)
+                    gameMinutes = deltaTime * _simRunner.Sim.TimeSystem.SpeedMinutesPerSecond;
+
+                vs.FallenTimerMinutes += gameMinutes;
+                if (vs.FallenTimerMinutes >= FALLEN_RECOVERY_MINUTES)
+                {
+                    vs.HasFallen = false;
+                    if (_enableDebugLogs)
+                        Debug.Log($"[Skier {vs.Skier.SkierId}] Got up after falling, resuming trail");
+                }
+            }
         }
         
         /// <summary>
@@ -2183,6 +2289,7 @@ namespace SkiResortTycoon.UnityBridge
             vs.EvaluatedTrailExits.Clear();
             vs.Skier.CurrentState = SkierState.SkiingTrail;
             vs.Skier.CurrentTrailId = trail.TrailId;
+            RollForFall(vs, trail);
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -2750,6 +2857,12 @@ namespace SkiResortTycoon.UnityBridge
                     case SkierAnimState.LiftRide:
                         vs.Animator.CrossFadeInFixedTime("AN_Lift_Ride", ANIM_CROSSFADE);
                         break;
+                    case SkierAnimState.Falling:
+                        vs.Animator.CrossFadeInFixedTime("AN_Skier_Fall", ANIM_CROSSFADE);
+                        break;
+                    case SkierAnimState.Fallen:
+                        vs.Animator.CrossFadeInFixedTime("AN_Skier_Fallen", ANIM_CROSSFADE);
+                        break;
                 }
             }
 
@@ -2773,6 +2886,8 @@ namespace SkiResortTycoon.UnityBridge
                     return SkierAnimState.LiftRide;
 
                 case SkierPhase.SkiingTrail:
+                    if (vs.IsFalling) return SkierAnimState.Falling;
+                    if (vs.HasFallen) return SkierAnimState.Fallen;
                     return SkierAnimState.Skiing;
 
                 case SkierPhase.WalkingToLodge:
@@ -2873,6 +2988,14 @@ namespace SkiResortTycoon.UnityBridge
             
             // Pending trail merge: skier is walking to a trail edge before merging onto it
             public TrailData PendingTrailMerge;
+
+            // Falling state
+            public bool WillFallOnTrail;
+            public float FallAtProgress;
+            public bool IsFalling;
+            public bool HasFallen;
+            public float FallenTimerMinutes;
+            public float FallAnimTimer;
         }
     }
 }

@@ -66,6 +66,25 @@ namespace SkiResortTycoon.Core
         public float TotalElevationDrop { get; set; }
         public bool IsValid { get; set; }
 
+        /// <summary>
+        /// Difficulty derived purely from the terrain slope, ignoring any player override.
+        /// Uses the same grade thresholds as TrailSystem.ApplyDifficultyFromGrade().
+        /// </summary>
+        public TrailDifficulty SlopeDifficulty
+        {
+            get
+            {
+                float effectiveGrade = AverageSlope;
+                if (MaxSlope > AverageSlope * 1.5f)
+                    effectiveGrade = AverageSlope * 0.9f + MaxSlope * 0.1f;
+
+                if (effectiveGrade > 0.35f) return TrailDifficulty.DoubleBlack;
+                if (effectiveGrade > 0.22f) return TrailDifficulty.Black;
+                if (effectiveGrade > 0.12f) return TrailDifficulty.Blue;
+                return TrailDifficulty.Green;
+            }
+        }
+
         public float WorldLength
         {
             get

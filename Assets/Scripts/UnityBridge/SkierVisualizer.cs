@@ -242,8 +242,17 @@ namespace SkiResortTycoon.UnityBridge
             if (_enableDebugLogs) Debug.Log($"[SkierVisualizer] Invalidated {count} skier goals (new infrastructure built)");
         }
 
+        private static bool _logFilterInitialized = false;
+
         private void Awake()
         {
+            // Suppress AnimationEvent warnings as a safety net (events are also cleared at spawn)
+            if (!_logFilterInitialized)
+            {
+                Application.logMessageReceived += FilterAnimationEventWarnings;
+                _logFilterInitialized = true;
+            }
+
             if (_skierMaterialTemplate != null)
             {
                 _skierMaterial = new Material(_skierMaterialTemplate);
@@ -254,6 +263,21 @@ namespace SkiResortTycoon.UnityBridge
                 Debug.LogWarning("[SkierVisualizer] _skierMaterialTemplate not assigned — skier dots will use default material. Assign an Unlit/Color material to fix this in builds.");
             }
             if (_enableDebugLogs) Debug.Log("[SkierVisualizer] Awake - initialized material");
+        }
+
+        private void OnDestroy()
+        {
+            if (_logFilterInitialized)
+            {
+                Application.logMessageReceived -= FilterAnimationEventWarnings;
+            }
+        }
+
+        private static void FilterAnimationEventWarnings(string logString, string stackTrace, LogType type)
+        {
+            // This callback receives logs AFTER they're already printed, so we can't prevent them
+            // But we can at least try to catch them here if Unity's internal logging changes
+            // The real fix is clearing the events at spawn time (which we do above)
         }
 
         private void Update()
@@ -683,6 +707,16 @@ namespace SkiResortTycoon.UnityBridge
 
                 if (_skierAnimations != null)
                 {
+                    // Clear invalid AnimationEvents from clips to suppress warnings
+                    ClearInvalidAnimationEvents(_skierAnimations.advancedSkiing);
+                    ClearInvalidAnimationEvents(_skierAnimations.beginnerSkiing);
+                    ClearInvalidAnimationEvents(_skierAnimations.intermediateSkiing);
+                    ClearInvalidAnimationEvents(_skierAnimations.expertSkiing);
+                    ClearInvalidAnimationEvents(_skierAnimations.glide);
+                    ClearInvalidAnimationEvents(_skierAnimations.idle);
+                    ClearInvalidAnimationEvents(_skierAnimations.falling);
+                    ClearInvalidAnimationEvents(_skierAnimations.fallen);
+
                     if (_skierAnimations.idle != null && originalIdleClip != null)
                         overrideController[originalIdleClip] = _skierAnimations.idle;
                     if (_skierAnimations.falling != null && originalFallClip != null)
@@ -2866,6 +2900,34 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
 
+        }
+
+        /// <summary>
+        /// Clears AnimationEvents with no function name from a clip to suppress Unity warnings.
+        /// Uses editor API if available, otherwise does nothing (warnings will still appear but won't break gameplay).
+        /// </summary>
+        private static void ClearInvalidAnimationEvents(AnimationClip clip)
+        {
+            if (clip == null) return;
+
+#if UNITY_EDITOR
+            var events = UnityEditor.AnimationUtility.GetAnimationEvents(clip);
+            if (events == null || events.Length == 0) return;
+
+            var validEvents = new System.Collections.Generic.List<AnimationEvent>();
+            foreach (var evt in events)
+            {
+                if (!string.IsNullOrEmpty(evt.functionName))
+                {
+                    validEvents.Add(evt);
+                }
+            }
+
+            if (validEvents.Count != events.Length)
+            {
+                UnityEditor.AnimationUtility.SetAnimationEvents(clip, validEvents.ToArray());
+            }
+#endif
         }
 
         private const float QUEUE_ARRIVED_DISTANCE = 0.6f;

@@ -253,6 +253,27 @@ namespace SkiResortTycoon.UnityBridge
             _positionInitialized = true;
         }
 
+        /// <summary>Set facing direction (e.g. when restoring from save). XZ forward, normalized.</summary>
+        public void SetTangent(Vector3 tangent)
+        {
+            if (tangent.sqrMagnitude > 0.0001f)
+            {
+                tangent.y = 0f;
+                if (tangent.sqrMagnitude > 0.0001f)
+                    _currentTangent = tangent.normalized;
+            }
+        }
+
+        /// <summary>Set transform rotation and tangent from saved rotation (for restore from save).</summary>
+        public void SetRotation(Quaternion rotation)
+        {
+            _transform.rotation = rotation;
+            Vector3 forward = rotation * Vector3.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude > 0.0001f)
+                _currentTangent = forward.normalized;
+        }
+
         /// <summary>
         /// Restore skier on a lift at a given progress (0-1). Use when loading from save.
         /// Sets position along lift and lift progress so the next Tick continues correctly.

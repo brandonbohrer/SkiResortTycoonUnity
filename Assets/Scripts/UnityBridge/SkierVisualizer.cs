@@ -256,6 +256,7 @@ namespace SkiResortTycoon.UnityBridge
                 var s = vs.Skier;
                 var n = s.Needs;
                 var pos = vs.GameObject != null ? vs.GameObject.transform.position : Vector3.zero;
+                var rot = vs.GameObject != null ? vs.GameObject.transform.rotation : Quaternion.identity;
                 int liftChairIndex = -1;
                 float liftChairProgress = 0f;
                 if (vs.Phase == SkierPhase.RidingLift && vs.Motion.ChairMover != null && vs.Motion.AssignedChairIndex >= 0)
@@ -301,6 +302,13 @@ namespace SkiResortTycoon.UnityBridge
                     worldX = pos.x,
                     worldY = pos.y,
                     worldZ = pos.z,
+                    rotX = rot.x,
+                    rotY = rot.y,
+                    rotZ = rot.z,
+                    rotW = rot.w,
+                    isQueuedForLift = vs.IsQueuedForLift,
+                    queuedLiftId = vs.QueuedLiftId,
+                    queuedTrailId = vs.QueuedTrailId,
                     liftChairIndex = liftChairIndex,
                     liftChairProgress = liftChairProgress,
                     isFalling = vs.IsFalling,
@@ -321,6 +329,29 @@ namespace SkiResortTycoon.UnityBridge
         /// saved names, skills, needs, and progress; they will pick new lift/trail and continue.
         /// Call after lifts/trails/lodges are loaded.
         /// </summary>
+        /// <summary>Snapshot of lift queues (order per feeder) for exact restore. Call from CaptureFromGame.</summary>
+        public List<LiftQueueSnapshotDto> GetLiftQueueSnapshot()
+        {
+            EnsureLiftQueueManager();
+            return _liftQueueManager != null ? _liftQueueManager.GetSnapshot() : new List<LiftQueueSnapshotDto>();
+        }
+
+        /// <summary>Restore queue order and set walk targets for queued skiers. Call after LoadSkiersFromSave.</summary>
+        public void RestoreLiftQueues(List<LiftQueueSnapshotDto> snapshot)
+        {
+            if (snapshot == null || _liftQueueManager == null || _liftBuilder?.LiftSystem == null || _trailDrawer?.TrailSystem == null) return;
+            _liftQueueManager.RestoreSnapshot(
+                snapshot,
+                id => _liftBuilder.LiftSystem.GetLift(id),
+                id => _trailDrawer.TrailSystem.GetTrail(id));
+            foreach (var vs in _activeSkiers)
+            {
+                if (vs == null || !vs.IsQueuedForLift) continue;
+                if (_liftQueueManager.TryGetAssignedSlotWorldPosition(vs.Skier.SkierId, out Vector3 slotPos))
+                    vs.Motion.SetWalkTarget(slotPos);
+            }
+        }
+
         private HashSet<int> _liftPhasesRestoredForLoad = new HashSet<int>();
 
         public void LoadSkiersFromSave(List<SkierDto> dtos)
@@ -514,11 +545,17 @@ namespace SkiResortTycoon.UnityBridge
                 else
                 {
                     motion.Teleport(savedPos);
-                    var liftBottomPos = new Vector3(startLift.StartPosition.X, startLift.StartPosition.Y + SKI_HEIGHT_OFFSET, startLift.StartPosition.Z);
+                    LiftData liftForWalk = startLift;
+                    if (dto.isQueuedForLift && dto.queuedLiftId >= 0)
+                    {
+                        var queuedLift = allLifts.Find(l => l.LiftId == dto.queuedLiftId);
+                        if (queuedLift != null) liftForWalk = queuedLift;
+                    }
+                    var liftBottomPos = new Vector3(liftForWalk.StartPosition.X, liftForWalk.StartPosition.Y + SKI_HEIGHT_OFFSET, liftForWalk.StartPosition.Z);
                     motion.SetWalkTarget(liftBottomPos);
-                    motion.SetLift(startLift);
+                    motion.SetLift(liftForWalk);
                     skier.CurrentState = SkierState.WalkingToLift;
-                    skier.CurrentLiftId = startLift.LiftId;
+                    skier.CurrentLiftId = liftForWalk.LiftId;
                     skier.CurrentTrailId = targetTrail.TrailId;
                 }
             }
@@ -533,11 +570,18 @@ namespace SkiResortTycoon.UnityBridge
             if (_simRunner != null && _simRunner.Sim != null && _simRunner.Sim.EconomySystem != null)
                 skier.Needs.TicketPriceRatio = _simRunner.Sim.EconomySystem.GetPriceRatio();
 
+            if (dto.rotW != 0f || dto.rotX != 0f || dto.rotY != 0f || dto.rotZ != 0f)
+            {
+                var savedRot = new Quaternion(dto.rotX, dto.rotY, dto.rotZ, dto.rotW);
+                motion.SetRotation(savedRot);
+            }
+
+            LiftData currentLift = phase == SkierPhase.RidingLift ? restoreLift : (dto.isQueuedForLift && dto.queuedLiftId >= 0 ? (allLifts.Find(l => l.LiftId == dto.queuedLiftId) ?? startLift) : startLift);
             var visualSkier = new VisualSkier
             {
                 GameObject = skierObj,
                 Skier = skier,
-                CurrentLift = phase == SkierPhase.RidingLift ? restoreLift : startLift,
+                CurrentLift = currentLift,
                 CurrentTrail = targetTrail,
                 PlannedTrails = plannedTrails,
                 CurrentTrailIndex = 0,
@@ -558,7 +602,10 @@ namespace SkiResortTycoon.UnityBridge
                 IsFalling = dto.isFalling,
                 HasFallen = dto.hasFallen,
                 FallenTimerMinutes = dto.fallenTimerMinutes,
-                FallAnimTimer = dto.fallAnimTimer
+                FallAnimTimer = dto.fallAnimTimer,
+                IsQueuedForLift = dto.isQueuedForLift,
+                QueuedLiftId = dto.queuedLiftId,
+                QueuedTrailId = dto.queuedTrailId
             };
             _activeSkiers.Add(visualSkier);
             var selectable = skierObj.GetComponent<SelectableStructure>() ?? skierObj.AddComponent<SelectableStructure>();

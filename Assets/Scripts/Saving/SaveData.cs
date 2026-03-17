@@ -255,6 +255,8 @@ namespace SkiResortTycoon.Saving
         public float ticketPriceRatio;
         // World position when saved (for restore-at-place)
         public float worldX, worldY, worldZ;
+        // Facing direction (quaternion) so skiers restore same rotation
+        public float rotX, rotY, rotZ, rotW;
         // Lift: exact chair and progress (0-1 along lift) so we can restore seat
         public int liftChairIndex;
         public float liftChairProgress;
@@ -266,6 +268,26 @@ namespace SkiResortTycoon.Saving
         // In lodge: lodge world position (to find it on load) and rest timer
         public float inLodgePosX, inLodgePosY, inLodgePosZ;
         public float lodgeRestTimer;
+        // Queue state (when IsQueuedForLift)
+        public bool isQueuedForLift;
+        public int queuedLiftId;
+        public int queuedTrailId;
+    }
+
+    /// <summary>One feeder queue at a lift: trail id and ordered skier ids.</summary>
+    [Serializable]
+    public class FeederQueueSnapshotDto
+    {
+        public int trailId;
+        public List<int> skierIds;
+    }
+
+    /// <summary>All feeder queues at one lift, for exact queue restore.</summary>
+    [Serializable]
+    public class LiftQueueSnapshotDto
+    {
+        public int liftId;
+        public List<FeederQueueSnapshotDto> feeders;
     }
 
     [Serializable]
@@ -326,5 +348,6 @@ namespace SkiResortTycoon.Saving
         public List<TrailDataDto> trails;
         public List<LodgeDataDto> lodges;
         public List<SkierDto> skiers;
+        public List<LiftQueueSnapshotDto> liftQueueSnapshots;
     }
 }

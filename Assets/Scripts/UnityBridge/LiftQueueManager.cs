@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using SkiResortTycoon.Core;
+using SkiResortTycoon.Saving;
 using UnityEngine;
 
 namespace SkiResortTycoon.UnityBridge
@@ -115,6 +116,51 @@ namespace SkiResortTycoon.UnityBridge
                 return false;
 
             return frontSkierId == skierId;
+        }
+
+        /// <summary>Clear all queue state (for restore-from-save).</summary>
+        public void ClearAll()
+        {
+            _skierAssignments.Clear();
+            _liftStates.Clear();
+        }
+
+        /// <summary>Snapshot current queue state for save. Order per feeder is preserved.</summary>
+        public List<LiftQueueSnapshotDto> GetSnapshot()
+        {
+            var list = new List<LiftQueueSnapshotDto>();
+            foreach (var kv in _liftStates)
+            {
+                var dto = new LiftQueueSnapshotDto { liftId = kv.Key, feeders = new List<FeederQueueSnapshotDto>() };
+                foreach (var fq in kv.Value.FeederQueues)
+                {
+                    if (fq.Value.SkierIds.Count == 0) continue;
+                    dto.feeders.Add(new FeederQueueSnapshotDto { trailId = fq.Key, skierIds = new List<int>(fq.Value.SkierIds) });
+                }
+                if (dto.feeders.Count > 0)
+                    list.Add(dto);
+            }
+            return list;
+        }
+
+        /// <summary>Restore queue state from save. Call after skiers are spawned. getLift/getTrail can be null to skip missing refs.</summary>
+        public void RestoreSnapshot(List<LiftQueueSnapshotDto> snapshot, System.Func<int, LiftData> getLift, System.Func<int, TrailData> getTrail)
+        {
+            if (snapshot == null || getLift == null || getTrail == null) return;
+            ClearAll();
+            foreach (var liftSnap in snapshot)
+            {
+                var lift = getLift(liftSnap.liftId);
+                if (lift == null) continue;
+                if (liftSnap.feeders == null) continue;
+                foreach (var feeder in liftSnap.feeders)
+                {
+                    var trail = getTrail(feeder.trailId);
+                    if (feeder.skierIds == null) continue;
+                    foreach (int skierId in feeder.skierIds)
+                        EnsureSkierQueued(skierId, lift, feeder.trailId, trail);
+                }
+            }
         }
 
         public void NotifySkierBoarded(int skierId)

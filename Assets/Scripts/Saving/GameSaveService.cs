@@ -193,7 +193,8 @@ namespace SkiResortTycoon.Saving
                 lifts = new List<LiftDataDto>(),
                 trails = new List<TrailDataDto>(),
                 lodges = new List<LodgeDataDto>(),
-                skiers = new List<SkierDto>()
+                skiers = new List<SkierDto>(),
+                liftQueueSnapshots = new List<LiftQueueSnapshotDto>()
             };
         }
 
@@ -311,6 +312,11 @@ namespace SkiResortTycoon.Saving
             if (data.skiers == null)
                 data.skiers = new List<SkierDto>();
 
+            if (skierVisualizer != null)
+                data.liftQueueSnapshots = skierVisualizer.GetLiftQueueSnapshot();
+            if (data.liftQueueSnapshots == null)
+                data.liftQueueSnapshots = new List<LiftQueueSnapshotDto>();
+
             return data;
         }
 
@@ -408,7 +414,11 @@ namespace SkiResortTycoon.Saving
             }
 
             if (data.skiers != null && data.skiers.Count > 0 && skierVisualizer != null)
+            {
                 skierVisualizer.LoadSkiersFromSave(data.skiers);
+                if (data.liftQueueSnapshots != null && data.liftQueueSnapshots.Count > 0)
+                    skierVisualizer.RestoreLiftQueues(data.liftQueueSnapshots);
+            }
 
             if (skierVisualizer != null)
                 skierVisualizer.InvalidateAllSkierGoals();

@@ -91241,6 +91241,9 @@ MonoBehaviour:
   _restDurationSeconds: 30
   _snapRadius: 20
   _footprintRadius: 15
+  _useSquarePerimeter: 1
+  _perimeterHalfSize: 25
+  _perimeterPointSpacing: 2.5
   _hasBathroom: 1
   _hasFood: 1
   _hasRest: 1
@@ -431452,7 +431455,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: -40}
+  m_AnchoredPosition: {x: 0, y: -39.99994}
   m_SizeDelta: {x: -1000, y: -320}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1984489261

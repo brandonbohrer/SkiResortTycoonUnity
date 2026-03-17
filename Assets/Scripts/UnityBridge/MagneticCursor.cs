@@ -75,12 +75,12 @@ namespace SkiResortTycoon.UnityBridge
             
             SnapPoint? nearest = null;
             float minDist = radius;
-            
+
             foreach (var snap in candidateSnaps)
             {
                 var snapPos = new Vector3(snap.Position.X, snap.Position.Y, snap.Position.Z);
                 float dist = Vector3.Distance(position, snapPos);
-                
+
                 if (dist < minDist)
                 {
                     nearest = snap;

@@ -24,7 +24,7 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private float _tileSize = 1f;
         [SerializeField] private KeyCode _buildModeKey = KeyCode.L;
         [SerializeField] private bool _debugMode = true;
-        [SerializeField] private float _snapRadius = 5f;
+        [SerializeField] private float _snapRadius = 25f;
         [SerializeField] private LiftType _selectedLiftType = LiftType.OneSeatLowSpeed;
         
         [Header("Visual Feedback")]
@@ -161,12 +161,12 @@ namespace SkiResortTycoon.UnityBridge
 
             // ── Cursor update ────────────────────────────────────────────
             Vector3? rawPosition = GetMountainPositionUnderMouse();
-            
+
             if (rawPosition.HasValue && _magneticCursor != null)
             {
                 SnapPointType[] validTypes = null;
                 if (!_hasBottomStation)
-                    validTypes = new SnapPointType[] { SnapPointType.LiftTop, SnapPointType.TrailEnd, SnapPointType.BaseSpawn };
+                    validTypes = new SnapPointType[] { SnapPointType.LiftTop, SnapPointType.TrailEnd, SnapPointType.BaseSpawn, SnapPointType.BuildingEntrance };
                 
                 _magneticCursor.Update(rawPosition.Value, validTypes);
                 
@@ -439,6 +439,7 @@ namespace SkiResortTycoon.UnityBridge
             if (_camera == null || _mountainManager == null) return null;
             return _mountainManager.RaycastMountain(_camera, Input.mousePosition);
         }
+
 
         public void SetSelectedLiftType(LiftType liftType)
         {

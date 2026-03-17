@@ -63,6 +63,26 @@ namespace SkiResortTycoon.UnityBridge
                 yield break;
             }
             GameSaveService.ApplyToGameFull(data, _simulationRunner, _liftBuilder, _trailDrawer, _lodgeBuilder, _lodgeManager, _skierVisualizer);
+
+            // Re-register base lodge snap points after a short delay so that all Invoke-based
+            // registrars (BaseSnapPointRegistrar at 0.1s, PreplacedLodge at 0.15s) have already
+            // fired, plus our explicit force-registration catches any that failed due to init order.
+            StartCoroutine(ReRegisterBaseSnapPoints());
+        }
+
+        private IEnumerator ReRegisterBaseSnapPoints()
+        {
+            // Wait past the longest Invoke delay (PreplacedLodge Bootstrap at 0.15s) + buffer.
+            yield return new WaitForSeconds(0.25f);
+
+            foreach (var registrar in FindObjectsOfType<BaseSnapPointRegistrar>())
+                registrar.EnsureRegistered();
+
+            foreach (var preplaced in FindObjectsOfType<PreplacedLodge>())
+                preplaced.EnsureSnapPointsRegistered();
+
+            if (_liftBuilder?.Connectivity != null)
+                _liftBuilder.Connectivity.RebuildConnections();
         }
     }
 }

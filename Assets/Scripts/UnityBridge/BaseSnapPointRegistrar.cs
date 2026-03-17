@@ -27,22 +27,41 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private float _lineWidth = 0.3f;
 
         private LineRenderer _perimeterLine;
+        private bool _registered;
 
         void Start()
         {
-            Invoke(nameof(RegisterSnapPoints), 0.1f);
+            Invoke(nameof(TryRegister), 0.1f);
         }
 
-        private void RegisterSnapPoints()
+        void Update()
+        {
+            // Retry every frame until successful — covers the case where LiftBuilder
+            // initializes late (e.g. when the scene is loaded from the main menu).
+            if (!_registered)
+                TryRegister();
+        }
+
+        /// <summary>
+        /// Re-registers snap points. Call after a save is loaded to ensure points are
+        /// present even if registration was skipped due to init order.
+        /// </summary>
+        public void EnsureRegistered()
+        {
+            _registered = false;
+            TryRegister();
+        }
+
+        private void TryRegister()
         {
             var liftBuilder = FindObjectOfType<LiftBuilder>();
+            if (liftBuilder == null || liftBuilder.Connectivity == null) return;
+            RegisterSnapPoints(liftBuilder);
+        }
 
-            if (liftBuilder == null || liftBuilder.Connectivity == null)
-            {
-                Debug.LogWarning("[BaseSnapPoint] LiftBuilder not found! Can't register base snap points.");
-                return;
-            }
-
+        private void RegisterSnapPoints(LiftBuilder liftBuilder)
+        {
+            _registered = true;
             var registry = liftBuilder.Connectivity.Registry;
             Vector3 center = transform.position;
             int count = 0;
@@ -104,7 +123,7 @@ namespace SkiResortTycoon.UnityBridge
             liftBuilder.Connectivity.RebuildConnections();
             Debug.Log($"[BaseSnapPoint] Registered {count} snap points around {_baseName}");
 
-            if (_showPerimeterLine)
+            if (_showPerimeterLine && _perimeterLine == null)
                 DrawPerimeterLine(center, half);
         }
 

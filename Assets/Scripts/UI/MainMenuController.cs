@@ -20,6 +20,8 @@ namespace SkiResortTycoon.UI
         [SerializeField] private Button _continueButton;
         [Tooltip("Play = open the Load Game panel (pick a save or create + New Game).")]
         [SerializeField] private Button _playButton;
+        [Tooltip("Quit = exit the application. Only used in main menu.")]
+        [SerializeField] private Button _quitButton;
 
         [Header("Panels")]
         [Tooltip("Load Game panel (save list, + New Game, Play/Rename/Delete per slot).")]
@@ -36,8 +38,19 @@ namespace SkiResortTycoon.UI
                 _continueButton.onClick.AddListener(OnContinueClicked);
             if (_playButton != null)
                 _playButton.onClick.AddListener(OnPlayClicked);
+            if (_quitButton != null)
+                _quitButton.onClick.AddListener(OnQuitClicked);
             if (_loadGameBackButton != null)
                 _loadGameBackButton.onClick.AddListener(OnLoadGameBackClicked);
+        }
+
+        private void OnQuitClicked()
+        {
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
         }
 
         private void OnContinueClicked()

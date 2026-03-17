@@ -289529,6 +289529,8 @@ GameObject:
   - component: {fileID: 1331464079}
   - component: {fileID: 1331464078}
   - component: {fileID: 1331464080}
+  - component: {fileID: 1331464081}
+  - component: {fileID: 1331464082}
   m_Layer: 0
   m_Name: UIManager
   m_TagString: Untagged
@@ -289553,7 +289555,7 @@ MonoBehaviour:
   _mainMenuOverlay: {fileID: 805202037}
   _menuButton: {fileID: 2136792124}
   _resumeButton: {fileID: 1856030707}
-  _quitButton: {fileID: 524011815}
+  _quitButton: {fileID: 0}
   _managerScreen: {fileID: 257916815}
   _managerButton: {fileID: 2014286704}
   _buildActionBar: {fileID: 0}
@@ -289596,6 +289598,45 @@ CanvasGroup:
   m_Interactable: 1
   m_BlocksRaycasts: 1
   m_IgnoreParentGroups: 0
+--- !u!114 &1331464081
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1331464077}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4d7cc49c46a0a409a8f7268126f7351a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UI.BackToMenuButton
+  _mainMenuSceneName: MainMenu
+  _quitButton: {fileID: 524011815}
+--- !u!114 &1331464082
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1331464077}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2373b5c91aec543f38c630f52da7688c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UI.SettingsMenuController
+  _settingsPanel: {fileID: 1244352582}
+  _settingsButton: {fileID: 1303275993}
+  _masterVolumeSlider: {fileID: 1578429771}
+  _masterVolumeText: {fileID: 1310830856}
+  _musicVolumeSlider: {fileID: 144539055}
+  _musicVolumeText: {fileID: 1352877391}
+  _sfxVolumeSlider: {fileID: 521263093}
+  _sfxVolumeText: {fileID: 515202160}
+  _cameraSpeedSlider: {fileID: 817023054}
+  _cameraSpeedText: {fileID: 1002826536}
+  _autosaveFrequencyDropdown: {fileID: 934554318}
+  _resetToDefaultsButton: {fileID: 395155276}
+  _backButton: {fileID: 46226152}
 --- !u!1001 &1331609646
 PrefabInstance:
   m_ObjectHideFlags: 0

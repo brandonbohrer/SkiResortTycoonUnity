@@ -77,6 +77,16 @@ namespace SkiResortTycoon.UnityBridge
         public void SetCapacity(int capacity) => _capacity = capacity;
         public void SetRestDuration(float seconds) => _restDurationSeconds = seconds;
 
+        /// <summary>Called when loading a lodge from save.</summary>
+        public void SetAmenitiesFromSave(bool bathroom, bool food, bool rest)
+        {
+            _hasBathroom = bathroom;
+            _hasFood = food;
+            _hasRest = rest;
+        }
+
+        public void SetFootprintRadius(float radius) => _footprintRadius = radius;
+
         /// <summary>
         /// Try to check a skier into the lodge. Returns false if full.
         /// </summary>

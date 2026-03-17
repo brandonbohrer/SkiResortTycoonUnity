@@ -51,6 +51,8 @@ namespace SkiResortTycoon.UI
         [SerializeField] private LiftBuilder _liftBuilder;
         [SerializeField] private TrailDrawer _trailDrawer;
         [SerializeField] private LodgeManager _lodgeManager;
+        [Tooltip("Optional. Assign to include skiers (names, skills, progress) in save.")]
+        [SerializeField] private SkierVisualizer _skierVisualizer;
 
         private enum InputMode { None, NewSave, Rename }
         private InputMode _inputMode;
@@ -184,7 +186,7 @@ namespace SkiResortTycoon.UI
             {
                 if (string.IsNullOrEmpty(name))
                     name = "Unnamed Resort";
-                var data = GameSaveService.CaptureFromGame(_simulationRunner, _liftBuilder, _trailDrawer, _lodgeManager);
+                var data = GameSaveService.CaptureFromGame(_simulationRunner, _liftBuilder, _trailDrawer, _lodgeManager, _skierVisualizer);
                 data.resortName = name;
                 string safeName = MakeSafeFileName(name);
                 string path = PathWithoutExtension(safeName);
@@ -224,7 +226,7 @@ namespace SkiResortTycoon.UI
             if (_confirmDeleteText != null) _confirmDeleteText.SetActive(false);
             _pendingConfirm = () =>
             {
-                var data = GameSaveService.CaptureFromGame(_simulationRunner, _liftBuilder, _trailDrawer, _lodgeManager);
+                var data = GameSaveService.CaptureFromGame(_simulationRunner, _liftBuilder, _trailDrawer, _lodgeManager, _skierVisualizer);
                 data.resortName = slot.DisplayName ?? "Unnamed Resort";
                 GameSaveService.Save(slot.Path, data);
                 RefreshSlotList();

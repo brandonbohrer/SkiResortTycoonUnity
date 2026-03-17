@@ -373,6 +373,35 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         /// <summary>
+        /// Loads lifts from save data (no cost). Call after EnsureInitialized. Registers snap points, builds visuals, clears trees, rebuilds connections.
+        /// </summary>
+        public void LoadLiftsFromSave(IList<LiftData> lifts)
+        {
+            if (lifts == null || lifts.Count == 0) return;
+            EnsureInitialized();
+            if (_liftSystem == null || _connectivity == null) return;
+            _liftSystem.LoadLifts(lifts);
+            TreeClearer.RestorePreviewTrees();
+            foreach (var lift in _liftSystem.Lifts)
+            {
+                var bottomSnap = new SnapPoint(SnapPointType.LiftBottom, lift.StartPosition, lift.LiftId, $"Lift{lift.LiftId}_Bottom");
+                var topSnap = new SnapPoint(SnapPointType.LiftTop, lift.EndPosition, lift.LiftId, $"Lift{lift.LiftId}_Top");
+                _connectivity.Registry.Register(bottomSnap);
+                _connectivity.Registry.Register(topSnap);
+                Vector3 baseWorld = MountainManager.ToUnityVector3(lift.StartPosition);
+                Vector3 topWorld = MountainManager.ToUnityVector3(lift.EndPosition);
+                if (_prefabBuilder != null)
+                {
+                    _prefabBuilder.ClearTreesAlongLift(baseWorld, topWorld);
+                    _prefabBuilder.BuildLift(lift);
+                }
+                else
+                    TreeClearer.ClearTreesAlongPath(new List<Vector3> { baseWorld, topWorld }, 5f);
+            }
+            _connectivity.RebuildConnections();
+        }
+
+        /// <summary>
         /// Cancels the pending lift, destroys the preview, and fires OnLiftCancelled.
         /// </summary>
         public void CancelPendingLift()

@@ -192,18 +192,21 @@ namespace SkiResortTycoon.Saving
                 },
                 lifts = new List<LiftDataDto>(),
                 trails = new List<TrailDataDto>(),
-                lodges = new List<LodgeDataDto>()
+                lodges = new List<LodgeDataDto>(),
+                skiers = new List<SkierDto>()
             };
         }
 
         /// <summary>
         /// Captures current game state from the running simulation and Unity builders.
+        /// Pass skierVisualizer to include skiers (names, skills, needs, progress).
         /// </summary>
         public static GameSaveData CaptureFromGame(
             SimulationRunner runner,
             LiftBuilder liftBuilder,
             TrailDrawer trailDrawer,
-            LodgeManager lodgeManager)
+            LodgeManager lodgeManager,
+            SkierVisualizer skierVisualizer = null)
         {
             var data = new GameSaveData
             {
@@ -284,6 +287,7 @@ namespace SkiResortTycoon.Saving
                     var t = lodge.transform;
                     var dto = new LodgeDataDto
                     {
+                        displayName = lodge.gameObject.name,
                         posX = t.position.x,
                         posY = t.position.y,
                         posZ = t.position.z,
@@ -301,6 +305,11 @@ namespace SkiResortTycoon.Saving
                     data.lodges.Add(dto);
                 }
             }
+
+            if (skierVisualizer != null)
+                data.skiers = skierVisualizer.CaptureSkiersForSave();
+            if (data.skiers == null)
+                data.skiers = new List<SkierDto>();
 
             return data;
         }
@@ -348,6 +357,63 @@ namespace SkiResortTycoon.Saving
                 runner.Sim.EconomySystem.TicketPricing.TicketPrice = data.economy.ticketPrice;
 
             Debug.Log($"[GameSaveService] Applied save. Day {runner.Sim.State.DayIndex}, Money: ${runner.Sim.State.Money:N0}");
+        }
+
+        /// <summary>
+        /// Full apply: simulation state + lifts + trails + lodges (with names) + skiers (names, skills, progress).
+        /// Call from game scene after LiftBuilder and TrailDrawer have initialized (e.g. after a short delay).
+        /// </summary>
+        public static void ApplyToGameFull(
+            GameSaveData data,
+            SimulationRunner runner,
+            LiftBuilder liftBuilder,
+            TrailDrawer trailDrawer,
+            LodgeBuilder lodgeBuilder,
+            LodgeManager lodgeManager,
+            SkierVisualizer skierVisualizer)
+        {
+            if (data == null) return;
+            ApplyToGame(data, runner);
+            if (runner?.Sim == null) return;
+
+            if (data.lifts != null && data.lifts.Count > 0 && liftBuilder != null)
+            {
+                var liftList = new List<LiftData>();
+                foreach (var dto in data.lifts)
+                    liftList.Add(dto.ToLiftData());
+                liftBuilder.LoadLiftsFromSave(liftList);
+            }
+
+            if (data.trails != null && data.trails.Count > 0 && trailDrawer != null && trailDrawer.TrailSystem != null)
+            {
+                var trailList = new List<TrailData>();
+                foreach (var dto in data.trails)
+                    trailList.Add(dto.ToTrailData());
+                trailDrawer.TrailSystem.LoadTrails(trailList);
+                foreach (var trail in trailDrawer.TrailSystem.Trails)
+                    trailDrawer.ApplyTrailAfterLoad(trail);
+                if (liftBuilder != null && liftBuilder.Connectivity != null)
+                    liftBuilder.Connectivity.RebuildConnections();
+            }
+
+            if (data.lodges != null && lodgeBuilder != null)
+            {
+                foreach (var dto in data.lodges)
+                {
+                    var pos = new Vector3(dto.posX, dto.posY, dto.posZ);
+                    var rot = new Quaternion(dto.rotX, dto.rotY, dto.rotZ, dto.rotW);
+                    lodgeBuilder.PlaceLodgeFromSave(pos, rot, dto.capacity, dto.hasBathroom, dto.hasFood, dto.hasRest,
+                        dto.snapRadius, dto.footprintRadius, dto.displayName);
+                }
+            }
+
+            if (data.skiers != null && data.skiers.Count > 0 && skierVisualizer != null)
+                skierVisualizer.LoadSkiersFromSave(data.skiers);
+
+            if (skierVisualizer != null)
+                skierVisualizer.InvalidateAllSkierGoals();
+
+            Debug.Log($"[GameSaveService] Full apply done: lifts, trails, lodges, skiers restored.");
         }
     }
 }

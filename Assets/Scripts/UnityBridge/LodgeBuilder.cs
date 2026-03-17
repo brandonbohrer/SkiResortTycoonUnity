@@ -383,6 +383,31 @@ namespace SkiResortTycoon.UnityBridge
 
         // ── Placement ────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Places a lodge from save data (no cost). Used when loading a game.
+        /// </summary>
+        public void PlaceLodgeFromSave(Vector3 pos, Quaternion rotation, int capacity, bool hasBathroom, bool hasFood, bool hasRest, float snapRadius, float footprintRadius, string displayName = null)
+        {
+            if (_lodgePrefab == null) return;
+            GameObject lodgeObj = Instantiate(_lodgePrefab, pos, rotation);
+            lodgeObj.name = string.IsNullOrEmpty(displayName) ? "Lodge_Loaded" : displayName;
+            LodgeFacility facility = lodgeObj.AddComponent<LodgeFacility>();
+            facility.Initialize(snapRadius);
+            facility.SetAmenitiesFromSave(hasBathroom, hasFood, hasRest);
+            facility.SetCapacity(capacity);
+            facility.SetFootprintRadius(footprintRadius);
+            TreeClearer.RestorePreviewTrees();
+            TreeClearer.ClearTreesAroundPoint(pos, _treeClearRadius);
+            if (_liftBuilder?.Connectivity != null)
+            {
+                RegisterFootprintSnapPoints(pos, rotation, facility);
+                _liftBuilder.Connectivity.RebuildConnections();
+            }
+            if (LodgeManager.Instance != null)
+                LodgeManager.Instance.RegisterLodge(facility);
+            lodgeObj.AddComponent<SelectableStructure>().InitializeAsLodge(facility);
+        }
+
         private SelectableStructure PlaceLodge(Vector3 pos, Quaternion rotation)
         {
             if (_simulationRunner?.Sim?.State != null)

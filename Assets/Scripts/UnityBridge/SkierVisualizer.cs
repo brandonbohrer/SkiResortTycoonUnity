@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using SkiResortTycoon.Core;
 using SkiResortTycoon.Core.SatisfactionFactors;
 using SkiResortTycoon.ScriptableObjects;
+using SkiResortTycoon.Saving;
 
 namespace SkiResortTycoon.UnityBridge
 {
@@ -240,6 +241,241 @@ namespace SkiResortTycoon.UnityBridge
             }
             
             if (_enableDebugLogs) Debug.Log($"[SkierVisualizer] Invalidated {count} skier goals (new infrastructure built)");
+        }
+
+        /// <summary>
+        /// Captures all active skiers for save (names, skills, needs, progress, world position).
+        /// </summary>
+        public List<SkierDto> CaptureSkiersForSave()
+        {
+            var list = new List<SkierDto>();
+            if (_activeSkiers == null) return list;
+            foreach (var vs in _activeSkiers)
+            {
+                if (vs?.Skier == null) continue;
+                var s = vs.Skier;
+                var n = s.Needs;
+                var pos = vs.GameObject != null ? vs.GameObject.transform.position : Vector3.zero;
+                list.Add(new SkierDto
+                {
+                    skierId = s.SkierId,
+                    displayName = s.DisplayName ?? $"Skier {s.SkierId}",
+                    skill = (int)s.Skill,
+                    currentState = (int)s.CurrentState,
+                    currentLiftId = s.CurrentLiftId,
+                    currentTrailId = s.CurrentTrailId,
+                    pathProgress = s.PathProgress,
+                    runsCompleted = s.RunsCompleted,
+                    wasServed = s.WasServed,
+                    timeOnMountain = s.TimeOnMountain,
+                    desiredRuns = s.DesiredRuns,
+                    preferredRunsCompleted = s.PreferredRunsCompleted,
+                    hunger = n.Hunger,
+                    fatigue = n.Fatigue,
+                    bladder = n.Bladder,
+                    satisfaction = n.Satisfaction,
+                    totalWalkingDistance = n.TotalWalkingDistance,
+                    totalWaitTime = n.TotalWaitTime,
+                    unfulfilledNeedAttempts = n.UnfulfilledNeedAttempts,
+                    timeWithUrgentNeeds = n.TimeWithUrgentNeeds,
+                    cumulativePricePenalty = n.CumulativePricePenalty,
+                    lodgeVisitCount = n.LodgeVisitCount,
+                    fallCount = n.FallCount,
+                    fallsOnMislabeledTrails = n.FallsOnMislabeledTrails,
+                    ticketPriceRatio = n.TicketPriceRatio,
+                    worldX = pos.x,
+                    worldY = pos.y,
+                    worldZ = pos.z
+                });
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Clears current skiers and restores from save data. Skiers are re-spawned at base with
+        /// saved names, skills, needs, and progress; they will pick new lift/trail and continue.
+        /// Call after lifts/trails/lodges are loaded.
+        /// </summary>
+        public void LoadSkiersFromSave(List<SkierDto> dtos)
+        {
+            if (dtos == null || dtos.Count == 0) return;
+            ClearAllSkiers();
+            int maxId = 0;
+            foreach (var dto in dtos)
+                if (dto.skierId > maxId) maxId = dto.skierId;
+            _nextSkierId = maxId + 1;
+            foreach (var dto in dtos)
+                SpawnSkierFromSave(dto);
+        }
+
+        private void ClearAllSkiers()
+        {
+            if (_activeSkiers == null) return;
+            foreach (var vs in _activeSkiers)
+            {
+                if (vs.GameObject != null)
+                    Destroy(vs.GameObject);
+            }
+            _activeSkiers.Clear();
+        }
+
+        private void SpawnSkierFromSave(SkierDto dto)
+        {
+            var allLifts = _liftBuilder != null && _liftBuilder.LiftSystem != null ? _liftBuilder.LiftSystem.GetAllLifts() : null;
+            var allTrails = _trailDrawer != null && _trailDrawer.TrailSystem != null ? _trailDrawer.TrailSystem.GetAllTrails() : null;
+            if (allLifts == null || allLifts.Count == 0 || allTrails == null || allTrails.Count == 0)
+                return;
+            if (_skierPrefab == null) return;
+
+            var skier = CreateSkierFromDto(dto);
+            LiftData startLift = null;
+            float closestDist = float.MaxValue;
+            foreach (var lift in allLifts)
+            {
+                float dist = Vector3f.Distance(new Vector3f(baseSpawnPosition.x, 0, baseSpawnPosition.y), lift.StartPosition);
+                if (dist < closestDist) { closestDist = dist; startLift = lift; }
+            }
+            if (startLift == null) return;
+            TrailData targetTrail = null;
+            var connectedTrailIds = _liftBuilder.Connectivity != null ? _liftBuilder.Connectivity.Connections.GetTrailsFromLift(startLift.LiftId) : null;
+            if (connectedTrailIds != null && connectedTrailIds.Count > 0)
+            {
+                int trailId = connectedTrailIds[UnityEngine.Random.Range(0, connectedTrailIds.Count)];
+                targetTrail = _trailDrawer.TrailSystem.GetTrail(trailId);
+            }
+            if (targetTrail == null)
+            {
+                var liftTopPos = new Vector3(startLift.EndPosition.X, startLift.EndPosition.Y, startLift.EndPosition.Z);
+                var nearbyTrails = FindNearbyTrailStarts(liftTopPos, 25f);
+                if (nearbyTrails.Count > 0)
+                    targetTrail = nearbyTrails[UnityEngine.Random.Range(0, nearbyTrails.Count)];
+            }
+            if (targetTrail == null) return;
+
+            var skierObj = Instantiate(_skierPrefab, _skierParent);
+            skierObj.name = skier.DisplayName;
+            skierObj.transform.localScale = skierObj.transform.localScale * _skierSize;
+            var colliders = skierObj.GetComponentsInChildren<Collider>(true);
+            foreach (var c in colliders) Destroy(c);
+
+            var animator = skierObj.GetComponentInChildren<Animator>(true);
+            AnimatorOverrideController overrideController = null;
+            AnimationClip originalGlideClip = null;
+            AnimationClip originalIdleClip = null;
+            if (animator != null && animator.runtimeAnimatorController != null)
+            {
+                overrideController = new AnimatorOverrideController(animator.runtimeAnimatorController);
+                animator.runtimeAnimatorController = overrideController;
+                var clipPairs = new List<KeyValuePair<AnimationClip, AnimationClip>>(overrideController.overridesCount);
+                overrideController.GetOverrides(clipPairs);
+                AnimationClip originalFallClip = null;
+                AnimationClip originalFallenClip = null;
+                foreach (var pair in clipPairs)
+                {
+                    if (pair.Key == null) continue;
+                    if (pair.Key.name == "AN_Skier_Glide")  originalGlideClip = pair.Key;
+                    if (pair.Key.name == "AN_Skier_Idle")   originalIdleClip = pair.Key;
+                    if (pair.Key.name == "AN_Skier_Fall")   originalFallClip = pair.Key;
+                    if (pair.Key.name == "AN_Skier_Fallen") originalFallenClip = pair.Key;
+                }
+                if (_skierAnimations != null)
+                {
+                    if (_skierAnimations.idle != null && originalIdleClip != null)
+                        overrideController[originalIdleClip] = _skierAnimations.idle;
+                    if (_skierAnimations.falling != null && originalFallClip != null)
+                        overrideController[originalFallClip] = _skierAnimations.falling;
+                    if (_skierAnimations.fallen != null && originalFallenClip != null)
+                        overrideController[originalFallenClip] = _skierAnimations.fallen;
+                }
+            }
+
+            var terrainData = _trailDrawer.GridRenderer != null ? _trailDrawer.GridRenderer.TerrainData : null;
+            var grid = terrainData?.Grid;
+            var baseCoord = new TileCoord((int)baseSpawnPosition.x, (int)baseSpawnPosition.y);
+            var tile = grid != null ? grid.GetTile(baseCoord) : null;
+            float baseHeight = tile != null ? tile.Height : -35f;
+            var startPos = new Vector3(baseSpawnPosition.x, baseHeight + SKI_HEIGHT_OFFSET, baseSpawnPosition.y);
+
+            var mountainMgr = _trailDrawer.GridRenderer;
+            System.Func<Vector3, float?> heightSampler = mountainMgr != null ? (System.Func<Vector3, float?>)(pos => mountainMgr.GetHeightAtWorldPos(pos)) : null;
+            var motion = new SkierMotionController(skier.SkierId, skierObj.transform, SKI_HEIGHT_OFFSET, heightSampler);
+            motion.WalkSpeed = _skiSpeed * 0.6f;
+            motion.LiftSpeed = _liftSpeed;
+            motion.BaseSkiSpeed = _skiSpeed;
+            motion.Teleport(startPos);
+            var liftBottomPos = new Vector3(startLift.StartPosition.X, startLift.StartPosition.Y + SKI_HEIGHT_OFFSET, startLift.StartPosition.Z);
+            motion.SetWalkTarget(liftBottomPos);
+            motion.SetLift(startLift);
+
+            skier.CurrentState = SkierState.WalkingToLift;
+            skier.CurrentLiftId = startLift.LiftId;
+
+            skier.SatisfactionTracker.AddFactor(new NeedsFulfillmentFactor());
+            skier.SatisfactionTracker.AddFactor(new LodgePricingFactor());
+            skier.SatisfactionTracker.AddFactor(new TraversalFrictionFactor());
+            skier.SatisfactionTracker.AddFactor(new ReturnToBaseFactor());
+            skier.SatisfactionTracker.AddFactor(new TicketValueFactor());
+            skier.SatisfactionTracker.AddFactor(new SkillMatchFactor(skier.Skill));
+            skier.SatisfactionTracker.AddFactor(new FallingFactor());
+            if (_simRunner != null && _simRunner.Sim != null && _simRunner.Sim.EconomySystem != null)
+                skier.Needs.TicketPriceRatio = _simRunner.Sim.EconomySystem.GetPriceRatio();
+
+            var visualSkier = new VisualSkier
+            {
+                GameObject = skierObj,
+                Skier = skier,
+                CurrentLift = startLift,
+                CurrentTrail = targetTrail,
+                PlannedTrails = new List<TrailData> { targetTrail },
+                CurrentTrailIndex = 0,
+                Phase = SkierPhase.WalkingToLift,
+                IsFinished = false,
+                HasSwitchedAtJunction = false,
+                ReachableTrails = allTrails,
+                UseGoalBasedAI = false,
+                Animator = animator,
+                OverrideController = overrideController,
+                CurrentAnimState = SkierAnimState.None,
+                OriginalGlideClip = originalGlideClip,
+                OriginalIdleClip = originalIdleClip,
+                Motion = motion,
+                PersonalityOffsets = SkierContext.GeneratePersonality(skier.SkierId)
+            };
+            _activeSkiers.Add(visualSkier);
+            var selectable = skierObj.GetComponent<SelectableStructure>() ?? skierObj.AddComponent<SelectableStructure>();
+            selectable.InitializeAsSkier(skier);
+        }
+
+        private static Skier CreateSkierFromDto(SkierDto dto)
+        {
+            var skier = new Skier(dto.skierId, (SkillLevel)dto.skill);
+            skier.DisplayName = string.IsNullOrEmpty(dto.displayName) ? $"Skier {dto.skierId}" : dto.displayName;
+            skier.CurrentState = (SkierState)dto.currentState;
+            skier.CurrentLiftId = dto.currentLiftId;
+            skier.CurrentTrailId = dto.currentTrailId;
+            skier.PathProgress = dto.pathProgress;
+            skier.RunsCompleted = dto.runsCompleted;
+            skier.WasServed = dto.wasServed;
+            skier.TimeOnMountain = dto.timeOnMountain;
+            skier.DesiredRuns = dto.desiredRuns;
+            skier.PreferredRunsCompleted = dto.preferredRunsCompleted;
+            skier.Needs.Hunger = dto.hunger;
+            skier.Needs.Fatigue = dto.fatigue;
+            skier.Needs.Bladder = dto.bladder;
+            skier.Needs.Satisfaction = dto.satisfaction;
+            skier.Needs.TotalWalkingDistance = dto.totalWalkingDistance;
+            skier.Needs.TotalWaitTime = dto.totalWaitTime;
+            skier.Needs.UnfulfilledNeedAttempts = dto.unfulfilledNeedAttempts;
+            skier.Needs.TimeWithUrgentNeeds = dto.timeWithUrgentNeeds;
+            skier.Needs.CumulativePricePenalty = dto.cumulativePricePenalty;
+            skier.Needs.LodgeVisitCount = dto.lodgeVisitCount;
+            skier.Needs.FallCount = dto.fallCount;
+            skier.Needs.FallsOnMislabeledTrails = dto.fallsOnMislabeledTrails;
+            skier.Needs.TicketPriceRatio = dto.ticketPriceRatio;
+            skier.Needs.RunsCompleted = dto.runsCompleted;
+            skier.Needs.PreferredRunsCompleted = dto.preferredRunsCompleted;
+            skier.Needs.DesiredRuns = dto.desiredRuns;
+            return skier;
         }
 
         private static bool _logFilterInitialized = false;

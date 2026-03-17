@@ -643,9 +643,12 @@ namespace SkiResortTycoon.UnityBridge
             return _magneticCursor.IsSnapped ? _magneticCursor.SnappedPosition : rawPos;
         }
 
-        private void RegisterTrailSnapPoints(TrailData trail)
+        /// <summary>
+        /// Registers snap points for a trail. Used when confirming a new trail or when loading from save.
+        /// </summary>
+        public void RegisterTrailSnapPointsForLoad(TrailData trail)
         {
-            if (_liftBuilder == null || _liftBuilder.Connectivity == null) return;
+            if (trail == null || _liftBuilder == null || _liftBuilder.Connectivity == null) return;
             var registry = _liftBuilder.Connectivity.Registry;
 
             int count = 0;
@@ -666,6 +669,43 @@ namespace SkiResortTycoon.UnityBridge
                     SnapPointType.TrailEnd,
                     trail.WorldPathPoints[trail.WorldPathPoints.Count - 1],
                     trail.TrailId, $"Trail{trail.TrailId}_End"));
+            }
+        }
+
+        private void RegisterTrailSnapPoints(TrailData trail)
+        {
+            RegisterTrailSnapPointsForLoad(trail);
+        }
+
+        /// <summary>
+        /// Applies trail setup after loading from save: boundaries, terrain projection, snap points, tree clearing.
+        /// Call after TrailSystem.LoadTrails for each trail.
+        /// </summary>
+        public void ApplyTrailAfterLoad(TrailData trail)
+        {
+            if (trail == null) return;
+            trail.GenerateBoundaries();
+            for (int i = 0; i < trail.LeftBoundaryPoints.Count; i++)
+            {
+                Vector3 pt = MountainManager.ToUnityVector3(trail.LeftBoundaryPoints[i]);
+                float? y = _mountainManager != null ? _mountainManager.GetHeightAtWorldPos(pt) : null;
+                if (y.HasValue) pt.y = y.Value;
+                trail.LeftBoundaryPoints[i] = MountainManager.ToVector3f(pt);
+            }
+            for (int i = 0; i < trail.RightBoundaryPoints.Count; i++)
+            {
+                Vector3 pt = MountainManager.ToUnityVector3(trail.RightBoundaryPoints[i]);
+                float? y = _mountainManager != null ? _mountainManager.GetHeightAtWorldPos(pt) : null;
+                if (y.HasValue) pt.y = y.Value;
+                trail.RightBoundaryPoints[i] = MountainManager.ToVector3f(pt);
+            }
+            RegisterTrailSnapPointsForLoad(trail);
+            if (trail.WorldPathPoints != null && trail.WorldPathPoints.Count > 0)
+            {
+                var pathUnity = new List<Vector3>();
+                foreach (var p in trail.WorldPathPoints)
+                    pathUnity.Add(MountainManager.ToUnityVector3(p));
+                TreeClearer.ClearTreesAlongPath(pathUnity, trail.TrailWidth * 0.5f);
             }
         }
 

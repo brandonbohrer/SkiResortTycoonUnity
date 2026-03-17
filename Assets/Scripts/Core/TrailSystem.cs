@@ -448,7 +448,28 @@ namespace SkiResortTycoon.Core
         {
             return _trails.Find(t => t.TrailId == trailId);
         }
-        
+
+        /// <summary>
+        /// Loads trails from save (replaces current list). Does not register snap points — caller (TrailDrawer) must do that.
+        /// </summary>
+        public void LoadTrails(IEnumerable<TrailData> trails)
+        {
+            foreach (var t in _trails)
+                UnregisterSnapPoints(t);
+            _trails.Clear();
+            int maxId = 0;
+            if (trails != null)
+            {
+                foreach (var trail in trails)
+                {
+                    if (trail == null) continue;
+                    _trails.Add(trail);
+                    if (trail.TrailId > maxId) maxId = trail.TrailId;
+                }
+            }
+            _nextTrailId = maxId + 1;
+        }
+
         // ── Trail build cost ──────────────────────────────────────────────
         public int TrailBaseCost { get; set; } = 2000;
         public int TrailCostPerPoint { get; set; } = 100;

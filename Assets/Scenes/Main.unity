@@ -41688,6 +41688,7 @@ MonoBehaviour:
   _liftBuilder: {fileID: 1504220261}
   _trailDrawer: {fileID: 1091263535}
   _lodgeManager: {fileID: 143138647}
+  _skierVisualizer: {fileID: 1971900455}
 --- !u!1 &187455604
 GameObject:
   m_ObjectHideFlags: 0
@@ -357862,6 +357863,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1670639973}
   - component: {fileID: 1670639974}
+  - component: {fileID: 1670639975}
   m_Layer: 0
   m_Name: Game
   m_TagString: Untagged
@@ -357898,7 +357900,26 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SimulationRunner
   _liftBuilder: {fileID: 1504220261}
   _trailDrawer: {fileID: 1091263535}
+  _skierVisualizer: {fileID: 1971900455}
+--- !u!114 &1670639975
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1670639972}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fb16673d7076540e888d6defac4d383d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UnityBridge.GameLoadApplier
+  _simulationRunner: {fileID: 1670639974}
+  _liftBuilder: {fileID: 0}
+  _trailDrawer: {fileID: 0}
+  _lodgeBuilder: {fileID: 0}
+  _lodgeManager: {fileID: 0}
   _skierVisualizer: {fileID: 0}
+  _maxWaitFrames: 30
 --- !u!1001 &1671222272
 PrefabInstance:
   m_ObjectHideFlags: 0

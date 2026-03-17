@@ -258,6 +258,22 @@ namespace SkiResortTycoon.Core
         {
             return _lifts.Find(l => l.LiftId == liftId);
         }
+
+        /// <summary>
+        /// Loads lifts from save (replaces current list). Does not register snap points or build visuals — caller must do that.
+        /// </summary>
+        public void LoadLifts(IEnumerable<LiftData> lifts)
+        {
+            _lifts.Clear();
+            int maxId = 0;
+            foreach (var lift in lifts)
+            {
+                if (lift == null) continue;
+                _lifts.Add(lift);
+                if (lift.LiftId > maxId) maxId = lift.LiftId;
+            }
+            _nextLiftId = maxId + 1;
+        }
     }
 }
 

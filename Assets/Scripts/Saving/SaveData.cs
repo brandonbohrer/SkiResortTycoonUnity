@@ -212,6 +212,7 @@ namespace SkiResortTycoon.Saving
     [Serializable]
     public class LodgeDataDto
     {
+        public string displayName;
         public float posX, posY, posZ;
         public float rotX, rotY, rotZ, rotW;
         public bool hasBathroom;
@@ -220,6 +221,40 @@ namespace SkiResortTycoon.Saving
         public int capacity;
         public float snapRadius;
         public float footprintRadius;
+    }
+
+    /// <summary>Per-skier state for save/load. Saves names, skill, needs, progress.</summary>
+    [Serializable]
+    public class SkierDto
+    {
+        public int skierId;
+        public string displayName;
+        public int skill; // SkillLevel enum
+        public int currentState; // SkierState
+        public int currentLiftId;
+        public int currentTrailId;
+        public float pathProgress;
+        public int runsCompleted;
+        public bool wasServed;
+        public float timeOnMountain;
+        public int desiredRuns;
+        public int preferredRunsCompleted;
+        // Needs
+        public float hunger;
+        public float fatigue;
+        public float bladder;
+        public float satisfaction;
+        public float totalWalkingDistance;
+        public float totalWaitTime;
+        public int unfulfilledNeedAttempts;
+        public float timeWithUrgentNeeds;
+        public float cumulativePricePenalty;
+        public int lodgeVisitCount;
+        public int fallCount;
+        public int fallsOnMislabeledTrails;
+        public float ticketPriceRatio;
+        // World position when saved (for restore-at-place)
+        public float worldX, worldY, worldZ;
     }
 
     [Serializable]
@@ -279,5 +314,6 @@ namespace SkiResortTycoon.Saving
         public List<LiftDataDto> lifts;
         public List<TrailDataDto> trails;
         public List<LodgeDataDto> lodges;
+        public List<SkierDto> skiers;
     }
 }

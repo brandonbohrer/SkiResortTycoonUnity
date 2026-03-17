@@ -1036,10 +1036,10 @@ RectTransform:
   - {fileID: 880831630}
   m_Father: {fileID: 2128899500}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 1}
+  m_AnchoredPosition: {x: 719.1666, y: -17.05}
+  m_SizeDelta: {x: 127.666664, y: 24.099998}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &85817758
 MonoBehaviour:
@@ -1214,7 +1214,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &126682085
 RectTransform:
   m_ObjectHideFlags: 0
@@ -1682,10 +1682,10 @@ RectTransform:
   - {fileID: 39158682}
   m_Father: {fileID: 2128899500}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 1}
+  m_AnchoredPosition: {x: 391.5, y: -17.05}
+  m_SizeDelta: {x: 127.666664, y: 24.099998}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &158325537
 MonoBehaviour:
@@ -2955,6 +2955,55 @@ MonoBehaviour:
   m_FlexibleWidth: -1
   m_FlexibleHeight: -1
   m_LayoutPriority: 1
+--- !u!1 &380849289
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 380849291}
+  - component: {fileID: 380849290}
+  m_Layer: 0
+  m_Name: MainMenuController
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &380849290
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 380849289}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4efa554c513b649e982c5708b0826370, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UI.MainMenuController
+  _gameSceneName: Main
+  _continueButton: {fileID: 1308208661}
+  _playButton: {fileID: 332730616}
+  _loadGamePanel: {fileID: 669387282}
+  _loadGameBackButton: {fileID: 619651552}
+--- !u!4 &380849291
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 380849289}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 305.53873, y: 231.68916, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &383659017
 GameObject:
   m_ObjectHideFlags: 0
@@ -3645,7 +3694,7 @@ GameObject:
   - component: {fileID: 502358837}
   - component: {fileID: 502358836}
   - component: {fileID: 502358835}
-  - component: {fileID: 502358834}
+  - component: {fileID: 502358838}
   m_Layer: 5
   m_Name: SaveSlot
   m_TagString: Untagged
@@ -3670,28 +3719,11 @@ RectTransform:
   - {fileID: 2128899500}
   m_Father: {fileID: 1084607505}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 1}
+  m_AnchoredPosition: {x: 411.5, y: -60}
+  m_SizeDelta: {x: 823, y: 120}
   m_Pivot: {x: 0.5, y: 0.5}
---- !u!114 &502358834
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 502358832}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 0c96b978fa3174e4497a06b73cfd7e9a, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UI.SaveSlotEntry
-  _nameText: {fileID: 1452473400}
-  _detailsText: {fileID: 153413197}
-  _saveButton: {fileID: 1342399867}
-  _renameButton: {fileID: 158325537}
-  _deleteButton: {fileID: 85817758}
 --- !u!114 &502358835
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3750,6 +3782,23 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 502358832}
   m_CullTransparentMesh: 1
+--- !u!114 &502358838
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 502358832}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7419a21186c154dd4879535a48d5fe3b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UI.MainMenuLoadSlotEntry
+  _nameText: {fileID: 1452473400}
+  _detailsText: {fileID: 153413197}
+  _playButton: {fileID: 1342399867}
+  _renameButton: {fileID: 158325537}
+  _deleteButton: {fileID: 85817758}
 --- !u!1 &528899777
 GameObject:
   m_ObjectHideFlags: 0
@@ -3998,7 +4047,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &581981483
 RectTransform:
   m_ObjectHideFlags: 0
@@ -5150,12 +5199,12 @@ GameObject:
   - component: {fileID: 669387283}
   - component: {fileID: 669387284}
   m_Layer: 5
-  m_Name: SaveMenuRoot
+  m_Name: LoadMenuRoot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &669387283
 RectTransform:
   m_ObjectHideFlags: 0
@@ -5186,11 +5235,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 669387282}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: cdf488657da914bd5a60a969aff2c544, type: 3}
+  m_Script: {fileID: 11500000, guid: 9f4171c6aa67749378279c0d3d189b5e, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UI.SaveGameManager
+  m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UI.MainMenuLoadPanel
+  _gameSceneName: Main
   _resortNameInputField: {fileID: 0}
-  _newSaveButton: {fileID: 2079726239}
+  _newGameButton: {fileID: 2079726239}
   _inputRow: {fileID: 126682084}
   _nameInputField: {fileID: 126682086}
   _acceptButton: {fileID: 581981484}
@@ -5201,13 +5251,7 @@ MonoBehaviour:
   _confirmDialogPanel: {fileID: 159485505}
   _confirmDialogCancelButton: {fileID: 1609586800}
   _confirmDialogConfirmButton: {fileID: 825755280}
-  _confirmOverwriteText: {fileID: 716779749}
   _confirmDeleteText: {fileID: 2010592601}
-  _openSaveMenuButton: {fileID: 0}
-  _simulationRunner: {fileID: 0}
-  _liftBuilder: {fileID: 0}
-  _trailDrawer: {fileID: 0}
-  _lodgeManager: {fileID: 0}
 --- !u!1 &716779749
 GameObject:
   m_ObjectHideFlags: 0
@@ -5798,8 +5842,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: -9.999931}
-  m_SizeDelta: {x: -60, y: -180.00014}
+  m_AnchoredPosition: {x: 0, y: -39.99996}
+  m_SizeDelta: {x: -60, y: -240.00008}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &791629386
 MonoBehaviour:
@@ -6725,7 +6769,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &904393537
 RectTransform:
   m_ObjectHideFlags: 0
@@ -7582,7 +7626,7 @@ RectTransform:
   m_Father: {fileID: 1042754836}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 20, y: 20}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -8128,7 +8172,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 120}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &1084607506
 MonoBehaviour:
@@ -9401,10 +9445,10 @@ RectTransform:
   - {fileID: 1044134588}
   m_Father: {fileID: 2128899500}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 1}
+  m_AnchoredPosition: {x: 63.833332, y: -17.05}
+  m_SizeDelta: {x: 127.666664, y: 24.099998}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1342399867
 MonoBehaviour:
@@ -12145,9 +12189,9 @@ RectTransform:
   m_Father: {fileID: 791629385}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
+  m_SizeDelta: {x: -17, y: 0}
   m_Pivot: {x: 0, y: 1}
 --- !u!114 &1847422195
 MonoBehaviour:
@@ -12394,7 +12438,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: + New Save
+  m_text: + New Game
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -13159,7 +13203,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &2079726238
 RectTransform:
   m_ObjectHideFlags: 0
@@ -13582,3 +13626,4 @@ SceneRoots:
   - {fileID: 901539896}
   - {fileID: 1357222427}
   - {fileID: 999004630}
+  - {fileID: 380849291}

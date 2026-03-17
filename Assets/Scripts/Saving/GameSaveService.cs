@@ -138,6 +138,65 @@ namespace SkiResortTycoon.Saving
         }
 
         /// <summary>
+        /// Returns the path of the most recently modified save file, or null if none exist.
+        /// Use for "Continue" to auto-load last played save.
+        /// </summary>
+        public static string GetMostRecentSavePath()
+        {
+            string dir = GetSaveDirectory();
+            if (!Directory.Exists(dir)) return null;
+            string[] files = Directory.GetFiles(dir, "*" + SaveExtension);
+            if (files.Length == 0) return null;
+            string latest = null;
+            DateTime latestTime = DateTime.MinValue;
+            foreach (string path in files)
+            {
+                var time = File.GetLastWriteTimeUtc(path);
+                if (time > latestTime)
+                {
+                    latestTime = time;
+                    latest = path;
+                }
+            }
+            return latest;
+        }
+
+        /// <summary>
+        /// Creates a new empty save (day 1, default money, no lifts/trails/lodges).
+        /// Use when user clicks "+ New Game" and Accept on the load menu.
+        /// </summary>
+        public static GameSaveData CreateEmptySave(string resortName)
+        {
+            return new GameSaveData
+            {
+                resortName = string.IsNullOrEmpty(resortName) ? "Unnamed Resort" : resortName,
+                simulationState = new SimulationStateDto
+                {
+                    dayIndex = 1,
+                    timeMinutes = 540f,
+                    visitorsToday = 0,
+                    money = 1000000,
+                    liftsBuilt = 0,
+                    trailsBuilt = 0,
+                    lodgesBuilt = 0,
+                    todayRevenue = 0f,
+                    todayExpenses = 0f,
+                    todayLodgeRevenue = 0f
+                },
+                timeController = new TimeControllerDto { isPaused = false, speedMultiplier = 1f },
+                economy = new EconomyDto
+                {
+                    ticketPrice = 30f,
+                    currentFairPrice = 50f,
+                    history = new List<DailyFinancialRecordDto>()
+                },
+                lifts = new List<LiftDataDto>(),
+                trails = new List<TrailDataDto>(),
+                lodges = new List<LodgeDataDto>()
+            };
+        }
+
+        /// <summary>
         /// Captures current game state from the running simulation and Unity builders.
         /// </summary>
         public static GameSaveData CaptureFromGame(
@@ -253,8 +312,42 @@ namespace SkiResortTycoon.Saving
         public static string GetCurrentResortNameFromData(SimulationRunner runner)
         {
             if (runner?.Sim?.State == null) return "";
-            // Resort name is not on SimulationState; it's only in save data. So we don't have a "current" name unless we stored it elsewhere.
             return "";
+        }
+
+        /// <summary>
+        /// Applies loaded save data to the running game (simulation state, time, economy).
+        /// Call from the game scene when PendingSavePath was set by the main menu.
+        /// </summary>
+        public static void ApplyToGame(GameSaveData data, SimulationRunner runner)
+        {
+            if (data == null || runner?.Sim == null) return;
+
+            if (data.simulationState != null)
+            {
+                var state = runner.Sim.State;
+                state.DayIndex = data.simulationState.dayIndex;
+                state.TimeMinutes = data.simulationState.timeMinutes;
+                state.VisitorsToday = data.simulationState.visitorsToday;
+                state.Money = data.simulationState.money;
+                state.LiftsBuilt = data.simulationState.liftsBuilt;
+                state.TrailsBuilt = data.simulationState.trailsBuilt;
+                state.LodgesBuilt = data.simulationState.lodgesBuilt;
+                state.TodayRevenue = data.simulationState.todayRevenue;
+                state.TodayExpenses = data.simulationState.todayExpenses;
+                state.TodayLodgeRevenue = data.simulationState.todayLodgeRevenue;
+            }
+
+            if (data.timeController != null && runner.Sim.TimeController != null)
+            {
+                runner.Sim.TimeController.IsPaused = data.timeController.isPaused;
+                runner.Sim.TimeController.SpeedMultiplier = data.timeController.speedMultiplier;
+            }
+
+            if (data.economy != null && runner.Sim.EconomySystem != null)
+                runner.Sim.EconomySystem.TicketPricing.TicketPrice = data.economy.ticketPrice;
+
+            Debug.Log($"[GameSaveService] Applied save. Day {runner.Sim.State.DayIndex}, Money: ${runner.Sim.State.Money:N0}");
         }
     }
 }

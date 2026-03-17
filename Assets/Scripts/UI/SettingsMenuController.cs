@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using SkiResortTycoon.Audio;
 
 namespace SkiResortTycoon.UI
 {
@@ -65,7 +66,7 @@ namespace SkiResortTycoon.UI
         {
             // Sliders are 0-1 by default; we store and display 0-100
             if (_masterVolumeSlider != null) _masterVolumeSlider.onValueChanged.AddListener(v => { int p = SliderToPercent(v); GameSettings.MasterVolume = p; UpdateMasterText(); });
-            if (_musicVolumeSlider != null) _musicVolumeSlider.onValueChanged.AddListener(v => { GameSettings.MusicVolume = SliderToPercent(v); UpdateMusicText(); });
+            if (_musicVolumeSlider != null) _musicVolumeSlider.onValueChanged.AddListener(v => { GameSettings.MusicVolume = SliderToPercent(v); UpdateMusicText(); MusicManager.Instance?.ApplyVolume(); });
             if (_sfxVolumeSlider != null) _sfxVolumeSlider.onValueChanged.AddListener(v => { GameSettings.SfxVolume = SliderToPercent(v); UpdateSfxText(); });
             if (_cameraSpeedSlider != null) _cameraSpeedSlider.onValueChanged.AddListener(v => { GameSettings.CameraSpeed = SliderToPercent(v); UpdateCameraSpeedText(); });
         }
@@ -121,6 +122,7 @@ namespace SkiResortTycoon.UI
             UpdateSfxText();
             UpdateCameraSpeedText();
             GameSettings.ApplyMasterVolume();
+            MusicManager.Instance?.ApplyVolume();
         }
 
         private void EnsureAutosaveOptions()

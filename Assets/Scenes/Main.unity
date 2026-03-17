@@ -41630,7 +41630,7 @@ GameObject:
   - component: {fileID: 187031863}
   - component: {fileID: 187031864}
   m_Layer: 5
-  m_Name: SaveMenuPanel
+  m_Name: SaveMenuRoot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -41669,6 +41669,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cdf488657da914bd5a60a969aff2c544, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UI.SaveGameManager
+  _resortNameInputField: {fileID: 1723577568}
   _newSaveButton: {fileID: 1286660914}
   _inputRow: {fileID: 16629923}
   _nameInputField: {fileID: 16629925}

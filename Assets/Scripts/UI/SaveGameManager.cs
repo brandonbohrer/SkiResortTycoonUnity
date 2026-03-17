@@ -15,8 +15,11 @@ namespace SkiResortTycoon.UI
     public class SaveGameManager : MonoBehaviour
     {
         [Header("Top bar — New Save + Input row")]
+        [Tooltip("Input field on the manager screen that shows the current resort name. Drag it here.")]
+        [SerializeField] private TMP_InputField _resortNameInputField;
         [SerializeField] private Button _newSaveButton;
         [SerializeField] private GameObject _inputRow; // parent of input field + accept + cancel
+        [Tooltip("Input field where you type the save/rename; auto-fills from resort name when you click New Save or Rename.")]
         [SerializeField] private TMP_InputField _nameInputField;
         [SerializeField] private Button _acceptButton;
         [SerializeField] private Button _cancelButton;
@@ -137,7 +140,7 @@ namespace SkiResortTycoon.UI
             _renameSlot = null;
             if (_nameInputField != null)
             {
-                _nameInputField.text = "";
+                _nameInputField.text = _resortNameInputField != null ? (_resortNameInputField.text ?? "") : "";
                 _nameInputField.interactable = true;
             }
             ShowInputRow();
@@ -150,7 +153,7 @@ namespace SkiResortTycoon.UI
             _renameSlot = slot;
             if (_nameInputField != null)
             {
-                _nameInputField.text = slot.DisplayName ?? "";
+                _nameInputField.text = _resortNameInputField != null ? (_resortNameInputField.text ?? "") : (slot.DisplayName ?? "");
                 _nameInputField.interactable = true;
             }
             ShowInputRow();

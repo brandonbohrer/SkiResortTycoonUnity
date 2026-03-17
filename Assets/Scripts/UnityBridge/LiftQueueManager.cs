@@ -38,10 +38,13 @@ namespace SkiResortTycoon.UnityBridge
         private readonly Dictionary<int, SkierAssignment> _skierAssignments = new Dictionary<int, SkierAssignment>();
         private readonly System.Func<Vector3, float?> _terrainHeightSampler;
 
-        private const float SlotSpacingMeters = 3.0f;
         private const float BoardOffsetMeters = 1.5f;
         private const float LodgeAvoidancePaddingMeters = 1.0f;
         private const int MaxLodgeAvoidanceSteps = 12;
+
+        private const int SlotsPerLane = 5;
+        private const float SnakeSlotSpacing = 2.0f;
+        private const float SnakeLaneSpacing = 2.5f;
 
         public LiftQueueManager(System.Func<Vector3, float?> terrainHeightSampler)
         {
@@ -292,12 +295,64 @@ namespace SkiResortTycoon.UnityBridge
                 feederState.BoardDistanceInitialized = true;
             }
 
-            float rawDistance = feederState.BoardDistanceAlongTrail - BoardOffsetMeters - queueIndex * SlotSpacingMeters;
+            Vector3 liftBottom = new Vector3(
+                liftState.Lift.StartPosition.X,
+                liftState.Lift.StartPosition.Y,
+                liftState.Lift.StartPosition.Z
+            );
+            Vector3 trailContact = SampleTrailCenterlineAtDistance(feederState.Trail, feederState.BoardDistanceAlongTrail);
+
+            Vector3 toTrail = trailContact - liftBottom;
+            toTrail.y = 0f;
+            float bridgeDist = toTrail.magnitude;
+            Vector3 bridgeDir = bridgeDist > 0.01f ? toTrail / bridgeDist : Vector3.zero;
+
+            int bridgeSlots = Mathf.Max(0, Mathf.FloorToInt(bridgeDist / SnakeSlotSpacing));
+
+            if (queueIndex <= bridgeSlots)
+            {
+                float distFromLift = queueIndex * SnakeSlotSpacing;
+                Vector3 pos = liftBottom + bridgeDir * Mathf.Min(distFromLift, bridgeDist);
+                return GroundToTerrain(pos);
+            }
+
+            int snakeIndex = queueIndex - bridgeSlots - 1;
+            int lane = snakeIndex / SlotsPerLane;
+            int posInLane = snakeIndex % SlotsPerLane;
+
+            float alongOffset = (lane % 2 == 0)
+                ? posInLane * SnakeSlotSpacing
+                : (SlotsPerLane - 1 - posInLane) * SnakeSlotSpacing;
+
+            float rawDistance = feederState.BoardDistanceAlongTrail - alongOffset;
             Vector3 slotPos = rawDistance >= 0f
                 ? SampleTrailCenterlineAtDistance(feederState.Trail, rawDistance)
                 : SampleTrailStartExtension(feederState.Trail, -rawDistance);
+
+            if (lane > 0)
+            {
+                Vector3 trailDir = ComputeTrailDirectionAtBoarding(feederState);
+                Vector3 perpDir = Vector3.Cross(Vector3.up, trailDir).normalized;
+                if (perpDir.sqrMagnitude < 0.001f)
+                    perpDir = Vector3.right;
+                slotPos += perpDir * lane * SnakeLaneSpacing;
+            }
+
             slotPos = AvoidLodgeFootprints(feederState.Trail, Mathf.Max(0f, rawDistance), slotPos);
             return GroundToTerrain(slotPos);
+        }
+
+        private Vector3 ComputeTrailDirectionAtBoarding(FeederQueueState feederState)
+        {
+            float boardDist = feederState.BoardDistanceAlongTrail;
+            float sampleOffset = 2f;
+            Vector3 p1 = SampleTrailCenterlineAtDistance(feederState.Trail, Mathf.Max(0f, boardDist - sampleOffset));
+            Vector3 p2 = SampleTrailCenterlineAtDistance(feederState.Trail, boardDist + sampleOffset);
+            Vector3 dir = p2 - p1;
+            dir.y = 0f;
+            if (dir.sqrMagnitude < 0.0001f)
+                return Vector3.forward;
+            return dir.normalized;
         }
 
         private Vector3 ComputeFallbackSlotPosition(LiftData lift, int queueIndex)
@@ -311,7 +366,17 @@ namespace SkiResortTycoon.UnityBridge
             else
                 dir.Normalize();
 
-            Vector3 pos = liftStart - dir * (BoardOffsetMeters + queueIndex * SlotSpacingMeters);
+            int lane = queueIndex / SlotsPerLane;
+            int posInLane = queueIndex % SlotsPerLane;
+            float alongOffset = (lane % 2 == 0)
+                ? posInLane * SnakeSlotSpacing
+                : (SlotsPerLane - 1 - posInLane) * SnakeSlotSpacing;
+
+            Vector3 perpDir = Vector3.Cross(Vector3.up, dir).normalized;
+            if (perpDir.sqrMagnitude < 0.001f)
+                perpDir = Vector3.right;
+
+            Vector3 pos = liftStart - dir * (BoardOffsetMeters + alongOffset) + perpDir * lane * SnakeLaneSpacing;
             return GroundToTerrain(pos);
         }
 
@@ -378,7 +443,7 @@ namespace SkiResortTycoon.UnityBridge
                 return candidate;
 
             float dist = startDistance;
-            float step = Mathf.Max(0.5f, SlotSpacingMeters * 0.5f);
+            float step = Mathf.Max(0.5f, SnakeSlotSpacing * 0.5f);
 
             for (int i = 0; i < MaxLodgeAvoidanceSteps; i++)
             {

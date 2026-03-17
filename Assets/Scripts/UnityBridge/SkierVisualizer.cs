@@ -394,11 +394,27 @@ namespace SkiResortTycoon.UnityBridge
             TrailData targetTrail = restoreTrail;
             if (startLift == null)
             {
-                float closestDist = float.MaxValue;
-                foreach (var lift in allLifts)
+                var baseLiftIds = _liftBuilder.Connectivity != null
+                    ? _liftBuilder.Connectivity.Connections.GetLiftsConnectedToBase()
+                    : new List<int>();
+                var candidateLifts = new List<LiftData>();
+                foreach (var blid in baseLiftIds)
                 {
-                    float dist = Vector3f.Distance(new Vector3f(baseSpawnPosition.x, 0, baseSpawnPosition.y), lift.StartPosition);
-                    if (dist < closestDist) { closestDist = dist; startLift = lift; }
+                    var lift = allLifts.Find(l => l.LiftId == blid);
+                    if (lift != null && lift.IsValid) candidateLifts.Add(lift);
+                }
+                if (candidateLifts.Count > 0)
+                {
+                    startLift = candidateLifts[UnityEngine.Random.Range(0, candidateLifts.Count)];
+                }
+                else
+                {
+                    float closestDist = float.MaxValue;
+                    foreach (var lift in allLifts)
+                    {
+                        float dist = Vector3f.Distance(new Vector3f(baseSpawnPosition.x, 0, baseSpawnPosition.y), lift.StartPosition);
+                        if (dist < closestDist) { closestDist = dist; startLift = lift; }
+                    }
                 }
             }
             if (startLift == null) return;
@@ -1020,18 +1036,47 @@ namespace SkiResortTycoon.UnityBridge
                 if (_enableDebugLogs) Debug.Log($"[Skier {skier.SkierId}] AI planned {goal.PlannedPath.Count} steps (destination trail: {goal.DestinationTrailId})");
             }
 
-            // Fallback: if AI couldn't plan, use legacy proximity-based selection
+            // Fallback: use decision engine with base-connected lifts for natural distribution
             if (startLift == null)
             {
-                float closestDist = float.MaxValue;
-                foreach (var lift in allLifts)
+                var baseLiftIds = _liftBuilder.Connectivity.Connections.GetLiftsConnectedToBase();
+                var candidateLifts = new List<LiftData>();
+                foreach (var blid in baseLiftIds)
                 {
-                    Vector3f basePos3D = new Vector3f(baseSpawnPosition.x, 0, baseSpawnPosition.y);
-                    float dist = Vector3f.Distance(basePos3D, lift.StartPosition);
-                    if (dist < closestDist)
+                    var lift = allLifts.Find(l => l.LiftId == blid);
+                    if (lift != null && lift.IsValid)
+                        candidateLifts.Add(lift);
+                }
+
+                if (candidateLifts.Count > 0)
+                {
+                    var spawnCtx = new SkierContext
                     {
-                        closestDist = dist;
-                        startLift = lift;
+                        SkierId = skier.SkierId,
+                        Skill = skier.Skill,
+                        GoalTrailId = -1,
+                        GoalLiftId = -1,
+                        LiftsRidden = new HashSet<int>(),
+                        TrailsSkied = new HashSet<int>(),
+                        PersonalityOffsets = SkierContext.GeneratePersonality(skier.SkierId)
+                    };
+                    startLift = SkierDecisionEngine.ChooseLift(
+                        candidateLifts, spawnCtx, Config, Traffic?.State, _distribution, GetBestTrailValueAtLift
+                    );
+                }
+
+                if (startLift == null)
+                {
+                    float closestDist = float.MaxValue;
+                    foreach (var lift in allLifts)
+                    {
+                        Vector3f basePos3D = new Vector3f(baseSpawnPosition.x, 0, baseSpawnPosition.y);
+                        float dist = Vector3f.Distance(basePos3D, lift.StartPosition);
+                        if (dist < closestDist)
+                        {
+                            closestDist = dist;
+                            startLift = lift;
+                        }
                     }
                 }
             }
@@ -2065,6 +2110,33 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
 
+            // If near base, include ALL base-connected lifts so skiers can reach
+            // any lift in the base area, not just those near this trail's end
+            {
+                var baseSpawnsP3 = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
+                foreach (var baseSpawn in baseSpawnsP3)
+                {
+                    Vector3 bPos = new Vector3(baseSpawn.Position.X, baseSpawn.Position.Y, baseSpawn.Position.Z);
+                    if (Vector3.Distance(trailEndPos, bPos) <= 80f)
+                    {
+                        var baseLiftIds = _liftBuilder.Connectivity.Connections.GetLiftsConnectedToBase();
+                        foreach (var blid in baseLiftIds)
+                        {
+                            if (!liftIdSet.Contains(blid))
+                            {
+                                var lift = allLiftsData.Find(l => l.LiftId == blid);
+                                if (lift != null && lift.IsValid)
+                                {
+                                    nearbyLifts.Add(lift);
+                                    liftIdSet.Add(blid);
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+
             if (nearbyLifts.Count > 0)
             {
                 var ctx = BuildContext(vs);
@@ -2432,30 +2504,39 @@ namespace SkiResortTycoon.UnityBridge
                 vs.UseGoalBasedAI = true;
             }
 
-            // Fallback: find the closest walkable lift — must be close AND not significantly uphill
+            // Fallback: choose from base-connected lifts using the decision engine
+            // so skiers distribute across all base lifts instead of always picking the closest
             if (nextLift == null)
             {
-                Vector3 skierPos = vs.GameObject.transform.position;
-                float maxWalkDist = 30f;
-                float maxUphillClimb = 5f;
-                var validLifts = allLifts.FindAll(l => l.IsValid);
-                LiftData closest = null;
-                float closestDist = float.MaxValue;
-                foreach (var lift in validLifts)
+                var baseLiftIds = _liftBuilder.Connectivity.Connections.GetLiftsConnectedToBase();
+                var candidateLifts = new List<LiftData>();
+                foreach (var blid in baseLiftIds)
                 {
-                    Vector3 lBottom = new Vector3(lift.StartPosition.X, lift.StartPosition.Y, lift.StartPosition.Z);
-                    float d = Vector3.Distance(skierPos, lBottom);
-                    float heightDiff = lBottom.y - skierPos.y;
-                    if (heightDiff > maxUphillClimb) continue;
-                    if (d < closestDist)
-                    {
-                        closestDist = d;
-                        closest = lift;
-                    }
+                    var lift = allLifts.Find(l => l.LiftId == blid);
+                    if (lift != null && lift.IsValid)
+                        candidateLifts.Add(lift);
                 }
-                if (closest != null && closestDist <= maxWalkDist)
+
+                if (candidateLifts.Count > 0)
                 {
-                    nextLift = closest;
+                    var ctx = BuildContext(vs);
+                    nextLift = SkierDecisionEngine.ChooseLift(
+                        candidateLifts, ctx, Config, Traffic?.State, _distribution, GetBestTrailValueAtLift
+                    );
+                    if (nextLift == null)
+                        nextLift = candidateLifts[Random.Range(0, candidateLifts.Count)];
+                }
+                else
+                {
+                    Vector3 skierPos = vs.GameObject.transform.position;
+                    float closestDist = float.MaxValue;
+                    foreach (var lift in allLifts)
+                    {
+                        if (!lift.IsValid) continue;
+                        Vector3 lBottom = new Vector3(lift.StartPosition.X, lift.StartPosition.Y, lift.StartPosition.Z);
+                        float d = Vector3.Distance(skierPos, lBottom);
+                        if (d < closestDist) { closestDist = d; nextLift = lift; }
+                    }
                 }
                 vs.UseGoalBasedAI = false;
             }

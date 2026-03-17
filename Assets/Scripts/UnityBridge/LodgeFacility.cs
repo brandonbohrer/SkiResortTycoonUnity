@@ -107,6 +107,20 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         /// <summary>
+        /// Restore a skier into the lodge from save (same slot, remaining time). Use when loading game.
+        /// </summary>
+        public bool EnterLodgeFromSave(int skierId, float elapsedRealSeconds)
+        {
+            if (_occupiedSlots.Contains(skierId)) return true;
+            if (IsFull) return false;
+            _occupiedSlots.Add(skierId);
+            float remaining = Mathf.Max(0f, _restDurationSeconds - elapsedRealSeconds);
+            _restTimers[skierId] = remaining;
+            _realTimeCounters[skierId] = elapsedRealSeconds;
+            return true;
+        }
+
+        /// <summary>
         /// Is skier still inside?
         /// </summary>
         public bool ContainsSkier(int skierId) => _occupiedSlots.Contains(skierId);

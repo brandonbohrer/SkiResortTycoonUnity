@@ -255,6 +255,17 @@ namespace SkiResortTycoon.Saving
         public float ticketPriceRatio;
         // World position when saved (for restore-at-place)
         public float worldX, worldY, worldZ;
+        // Lift: exact chair and progress (0-1 along lift) so we can restore seat
+        public int liftChairIndex;
+        public float liftChairProgress;
+        // Fall state: exact spot and timer
+        public bool isFalling;
+        public bool hasFallen;
+        public float fallenTimerMinutes;
+        public float fallAnimTimer;
+        // In lodge: lodge world position (to find it on load) and rest timer
+        public float inLodgePosX, inLodgePosY, inLodgePosZ;
+        public float lodgeRestTimer;
     }
 
     [Serializable]

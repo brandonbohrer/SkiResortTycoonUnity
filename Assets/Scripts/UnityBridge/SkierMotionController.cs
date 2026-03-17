@@ -108,6 +108,12 @@ namespace SkiResortTycoon.UnityBridge
         /// <summary>Cached total arc-length of current trail.</summary>
         public float TrailTotalLength => _trailTotalLength;
 
+        /// <summary>Chair index when riding a lift (for save/restore). -1 if not on a chair.</summary>
+        public int AssignedChairIndex => _assignedChairIndex;
+
+        /// <summary>Chair mover when riding a lift (for save/restore). Null if not on a chair.</summary>
+        public LiftChairMover ChairMover => _chairMover;
+
         /// <summary>Current lateral offset (-1..1).</summary>
         public float LateralOffset => _lateralOffset;
 
@@ -245,6 +251,46 @@ namespace SkiResortTycoon.UnityBridge
             _smoothedPosition = position;
             _transform.position = position;
             _positionInitialized = true;
+        }
+
+        /// <summary>
+        /// Restore skier on a lift at a given progress (0-1). Use when loading from save.
+        /// Sets position along lift and lift progress so the next Tick continues correctly.
+        /// </summary>
+        public void RestoreLiftProgress(float progress)
+        {
+            if (_currentLift == null) return;
+            _liftProgress = Mathf.Clamp01(progress);
+            ReachedLiftTop = false;
+            float liftLength = _currentLift.Length;
+            if (liftLength <= 0f) liftLength = 1f;
+            Vector3 startFb = V3f(_currentLift.StartPosition);
+            Vector3 endFb = V3f(_currentLift.EndPosition);
+            Vector3 pos = Vector3.Lerp(startFb, endFb, _liftProgress);
+            const float CHAIR_HEIGHT = 7.825f;
+            const float SKIER_SEAT_Y_OFFSET = -3.25f;
+            pos.y += CHAIR_HEIGHT + SKIER_SEAT_Y_OFFSET;
+            _smoothedPosition = pos;
+            _transform.position = pos;
+            _positionInitialized = true;
+        }
+
+        /// <summary>
+        /// Restore skier on a trail at a given distance (metres). Use when loading from save.
+        /// Call after SetTrail(trail, 0). Sets distance and position so the next Tick continues correctly.
+        /// </summary>
+        public void RestoreToTrailDistance(float distance)
+        {
+            if (_currentTrail == null) return;
+            _distanceAlongTrail = Mathf.Clamp(distance, 0f, _trailTotalLength);
+            _isTransitioning = false;
+            ReachedTrailEnd = false;
+            Vector3 position;
+            Vector3 tangent;
+            float width;
+            SampleTrail(_distanceAlongTrail, out position, out tangent, out width);
+            _currentTangent = tangent;
+            Teleport(GroundToTerrain(position));
         }
 
         // ─────────────────────────────────────────────────────────────────

@@ -202,6 +202,53 @@ namespace SkiResortTycoon.UnityBridge
                 _occupied[index] = false;
         }
 
+        /// <summary>
+        /// Set the conveyor phase (0-1) for exact restore when loading a save.
+        /// Puts all chairs at the correct position so a skier can be restored to their exact seat.
+        /// Call ApplyPhaseImmediate() after this to update chair transforms in the same frame.
+        /// </summary>
+        public void SetPhase(float phase)
+        {
+            _phase = Mathf.Repeat(phase, 1f);
+        }
+
+        /// <summary>
+        /// Updates all chair positions to match current _phase. Call after SetPhase when loading a save.
+        /// </summary>
+        public void ApplyPhaseImmediate()
+        {
+            if (!_initialised || _chairCount == 0) return;
+            for (int i = 0; i < _chairCount; i++)
+            {
+                float baseT = (float)i / _chairCount;
+                float tUp = (baseT + _phase) % 1f;
+                Vector3 upCenter = SamplePolyline(tUp);
+                Vector3 upPos = upCenter + _right * _upX;
+                if (_chairsUp[i] != null)
+                {
+                    _chairsUp[i].transform.position = upPos;
+                    _chairsUp[i].transform.rotation = GetPolylineRotation(tUp);
+                }
+                float tDown = (baseT + _phase) % 1f;
+                Vector3 downCenter = SamplePolyline(1f - tDown);
+                Vector3 downPos = downCenter + _right * _downX;
+                if (_chairsDown[i] != null)
+                {
+                    _chairsDown[i].transform.position = downPos;
+                    _chairsDown[i].transform.rotation = GetPolylineRotation(1f - tDown) * Quaternion.Euler(0f, 180f, 0f);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Claim a specific chair by index (for restore from save). Does not check position.
+        /// </summary>
+        public void ClaimChairByIndex(int index)
+        {
+            if (index >= 0 && index < _chairCount)
+                _occupied[index] = true;
+        }
+
         private void Update()
         {
             if (!_initialised || _chairCount == 0) return;

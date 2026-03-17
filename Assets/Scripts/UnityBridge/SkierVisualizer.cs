@@ -244,7 +244,7 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         /// <summary>
-        /// Captures all active skiers for save (names, skills, needs, progress, world position).
+        /// Captures all active skiers for save (names, skills, needs, progress, exact position and state).
         /// </summary>
         public List<SkierDto> CaptureSkiersForSave()
         {
@@ -256,6 +256,21 @@ namespace SkiResortTycoon.UnityBridge
                 var s = vs.Skier;
                 var n = s.Needs;
                 var pos = vs.GameObject != null ? vs.GameObject.transform.position : Vector3.zero;
+                int liftChairIndex = -1;
+                float liftChairProgress = 0f;
+                if (vs.Phase == SkierPhase.RidingLift && vs.Motion.ChairMover != null && vs.Motion.AssignedChairIndex >= 0)
+                {
+                    liftChairIndex = vs.Motion.AssignedChairIndex;
+                    liftChairProgress = vs.Motion.ChairMover.GetUpChairProgress(liftChairIndex);
+                }
+                float inLodgeX = 0f, inLodgeY = 0f, inLodgeZ = 0f;
+                float lodgeRestTimer = 0f;
+                if (vs.Phase == SkierPhase.InLodge && vs.TargetLodge != null)
+                {
+                    var lp = vs.TargetLodge.Position;
+                    inLodgeX = lp.x; inLodgeY = lp.y; inLodgeZ = lp.z;
+                    lodgeRestTimer = vs.LodgeRestTimer;
+                }
                 list.Add(new SkierDto
                 {
                     skierId = s.SkierId,
@@ -285,7 +300,17 @@ namespace SkiResortTycoon.UnityBridge
                     ticketPriceRatio = n.TicketPriceRatio,
                     worldX = pos.x,
                     worldY = pos.y,
-                    worldZ = pos.z
+                    worldZ = pos.z,
+                    liftChairIndex = liftChairIndex,
+                    liftChairProgress = liftChairProgress,
+                    isFalling = vs.IsFalling,
+                    hasFallen = vs.HasFallen,
+                    fallenTimerMinutes = vs.FallenTimerMinutes,
+                    fallAnimTimer = vs.FallAnimTimer,
+                    inLodgePosX = inLodgeX,
+                    inLodgePosY = inLodgeY,
+                    inLodgePosZ = inLodgeZ,
+                    lodgeRestTimer = lodgeRestTimer
                 });
             }
             return list;
@@ -296,10 +321,13 @@ namespace SkiResortTycoon.UnityBridge
         /// saved names, skills, needs, and progress; they will pick new lift/trail and continue.
         /// Call after lifts/trails/lodges are loaded.
         /// </summary>
+        private HashSet<int> _liftPhasesRestoredForLoad = new HashSet<int>();
+
         public void LoadSkiersFromSave(List<SkierDto> dtos)
         {
             if (dtos == null || dtos.Count == 0) return;
             ClearAllSkiers();
+            _liftPhasesRestoredForLoad.Clear();
             int maxId = 0;
             foreach (var dto in dtos)
                 if (dto.skierId > maxId) maxId = dto.skierId;
@@ -328,27 +356,36 @@ namespace SkiResortTycoon.UnityBridge
             if (_skierPrefab == null) return;
 
             var skier = CreateSkierFromDto(dto);
-            LiftData startLift = null;
-            float closestDist = float.MaxValue;
-            foreach (var lift in allLifts)
+            var savedPos = new Vector3(dto.worldX, dto.worldY, dto.worldZ);
+            LiftData restoreLift = dto.currentLiftId >= 0 ? allLifts.Find(l => l.LiftId == dto.currentLiftId) : null;
+            TrailData restoreTrail = dto.currentTrailId >= 0 ? allTrails.Find(t => t.TrailId == dto.currentTrailId) : null;
+            LiftData startLift = restoreLift;
+            TrailData targetTrail = restoreTrail;
+            if (startLift == null)
             {
-                float dist = Vector3f.Distance(new Vector3f(baseSpawnPosition.x, 0, baseSpawnPosition.y), lift.StartPosition);
-                if (dist < closestDist) { closestDist = dist; startLift = lift; }
+                float closestDist = float.MaxValue;
+                foreach (var lift in allLifts)
+                {
+                    float dist = Vector3f.Distance(new Vector3f(baseSpawnPosition.x, 0, baseSpawnPosition.y), lift.StartPosition);
+                    if (dist < closestDist) { closestDist = dist; startLift = lift; }
+                }
             }
             if (startLift == null) return;
-            TrailData targetTrail = null;
-            var connectedTrailIds = _liftBuilder.Connectivity != null ? _liftBuilder.Connectivity.Connections.GetTrailsFromLift(startLift.LiftId) : null;
-            if (connectedTrailIds != null && connectedTrailIds.Count > 0)
-            {
-                int trailId = connectedTrailIds[UnityEngine.Random.Range(0, connectedTrailIds.Count)];
-                targetTrail = _trailDrawer.TrailSystem.GetTrail(trailId);
-            }
             if (targetTrail == null)
             {
-                var liftTopPos = new Vector3(startLift.EndPosition.X, startLift.EndPosition.Y, startLift.EndPosition.Z);
-                var nearbyTrails = FindNearbyTrailStarts(liftTopPos, 25f);
-                if (nearbyTrails.Count > 0)
-                    targetTrail = nearbyTrails[UnityEngine.Random.Range(0, nearbyTrails.Count)];
+                var connectedTrailIds = _liftBuilder.Connectivity != null ? _liftBuilder.Connectivity.Connections.GetTrailsFromLift(startLift.LiftId) : null;
+                if (connectedTrailIds != null && connectedTrailIds.Count > 0)
+                {
+                    int trailId = connectedTrailIds[UnityEngine.Random.Range(0, connectedTrailIds.Count)];
+                    targetTrail = _trailDrawer.TrailSystem.GetTrail(trailId);
+                }
+                if (targetTrail == null)
+                {
+                    var liftTopPos = new Vector3(startLift.EndPosition.X, startLift.EndPosition.Y, startLift.EndPosition.Z);
+                    var nearbyTrails = FindNearbyTrailStarts(liftTopPos, 25f);
+                    if (nearbyTrails.Count > 0)
+                        targetTrail = nearbyTrails[UnityEngine.Random.Range(0, nearbyTrails.Count)];
+                }
             }
             if (targetTrail == null) return;
 
@@ -389,26 +426,102 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
 
-            var terrainData = _trailDrawer.GridRenderer != null ? _trailDrawer.GridRenderer.TerrainData : null;
-            var grid = terrainData?.Grid;
-            var baseCoord = new TileCoord((int)baseSpawnPosition.x, (int)baseSpawnPosition.y);
-            var tile = grid != null ? grid.GetTile(baseCoord) : null;
-            float baseHeight = tile != null ? tile.Height : -35f;
-            var startPos = new Vector3(baseSpawnPosition.x, baseHeight + SKI_HEIGHT_OFFSET, baseSpawnPosition.y);
-
             var mountainMgr = _trailDrawer.GridRenderer;
             System.Func<Vector3, float?> heightSampler = mountainMgr != null ? (System.Func<Vector3, float?>)(pos => mountainMgr.GetHeightAtWorldPos(pos)) : null;
             var motion = new SkierMotionController(skier.SkierId, skierObj.transform, SKI_HEIGHT_OFFSET, heightSampler);
             motion.WalkSpeed = _skiSpeed * 0.6f;
             motion.LiftSpeed = _liftSpeed;
             motion.BaseSkiSpeed = _skiSpeed;
-            motion.Teleport(startPos);
-            var liftBottomPos = new Vector3(startLift.StartPosition.X, startLift.StartPosition.Y + SKI_HEIGHT_OFFSET, startLift.StartPosition.Z);
-            motion.SetWalkTarget(liftBottomPos);
-            motion.SetLift(startLift);
 
-            skier.CurrentState = SkierState.WalkingToLift;
-            skier.CurrentLiftId = startLift.LiftId;
+            SkierPhase phase = SkierPhase.WalkingToLift;
+            LodgeFacility targetLodge = null;
+            var plannedTrails = new List<TrailData> { targetTrail };
+            bool restoreInLodge = (SkierState)dto.currentState == SkierState.AtAmenity &&
+                (dto.inLodgePosX != 0f || dto.inLodgePosY != 0f || dto.inLodgePosZ != 0f);
+            bool restoreRidingChair = (SkierState)dto.currentState == SkierState.RidingLift && restoreLift != null && dto.liftChairIndex >= 0;
+            bool restoreFallen = dto.isFalling || dto.hasFallen;
+
+            if (restoreInLodge)
+            {
+                var lodgePos = new Vector3(dto.inLodgePosX, dto.inLodgePosY, dto.inLodgePosZ);
+                if (LodgeManager.Instance != null)
+                {
+                    foreach (var lodge in LodgeManager.Instance.AllLodges)
+                    {
+                        if (lodge == null) continue;
+                        if (Vector3.Distance(lodge.Position, lodgePos) < 3f)
+                        {
+                            targetLodge = lodge;
+                            break;
+                        }
+                    }
+                }
+                if (targetLodge != null && targetLodge.EnterLodgeFromSave(skier.SkierId, dto.lodgeRestTimer))
+                {
+                    phase = SkierPhase.InLodge;
+                    skier.CurrentState = SkierState.AtAmenity;
+                    motion.Teleport(lodgePos);
+                    skierObj.SetActive(false);
+                }
+                if (targetLodge == null) restoreInLodge = false;
+            }
+
+            if (!restoreInLodge && restoreRidingChair && _liftBuilder?.PrefabBuilder != null)
+            {
+                var liftInst = _liftBuilder.PrefabBuilder.GetLiftInstance(restoreLift.LiftId);
+                LiftChairMover mover = liftInst?.Root != null ? liftInst.Root.GetComponent<LiftChairMover>() : null;
+                if (mover != null && dto.liftChairIndex < mover.ChairCount)
+                {
+                    bool firstOnThisLift = !_liftPhasesRestoredForLoad.Contains(restoreLift.LiftId);
+                    if (firstOnThisLift)
+                    {
+                        float phaseVal = Mathf.Repeat(dto.liftChairProgress - (float)dto.liftChairIndex / mover.ChairCount, 1f);
+                        mover.SetPhase(phaseVal);
+                        mover.ApplyPhaseImmediate();
+                        _liftPhasesRestoredForLoad.Add(restoreLift.LiftId);
+                    }
+                    mover.ClaimChairByIndex(dto.liftChairIndex);
+                    motion.SetLift(restoreLift, mover, dto.liftChairIndex);
+                    phase = SkierPhase.RidingLift;
+                    skier.CurrentState = SkierState.RidingLift;
+                    skier.CurrentLiftId = restoreLift.LiftId;
+                    skier.CurrentTrailId = restoreTrail != null ? restoreTrail.TrailId : -1;
+                }
+                else
+                    restoreRidingChair = false;
+            }
+
+            if (!restoreInLodge && !restoreRidingChair)
+            {
+                if (restoreFallen && restoreTrail != null)
+                {
+                    motion.SetTrail(restoreTrail, SkierMotionController.FindClosestDistanceOnTrail(savedPos, restoreTrail));
+                    motion.Teleport(savedPos);
+                    phase = SkierPhase.SkiingTrail;
+                    skier.CurrentState = SkierState.SkiingTrail;
+                    skier.CurrentLiftId = restoreLift != null ? restoreLift.LiftId : -1;
+                    skier.CurrentTrailId = restoreTrail.TrailId;
+                }
+                else if ((SkierState)dto.currentState == SkierState.SkiingTrail && restoreTrail != null)
+                {
+                    motion.SetTrail(restoreTrail, SkierMotionController.FindClosestDistanceOnTrail(savedPos, restoreTrail));
+                    motion.Teleport(savedPos);
+                    phase = SkierPhase.SkiingTrail;
+                    skier.CurrentState = SkierState.SkiingTrail;
+                    skier.CurrentLiftId = restoreLift != null ? restoreLift.LiftId : -1;
+                    skier.CurrentTrailId = restoreTrail.TrailId;
+                }
+                else
+                {
+                    motion.Teleport(savedPos);
+                    var liftBottomPos = new Vector3(startLift.StartPosition.X, startLift.StartPosition.Y + SKI_HEIGHT_OFFSET, startLift.StartPosition.Z);
+                    motion.SetWalkTarget(liftBottomPos);
+                    motion.SetLift(startLift);
+                    skier.CurrentState = SkierState.WalkingToLift;
+                    skier.CurrentLiftId = startLift.LiftId;
+                    skier.CurrentTrailId = targetTrail.TrailId;
+                }
+            }
 
             skier.SatisfactionTracker.AddFactor(new NeedsFulfillmentFactor());
             skier.SatisfactionTracker.AddFactor(new LodgePricingFactor());
@@ -424,11 +537,11 @@ namespace SkiResortTycoon.UnityBridge
             {
                 GameObject = skierObj,
                 Skier = skier,
-                CurrentLift = startLift,
+                CurrentLift = phase == SkierPhase.RidingLift ? restoreLift : startLift,
                 CurrentTrail = targetTrail,
-                PlannedTrails = new List<TrailData> { targetTrail },
+                PlannedTrails = plannedTrails,
                 CurrentTrailIndex = 0,
-                Phase = SkierPhase.WalkingToLift,
+                Phase = phase,
                 IsFinished = false,
                 HasSwitchedAtJunction = false,
                 ReachableTrails = allTrails,
@@ -439,7 +552,13 @@ namespace SkiResortTycoon.UnityBridge
                 OriginalGlideClip = originalGlideClip,
                 OriginalIdleClip = originalIdleClip,
                 Motion = motion,
-                PersonalityOffsets = SkierContext.GeneratePersonality(skier.SkierId)
+                PersonalityOffsets = SkierContext.GeneratePersonality(skier.SkierId),
+                TargetLodge = targetLodge,
+                LodgeRestTimer = dto.lodgeRestTimer,
+                IsFalling = dto.isFalling,
+                HasFallen = dto.hasFallen,
+                FallenTimerMinutes = dto.fallenTimerMinutes,
+                FallAnimTimer = dto.fallAnimTimer
             };
             _activeSkiers.Add(visualSkier);
             var selectable = skierObj.GetComponent<SelectableStructure>() ?? skierObj.AddComponent<SelectableStructure>();

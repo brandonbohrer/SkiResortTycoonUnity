@@ -33,10 +33,22 @@ namespace SkiResortTycoon.UI
         [SerializeField] private Color _cursorBorderColor = new Color(0.29f, 0.56f, 0.85f, 1f);
         [SerializeField] private Color _snapBorderColor = new Color(0.2f, 0.8f, 0.2f, 1f);
 
+        [Header("Invalid Start Cursor")]
+        [SerializeField] private Color _invalidStartFill = new Color(0.85f, 0.2f, 0.2f, 0.15f);
+        [SerializeField] private Color _invalidStartBorder = new Color(0.85f, 0.2f, 0.2f, 1f);
+
         private Camera _cam;
         private bool _isPainting;
         private bool _penClickedThisFrame;
         private Vector3? _lastSnappedWorldPos;
+        private Vector3? _lastValidWorldPos;
+
+        // Pen-mode click-vs-drag tracking
+        private bool _penMouseDownOnAnchor;
+        private int _penMouseDownAnchorIndex = -1;
+        private Vector3 _penMouseDownPos;
+        private bool _penDragStarted;
+        private const float PenDragThreshold = 0.5f;
 
         public override string ToolName => "Trail";
         public override string ToolDescription => "Build a new ski trail";
@@ -114,8 +126,9 @@ namespace SkiResortTycoon.UI
                 return;
             }
 
-            // Right-click: undo chain
-            if (Input.GetMouseButtonDown(1) && !IsMouseOverUI())
+            // Right-click or Delete key: undo chain (always works during building)
+            if ((Input.GetMouseButtonDown(1) || Input.GetKeyDown(KeyCode.Delete))
+                && _trailDrawer.IsBuilding)
             {
                 HandleRightClick();
                 return;
@@ -143,6 +156,8 @@ namespace SkiResortTycoon.UI
         {
             if (_lastSnappedWorldPos.HasValue)
                 return _lastSnappedWorldPos.Value;
+            if (_lastValidWorldPos.HasValue)
+                return _lastValidWorldPos.Value;
             return _trailDrawer.GetMountainPositionUnderMouse();
         }
 
@@ -198,10 +213,11 @@ namespace SkiResortTycoon.UI
             }
         }
 
-        // ── Pen mode ─────────────────────────────────────────────────────
+        // ── Pen mode (new curvy flow) ────────────────────────────────
 
         private void HandlePenInput()
         {
+            // ── Mouse down ──────────────────────────────────────────
             if (Input.GetMouseButtonDown(0))
             {
                 Vector3? pos = GetClickPosition();
@@ -209,28 +225,96 @@ namespace SkiResortTycoon.UI
 
                 if (_trailDrawer.State == TrailBuildState.Settled)
                 {
-                    _trailDrawer.TryResumeFromAnchor(pos.Value);
+                    int anchorIdx = _trailDrawer.FindAnchorUnderPoint(
+                        pos.Value, _trailDrawer.SnapRadius);
+
+                    if (anchorIdx >= 0)
+                    {
+                        if (anchorIdx == 0)
+                            return;
+
+                        _penMouseDownOnAnchor = true;
+                        _penMouseDownAnchorIndex = anchorIdx;
+                        _penMouseDownPos = pos.Value;
+                        _penDragStarted = false;
+
+                        _trailDrawer.BeginAnchorDrag(anchorIdx);
+                        return;
+                    }
+
+                    float paramT;
+                    int segIdx = _trailDrawer.FindSegmentUnderPoint(
+                        pos.Value, _trailDrawer.TrailWidth * 0.75f, out paramT);
+
+                    if (segIdx >= 0)
+                    {
+                        _trailDrawer.BeginSegmentDrag(segIdx, paramT);
+                        return;
+                    }
+
                     return;
                 }
 
+                if (_trailDrawer.State == TrailBuildState.Idle
+                    || _trailDrawer.AnchorCount == 0)
+                {
+                    if (!_trailDrawer.IsValidStartPosition(pos.Value))
+                        return;
+                }
+
                 _trailDrawer.PlaceAnchor(pos.Value);
-                _trailDrawer.BeginPenHandleDrag(pos.Value);
-                _penClickedThisFrame = true;
+                return;
             }
 
-            if (Input.GetMouseButton(0) && _trailDrawer.IsDraggingHandle && !_penClickedThisFrame)
+            // ── Mouse held ──────────────────────────────────────────
+            if (Input.GetMouseButton(0))
             {
-                Vector3? pos = _trailDrawer.GetMountainPositionUnderMouse();
-                if (pos.HasValue)
-                    _trailDrawer.UpdatePenHandleDrag(pos.Value);
+                Vector3? pos = GetClickPosition();
+                if (!pos.HasValue) return;
+
+                if (_trailDrawer.IsDraggingSegment)
+                {
+                    _trailDrawer.UpdateSegmentDrag(pos.Value);
+                    return;
+                }
+
+                if (_penMouseDownOnAnchor)
+                {
+                    if (!_penDragStarted)
+                    {
+                        float dist = Vector3.Distance(pos.Value, _penMouseDownPos);
+                        if (dist > PenDragThreshold)
+                            _penDragStarted = true;
+                    }
+
+                    if (_penDragStarted && _trailDrawer.IsDraggingAnchor)
+                        _trailDrawer.UpdateAnchorDrag(pos.Value);
+                    return;
+                }
             }
 
-            if (Input.GetMouseButtonUp(0) && _trailDrawer.IsDraggingHandle)
+            // ── Mouse up ────────────────────────────────────────────
+            if (Input.GetMouseButtonUp(0))
             {
-                _trailDrawer.EndPenHandleDrag();
-            }
+                if (_trailDrawer.IsDraggingSegment)
+                {
+                    _trailDrawer.EndSegmentDrag();
+                }
+                else if (_trailDrawer.IsDraggingAnchor)
+                {
+                    _trailDrawer.EndAnchorDrag();
+                }
 
-            _penClickedThisFrame = false;
+                if (_penMouseDownOnAnchor && !_penDragStarted)
+                {
+                    if (_penMouseDownAnchorIndex == _trailDrawer.AnchorCount - 1)
+                        _trailDrawer.ResumeFromLastAnchor();
+                }
+
+                _penMouseDownOnAnchor = false;
+                _penMouseDownAnchorIndex = -1;
+                _penDragStarted = false;
+            }
         }
 
         // ── Right-click ──────────────────────────────────────────────────
@@ -262,13 +346,20 @@ namespace SkiResortTycoon.UI
             pixelDiameter = Mathf.Max(pixelDiameter, 16f);
             _cursorCircle.sizeDelta = new Vector2(pixelDiameter, pixelDiameter);
 
-            // Feed the raw world position to TrailDrawer for snap detection + preview
+            // Feed the raw world position to TrailDrawer for snap detection + preview.
+            // Cache the last valid position so clicks still work when the raycast
+            // intermittently misses (edge of mountain, fast camera movement).
             if (!overUI)
             {
                 Vector3? worldPos = _trailDrawer.GetMountainPositionUnderMouse();
                 if (worldPos.HasValue)
                 {
+                    _lastValidWorldPos = worldPos.Value;
                     _trailDrawer.UpdateCursorPosition(worldPos.Value);
+                    _lastSnappedWorldPos = _trailDrawer.CursorSnappedWorldPos;
+                }
+                else if (_lastValidWorldPos.HasValue)
+                {
                     _lastSnappedWorldPos = _trailDrawer.CursorSnappedWorldPos;
                 }
             }
@@ -287,18 +378,29 @@ namespace SkiResortTycoon.UI
                 _cursorCircle.position = Input.mousePosition;
             }
 
-            // Color feedback
+            // Color feedback: RED when placing first point and not snapped to valid start
+            bool needsValidStart = _trailDrawer.Mode == TrailDrawMode.Pen
+                                && _trailDrawer.AnchorCount == 0
+                                && !_trailDrawer.IsCursorSnapped;
+
             if (_cursorCircleBorder != null)
             {
-                _cursorCircleBorder.color = _trailDrawer.IsCursorSnapped
-                    ? _snapBorderColor
-                    : _cursorBorderColor;
+                if (needsValidStart)
+                    _cursorCircleBorder.color = _invalidStartBorder;
+                else if (_trailDrawer.IsCursorSnapped)
+                    _cursorCircleBorder.color = _snapBorderColor;
+                else
+                    _cursorCircleBorder.color = _cursorBorderColor;
             }
             if (_cursorCircleImage != null)
             {
-                _cursorCircleImage.color = _trailDrawer.IsCursorSnapped
-                    ? new Color(_snapBorderColor.r, _snapBorderColor.g, _snapBorderColor.b, 0.15f)
-                    : _cursorFillColor;
+                if (needsValidStart)
+                    _cursorCircleImage.color = _invalidStartFill;
+                else if (_trailDrawer.IsCursorSnapped)
+                    _cursorCircleImage.color = new Color(
+                        _snapBorderColor.r, _snapBorderColor.g, _snapBorderColor.b, 0.15f);
+                else
+                    _cursorCircleImage.color = _cursorFillColor;
             }
         }
 
@@ -362,7 +464,8 @@ namespace SkiResortTycoon.UI
         {
             if (state == TrailBuildState.Settled && _trailDrawer.AnchorCount >= 2)
             {
-                ContextWindowController.Instance?.ShowTrailBuildConfirmButtons();
+                bool canConfirm = _trailDrawer.CanConfirmTrail();
+                ContextWindowController.Instance?.ShowTrailBuildConfirmButtons(canConfirm);
             }
             else if (state == TrailBuildState.Placing)
             {

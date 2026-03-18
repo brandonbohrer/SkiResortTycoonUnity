@@ -959,11 +959,26 @@ namespace SkiResortTycoon.UI
 
         /// <summary>
         /// Reveals the shared Confirm / Cancel after the trail enters Settled state.
+        /// When canConfirm is false the Confirm button is visible but greyed out
+        /// with a tooltip explaining why.
         /// </summary>
-        public void ShowTrailBuildConfirmButtons()
+        public void ShowTrailBuildConfirmButtons(bool canConfirm = true)
         {
-            if (_liftBuildConfirmButton != null) _liftBuildConfirmButton.gameObject.SetActive(true);
-            if (_liftBuildCancelButton  != null) _liftBuildCancelButton.gameObject.SetActive(true);
+            if (_liftBuildConfirmButton != null)
+            {
+                _liftBuildConfirmButton.gameObject.SetActive(true);
+                _liftBuildConfirmButton.interactable = canConfirm;
+
+                if (!canConfirm)
+                    SetupTooltip(_liftBuildConfirmButton,
+                        "Cannot Confirm",
+                        "Trail must have a valid top and bottom connection.");
+                else
+                    SetupTooltip(_liftBuildConfirmButton,
+                        TooltipTexts.ContextWindow.ConfirmHeader,
+                        TooltipTexts.ContextWindow.ConfirmContent);
+            }
+            if (_liftBuildCancelButton != null) _liftBuildCancelButton.gameObject.SetActive(true);
         }
 
         /// <summary>

@@ -52,9 +52,18 @@ namespace SkiResortTycoon.UnityBridge
         private readonly List<Vector3> _paintPoints = new List<Vector3>();
         private Vector3 _lastPaintSample;
 
-        // Pen mode handle dragging
+        // Pen mode handle dragging (legacy — kept for old pen flow)
         private bool _isDraggingHandle;
         private Vector3 _penDragStart;
+
+        // Segment drag state (new curvy flow)
+        private bool _isDraggingSegment;
+        private int _dragSegmentIndex = -1;
+        private float _dragSegmentT;
+
+        // Anchor drag state (new curvy flow)
+        private bool _isDraggingAnchor;
+        private int _dragAnchorIndex = -1;
 
         // Cached evaluated path (committed segments only)
         private readonly List<Vector3> _committedPathCache = new List<Vector3>();
@@ -125,6 +134,10 @@ namespace SkiResortTycoon.UnityBridge
             _anchors.Clear();
             _paintPoints.Clear();
             _isDraggingHandle = false;
+            _isDraggingSegment = false;
+            _dragSegmentIndex = -1;
+            _isDraggingAnchor = false;
+            _dragAnchorIndex = -1;
             SetState(TrailBuildState.Idle);
         }
 
@@ -186,7 +199,12 @@ namespace SkiResortTycoon.UnityBridge
                 MountainManager.ToVector3f(snapped), _mode);
 
             _anchors.Add(anchor);
-            SetState(TrailBuildState.Placing);
+
+            if (_mode == TrailDrawMode.Pen && _anchors.Count >= 2)
+                SetState(TrailBuildState.Settled);
+            else
+                SetState(TrailBuildState.Placing);
+
             OnAnchorPlaced?.Invoke();
             RebuildPreview();
         }
@@ -278,6 +296,9 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         public bool IsDraggingHandle => _isDraggingHandle;
+        public bool IsDraggingSegment => _isDraggingSegment;
+        public bool IsDraggingAnchor => _isDraggingAnchor;
+        public float SnapRadius => _snapRadius;
 
         /// <summary>
         /// When in Settled state, checks if a click position is near the last
@@ -305,6 +326,20 @@ namespace SkiResortTycoon.UnityBridge
             return false;
         }
 
+        /// <summary>
+        /// Called by TrailBuildTool when the player clicks the last anchor
+        /// without dragging. Transitions back to Placing so the preview
+        /// extends from that anchor.
+        /// </summary>
+        public void ResumeFromLastAnchor()
+        {
+            if (_state != TrailBuildState.Settled || _anchors.Count == 0) return;
+            var last = _anchors[_anchors.Count - 1];
+            last.HandleOut = null;
+            SetState(TrailBuildState.Placing);
+            RebuildPreview();
+        }
+
         // ── Undo / Cancel ────────────────────────────────────────────────
 
         /// <summary>
@@ -318,6 +353,12 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (_state == TrailBuildState.Placing)
             {
+                if (_mode == TrailDrawMode.Pen && _anchors.Count <= 1)
+                {
+                    CancelBuilding();
+                    return true;
+                }
+
                 SetState(TrailBuildState.Settled);
                 RebuildPreview();
                 return false;
@@ -332,7 +373,12 @@ namespace SkiResortTycoon.UnityBridge
                 }
 
                 _anchors.RemoveAt(_anchors.Count - 1);
-                SetState(TrailBuildState.Placing);
+
+                if (_mode == TrailDrawMode.Pen && _anchors.Count >= 2)
+                    SetState(TrailBuildState.Settled);
+                else
+                    SetState(TrailBuildState.Placing);
+
                 RebuildPreview();
                 return false;
             }
@@ -345,6 +391,10 @@ namespace SkiResortTycoon.UnityBridge
             _anchors.Clear();
             _paintPoints.Clear();
             _isDraggingHandle = false;
+            _isDraggingSegment = false;
+            _dragSegmentIndex = -1;
+            _isDraggingAnchor = false;
+            _dragAnchorIndex = -1;
             ClearAnchorMarkers();
             TreeClearer.RestorePreviewTrees();
             SetState(TrailBuildState.Idle);
@@ -627,6 +677,246 @@ namespace SkiResortTycoon.UnityBridge
             foreach (var m in _anchorMarkers)
                 if (m != null) Destroy(m);
             _anchorMarkers.Clear();
+        }
+
+        // ── Segment drag ─────────────────────────────────────────────
+
+        /// <summary>
+        /// Finds which trail segment (pair of consecutive anchors) is closest
+        /// to worldPos. Returns the segment index (i, where segment = anchor[i]→anchor[i+1]),
+        /// or -1 if nothing is within maxDist. Also outputs the approximate
+        /// Bezier parameter t at the closest point.
+        /// </summary>
+        public int FindSegmentUnderPoint(Vector3 worldPos, float maxDist, out float paramT)
+        {
+            paramT = 0f;
+            if (_anchors.Count < 2) return -1;
+
+            int bestSegment = -1;
+            float bestDist = maxDist;
+            float bestT = 0f;
+
+            for (int seg = 0; seg < _anchors.Count - 1; seg++)
+            {
+                const int steps = 20;
+                for (int step = 0; step <= steps; step++)
+                {
+                    float t = step / (float)steps;
+                    Vector3 pt = EvaluateSegmentAt(_anchors[seg], _anchors[seg + 1], t);
+                    float dist = Vector3.Distance(pt, worldPos);
+                    if (dist < bestDist)
+                    {
+                        bestDist = dist;
+                        bestSegment = seg;
+                        bestT = t;
+                    }
+                }
+            }
+
+            paramT = bestT;
+            return bestSegment;
+        }
+
+        public void BeginSegmentDrag(int segmentIndex, float t)
+        {
+            if (segmentIndex < 0 || segmentIndex >= _anchors.Count - 1) return;
+            _isDraggingSegment = true;
+            _dragSegmentIndex = segmentIndex;
+            _dragSegmentT = Mathf.Clamp(t, 0.05f, 0.95f);
+        }
+
+        /// <summary>
+        /// While the player drags a segment, compute HandleOut/HandleIn so the
+        /// cubic Bezier passes exactly through dragWorldPos at the stored
+        /// parameter t. Both control points are offset by the same vector from
+        /// their respective anchor positions (symmetric curve).
+        /// </summary>
+        public void UpdateSegmentDrag(Vector3 dragWorldPos)
+        {
+            if (!_isDraggingSegment || _dragSegmentIndex < 0) return;
+
+            var anchorA = _anchors[_dragSegmentIndex];
+            var anchorB = _anchors[_dragSegmentIndex + 1];
+
+            Vector3 startPos = MountainManager.ToUnityVector3(anchorA.Position);
+            Vector3 endPos = MountainManager.ToUnityVector3(anchorB.Position);
+            float t = _dragSegmentT;
+            float u = 1f - t;
+
+            // "Base" position: cubic Bezier with control points at anchor positions
+            // (Hermite basis with zero tangents).
+            Vector3 basePoint = (u * u * (1f + 2f * t)) * startPos
+                              + (t * t * (3f - 2f * t)) * endPos;
+
+            Vector3 deviation = ProjectOntoTerrain(dragWorldPos) - basePoint;
+            float denom = 3f * u * t;
+            if (denom < 0.001f) return;
+
+            Vector3 handleOffset = deviation / denom;
+
+            anchorA.HandleOut = MountainManager.ToVector3f(
+                ProjectOntoTerrain(startPos + handleOffset));
+            anchorB.HandleIn = MountainManager.ToVector3f(
+                ProjectOntoTerrain(endPos + handleOffset));
+
+            RebuildPreview();
+        }
+
+        public void EndSegmentDrag()
+        {
+            _isDraggingSegment = false;
+            _dragSegmentIndex = -1;
+        }
+
+        // ── Anchor drag ──────────────────────────────────────────────
+
+        /// <summary>
+        /// Finds the closest anchor to worldPos within maxDist.
+        /// Returns anchor index or -1.
+        /// </summary>
+        public int FindAnchorUnderPoint(Vector3 worldPos, float maxDist)
+        {
+            int bestIdx = -1;
+            float bestDist = maxDist;
+
+            for (int i = 0; i < _anchors.Count; i++)
+            {
+                Vector3 anchorPos = MountainManager.ToUnityVector3(_anchors[i].Position);
+                float dist = Vector3.Distance(anchorPos, worldPos);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    bestIdx = i;
+                }
+            }
+
+            return bestIdx;
+        }
+
+        /// <summary>
+        /// Begin dragging an anchor. Index 0 (the trail start) is locked and
+        /// will be rejected.
+        /// </summary>
+        public void BeginAnchorDrag(int anchorIndex)
+        {
+            if (anchorIndex <= 0 || anchorIndex >= _anchors.Count) return;
+            _isDraggingAnchor = true;
+            _dragAnchorIndex = anchorIndex;
+        }
+
+        public void UpdateAnchorDrag(Vector3 dragWorldPos)
+        {
+            if (!_isDraggingAnchor || _dragAnchorIndex < 0) return;
+
+            var anchor = _anchors[_dragAnchorIndex];
+            Vector3 projected = ProjectOntoTerrain(dragWorldPos);
+            Vector3 oldPos = MountainManager.ToUnityVector3(anchor.Position);
+            Vector3 delta = projected - oldPos;
+
+            anchor.Position = MountainManager.ToVector3f(projected);
+
+            if (anchor.HandleIn.HasValue)
+            {
+                Vector3 hi = MountainManager.ToUnityVector3(anchor.HandleIn.Value);
+                anchor.HandleIn = MountainManager.ToVector3f(ProjectOntoTerrain(hi + delta));
+            }
+            if (anchor.HandleOut.HasValue)
+            {
+                Vector3 ho = MountainManager.ToUnityVector3(anchor.HandleOut.Value);
+                anchor.HandleOut = MountainManager.ToVector3f(ProjectOntoTerrain(ho + delta));
+            }
+
+            RebuildPreview();
+        }
+
+        public void EndAnchorDrag()
+        {
+            _isDraggingAnchor = false;
+            _dragAnchorIndex = -1;
+        }
+
+        // ── Trail validation ─────────────────────────────────────────
+
+        /// <summary>
+        /// Returns true when the raw world position is within snap radius of a
+        /// valid start type (LiftTop, TrailEnd, TrailPoint, BuildingEntrance).
+        /// Does NOT mutate the magnetic cursor.
+        /// </summary>
+        public bool IsValidStartPosition(Vector3 worldPos)
+        {
+            return IsNearSnapPoint(worldPos, new[]
+            {
+                SnapPointType.LiftTop,
+                SnapPointType.TrailEnd,
+                SnapPointType.TrailPoint,
+                SnapPointType.BuildingEntrance
+            });
+        }
+
+        /// <summary>
+        /// True when the trail has 2+ anchors AND both endpoints are at valid
+        /// snap connections (start = lift top / trail; end = trail / base / lift bottom).
+        /// </summary>
+        public bool CanConfirmTrail()
+        {
+            if (_anchors.Count < 2) return false;
+
+            Vector3 firstPos = MountainManager.ToUnityVector3(_anchors[0].Position);
+            bool validStart = IsNearSnapPoint(firstPos, new[]
+            {
+                SnapPointType.LiftTop, SnapPointType.TrailEnd,
+                SnapPointType.TrailPoint, SnapPointType.BuildingEntrance
+            });
+            if (!validStart) return false;
+
+            Vector3 lastPos = MountainManager.ToUnityVector3(_anchors[_anchors.Count - 1].Position);
+            bool validEnd = IsNearSnapPoint(lastPos, new[]
+            {
+                SnapPointType.LiftBottom, SnapPointType.BaseSpawn,
+                SnapPointType.TrailStart, SnapPointType.TrailPoint,
+                SnapPointType.BuildingEntrance
+            });
+            return validEnd;
+        }
+
+        private bool IsNearSnapPoint(Vector3 worldPos, SnapPointType[] types)
+        {
+            if (_liftBuilder == null || _liftBuilder.Connectivity == null) return false;
+            var registry = _liftBuilder.Connectivity.Registry;
+            if (registry == null) return false;
+
+            foreach (var type in types)
+            {
+                foreach (var snap in registry.GetByType(type))
+                {
+                    Vector3 snapPos = new Vector3(snap.Position.X, snap.Position.Y, snap.Position.Z);
+                    if (Vector3.Distance(worldPos, snapPos) <= _snapRadius)
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        // ── Segment evaluation helper ────────────────────────────────
+
+        private Vector3 EvaluateSegmentAt(TrailAnchorPoint a, TrailAnchorPoint b, float t)
+        {
+            Vector3 p0 = MountainManager.ToUnityVector3(a.Position);
+            Vector3 p3 = MountainManager.ToUnityVector3(b.Position);
+
+            if (!a.HandleOut.HasValue && !b.HandleIn.HasValue)
+                return Vector3.Lerp(p0, p3, t);
+
+            Vector3 p1 = a.HandleOut.HasValue
+                ? MountainManager.ToUnityVector3(a.HandleOut.Value) : p0;
+            Vector3 p2 = b.HandleIn.HasValue
+                ? MountainManager.ToUnityVector3(b.HandleIn.Value) : p3;
+
+            float u = 1f - t;
+            return u * u * u * p0
+                 + 3f * u * u * t * p1
+                 + 3f * u * t * t * p2
+                 + t * t * t * p3;
         }
 
         // ── Snap helpers ─────────────────────────────────────────────────

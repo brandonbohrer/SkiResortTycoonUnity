@@ -337,7 +337,11 @@ namespace SkiResortTycoon.UI
         {
             if (_cursorCircle == null) return;
 
-            _cursorCircle.gameObject.SetActive(true);
+            // Circle cursor only visible when actively placing points
+            bool showCircle = _trailDrawer.Mode != TrailDrawMode.Pen
+                           || _trailDrawer.State == TrailBuildState.Placing
+                           || _trailDrawer.State == TrailBuildState.Idle;
+            _cursorCircle.gameObject.SetActive(showCircle);
             _lastSnappedWorldPos = null;
 
             // Size: trail width in world units → screen pixels

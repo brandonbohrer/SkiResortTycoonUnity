@@ -29,6 +29,13 @@ namespace SkiResortTycoon.Core
         public Vector3f? HandleOut;
         public TrailDrawMode SourceMode;
 
+        /// <summary>
+        /// When true this anchor was created by a segment-drag operation and
+        /// should not be rendered as a visible marker or be directly
+        /// selectable by the player. It exists only to shape the curve.
+        /// </summary>
+        public bool IsCurveControl;
+
         public TrailAnchorPoint(Vector3f position, TrailDrawMode mode)
         {
             Position = position;

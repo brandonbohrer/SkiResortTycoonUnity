@@ -60,7 +60,7 @@ namespace SkiResortTycoon.UnityBridge
         private bool _isDraggingSegment;
         private int _dragSegmentIndex = -1;
         private float _dragSegmentT;
-
+        private int _segDragTargetIdx = -1;
         // Anchor drag state (new curvy flow)
         private bool _isDraggingAnchor;
         private int _dragAnchorIndex = -1;
@@ -136,6 +136,7 @@ namespace SkiResortTycoon.UnityBridge
             _isDraggingHandle = false;
             _isDraggingSegment = false;
             _dragSegmentIndex = -1;
+            _segDragTargetIdx = -1;
             _isDraggingAnchor = false;
             _dragAnchorIndex = -1;
             SetState(TrailBuildState.Idle);
@@ -374,6 +375,17 @@ namespace SkiResortTycoon.UnityBridge
 
                 _anchors.RemoveAt(_anchors.Count - 1);
 
+                // Cascade-remove any trailing hidden curve-control anchors
+                // so undo skips straight to the previous player-placed anchor.
+                while (_anchors.Count > 0 && _anchors[_anchors.Count - 1].IsCurveControl)
+                    _anchors.RemoveAt(_anchors.Count - 1);
+
+                if (_anchors.Count <= 0)
+                {
+                    CancelBuilding();
+                    return true;
+                }
+
                 if (_mode == TrailDrawMode.Pen && _anchors.Count >= 2)
                     SetState(TrailBuildState.Settled);
                 else
@@ -393,6 +405,7 @@ namespace SkiResortTycoon.UnityBridge
             _isDraggingHandle = false;
             _isDraggingSegment = false;
             _dragSegmentIndex = -1;
+            _segDragTargetIdx = -1;
             _isDraggingAnchor = false;
             _dragAnchorIndex = -1;
             ClearAnchorMarkers();
@@ -570,8 +583,18 @@ namespace SkiResortTycoon.UnityBridge
             }
             else
             {
-                _previewSegCache.Add(ProjectOntoTerrain(MountainManager.ToUnityVector3(lastAnchor.Position)));
-                _previewSegCache.Add(ProjectOntoTerrain(_cursorWorldPos));
+                // Subdivide the straight-line preview so intermediate points
+                // are projected onto the terrain and the line hugs the ground.
+                Vector3 start = ProjectOntoTerrain(MountainManager.ToUnityVector3(lastAnchor.Position));
+                Vector3 end = ProjectOntoTerrain(_cursorWorldPos);
+                float dist = Vector3.Distance(start, end);
+                int steps = Mathf.Max(2, Mathf.CeilToInt(dist / 2f));
+                for (int s = 0; s <= steps; s++)
+                {
+                    float pct = s / (float)steps;
+                    Vector3 pt = Vector3.Lerp(start, end, pct);
+                    _previewSegCache.Add(ProjectOntoTerrain(pt));
+                }
             }
 
             // Combine committed path + preview into a single continuous mesh so
@@ -659,6 +682,8 @@ namespace SkiResortTycoon.UnityBridge
 
             foreach (var a in _anchors)
             {
+                if (a.IsCurveControl) continue; // hidden anchor — no marker
+
                 Vector3 pos = ProjectOntoTerrain(MountainManager.ToUnityVector3(a.Position));
                 pos.y += 0.2f;
                 var marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -717,48 +742,65 @@ namespace SkiResortTycoon.UnityBridge
             return bestSegment;
         }
 
+        /// <summary>
+        /// Begins a segment drag. If either flanking anchor is already a
+        /// hidden curve-control point, reuses it. Otherwise inserts a new
+        /// hidden curve-control anchor between the two endpoints. The marker
+        /// is never shown for curve-control anchors.
+        /// </summary>
         public void BeginSegmentDrag(int segmentIndex, float t)
         {
             if (segmentIndex < 0 || segmentIndex >= _anchors.Count - 1) return;
             _isDraggingSegment = true;
             _dragSegmentIndex = segmentIndex;
             _dragSegmentT = Mathf.Clamp(t, 0.05f, 0.95f);
+
+            // Reuse an existing curve-control anchor if present on either side
+            if (_anchors[segmentIndex].IsCurveControl)
+            {
+                _segDragTargetIdx = segmentIndex;
+            }
+            else if (_anchors[segmentIndex + 1].IsCurveControl)
+            {
+                _segDragTargetIdx = segmentIndex + 1;
+            }
+            else
+            {
+                // Insert a new hidden curve-control anchor
+                Vector3 initPos = EvaluateSegmentAt(
+                    _anchors[segmentIndex], _anchors[segmentIndex + 1], _dragSegmentT);
+                initPos = ProjectOntoTerrain(initPos);
+
+                var cc = new TrailAnchorPoint(
+                    MountainManager.ToVector3f(initPos), TrailDrawMode.Pen);
+                cc.IsCurveControl = true;
+
+                _anchors.Insert(segmentIndex + 1, cc);
+                _segDragTargetIdx = segmentIndex + 1;
+
+                // Clear stale handles from the original (now-split) segment
+                _anchors[segmentIndex].HandleOut = null;
+                if (segmentIndex + 2 < _anchors.Count)
+                    _anchors[segmentIndex + 2].HandleIn = null;
+            }
+
+            ComputeSmoothHandles(_segDragTargetIdx);
+            RebuildPreview();
         }
 
         /// <summary>
-        /// While the player drags a segment, compute HandleOut/HandleIn so the
-        /// cubic Bezier passes exactly through dragWorldPos at the stored
-        /// parameter t. Both control points are offset by the same vector from
-        /// their respective anchor positions (symmetric curve).
+        /// Repositions the curve-control anchor to the drag position and
+        /// recomputes smooth handles so the curve follows.
         /// </summary>
         public void UpdateSegmentDrag(Vector3 dragWorldPos)
         {
-            if (!_isDraggingSegment || _dragSegmentIndex < 0) return;
+            if (!_isDraggingSegment || _segDragTargetIdx < 0) return;
 
-            var anchorA = _anchors[_dragSegmentIndex];
-            var anchorB = _anchors[_dragSegmentIndex + 1];
+            Vector3 projected = ProjectOntoTerrain(dragWorldPos);
+            _anchors[_segDragTargetIdx].Position =
+                MountainManager.ToVector3f(projected);
 
-            Vector3 startPos = MountainManager.ToUnityVector3(anchorA.Position);
-            Vector3 endPos = MountainManager.ToUnityVector3(anchorB.Position);
-            float t = _dragSegmentT;
-            float u = 1f - t;
-
-            // "Base" position: cubic Bezier with control points at anchor positions
-            // (Hermite basis with zero tangents).
-            Vector3 basePoint = (u * u * (1f + 2f * t)) * startPos
-                              + (t * t * (3f - 2f * t)) * endPos;
-
-            Vector3 deviation = ProjectOntoTerrain(dragWorldPos) - basePoint;
-            float denom = 3f * u * t;
-            if (denom < 0.001f) return;
-
-            Vector3 handleOffset = deviation / denom;
-
-            anchorA.HandleOut = MountainManager.ToVector3f(
-                ProjectOntoTerrain(startPos + handleOffset));
-            anchorB.HandleIn = MountainManager.ToVector3f(
-                ProjectOntoTerrain(endPos + handleOffset));
-
+            ComputeSmoothHandles(_segDragTargetIdx);
             RebuildPreview();
         }
 
@@ -766,6 +808,37 @@ namespace SkiResortTycoon.UnityBridge
         {
             _isDraggingSegment = false;
             _dragSegmentIndex = -1;
+            _segDragTargetIdx = -1;
+        }
+
+        /// <summary>
+        /// Sets HandleIn/HandleOut on anchor[idx] so the curve passes smoothly
+        /// through that point. Handles point along the tangent between the
+        /// neighboring anchors, with length proportional to the distance to
+        /// each neighbor.
+        /// </summary>
+        private void ComputeSmoothHandles(int idx)
+        {
+            if (idx <= 0 || idx >= _anchors.Count - 1) return;
+
+            Vector3 prev = MountainManager.ToUnityVector3(_anchors[idx - 1].Position);
+            Vector3 curr = MountainManager.ToUnityVector3(_anchors[idx].Position);
+            Vector3 next = MountainManager.ToUnityVector3(_anchors[idx + 1].Position);
+
+            Vector3 dirIn = (curr - prev).normalized;
+            Vector3 dirOut = (next - curr).normalized;
+            Vector3 tangent = (dirIn + dirOut);
+            if (tangent.sqrMagnitude < 0.001f) tangent = dirIn;
+            tangent.Normalize();
+
+            float lenIn = Vector3.Distance(prev, curr);
+            float lenOut = Vector3.Distance(curr, next);
+            const float handleFactor = 0.3f;
+
+            _anchors[idx].HandleIn = MountainManager.ToVector3f(
+                ProjectOntoTerrain(curr - tangent * lenIn * handleFactor));
+            _anchors[idx].HandleOut = MountainManager.ToVector3f(
+                ProjectOntoTerrain(curr + tangent * lenOut * handleFactor));
         }
 
         // ── Anchor drag ──────────────────────────────────────────────
@@ -781,6 +854,8 @@ namespace SkiResortTycoon.UnityBridge
 
             for (int i = 0; i < _anchors.Count; i++)
             {
+                if (_anchors[i].IsCurveControl) continue; // hidden — not selectable
+
                 Vector3 anchorPos = MountainManager.ToUnityVector3(_anchors[i].Position);
                 float dist = Vector3.Distance(anchorPos, worldPos);
                 if (dist < bestDist)

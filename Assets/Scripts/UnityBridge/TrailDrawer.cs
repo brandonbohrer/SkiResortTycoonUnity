@@ -646,8 +646,17 @@ namespace SkiResortTycoon.UnityBridge
                 }
                 else
                 {
-                    if (i == 0) tempV3f.Add(a.Position);
-                    tempV3f.Add(b.Position);
+                    Vector3 startPos = MountainManager.ToUnityVector3(a.Position);
+                    Vector3 endPos = MountainManager.ToUnityVector3(b.Position);
+                    float dist = Vector3.Distance(startPos, endPos);
+                    int steps = Mathf.Max(2, Mathf.CeilToInt(dist / 2f));
+                    int s0 = (i == 0) ? 0 : 1;
+                    for (int s = s0; s <= steps; s++)
+                    {
+                        float pct = s / (float)steps;
+                        Vector3 pt = Vector3.Lerp(startPos, endPos, pct);
+                        tempV3f.Add(MountainManager.ToVector3f(pt));
+                    }
                 }
             }
 

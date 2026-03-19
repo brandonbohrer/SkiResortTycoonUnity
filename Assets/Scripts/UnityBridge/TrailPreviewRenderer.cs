@@ -22,7 +22,7 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private Color _fillColor = new Color(0.29f, 0.56f, 0.85f, 0.15f);
         [SerializeField] private Color _outlineColor = new Color(0.29f, 0.56f, 0.85f, 0.9f);
         [SerializeField] private float _outlineWidth = 0.25f;
-        [SerializeField] private float _heightOffset = 0.4f;
+        [SerializeField] private float _heightOffset = 0.05f;
 
         // Committed segments mesh
         private Mesh _fillMesh;
@@ -126,7 +126,6 @@ namespace SkiResortTycoon.UnityBridge
             float halfW = width * 0.5f;
             int n = center.Count;
 
-            // Generate left/right edges
             var leftEdge = new List<Vector3>(n);
             var rightEdge = new List<Vector3>(n);
 
@@ -141,13 +140,23 @@ namespace SkiResortTycoon.UnityBridge
                     fwd = ((center[i + 1] - center[i]).normalized + (center[i] - center[i - 1]).normalized).normalized;
 
                 Vector3 perp = Vector3.Cross(fwd, Vector3.up).normalized;
-                Vector3 c = center[i] + Vector3.up * _heightOffset;
-                leftEdge.Add(c + perp * halfW);
-                rightEdge.Add(c - perp * halfW);
+                Vector3 c = center[i];
+                leftEdge.Add(ProjectEdgeOntoTerrain(c + perp * halfW));
+                rightEdge.Add(ProjectEdgeOntoTerrain(c - perp * halfW));
             }
 
             BuildFillMesh(leftEdge, rightEdge, fillMesh);
             BuildOutlineMesh(leftEdge, rightEdge, outlineMesh);
+        }
+
+        private Vector3 ProjectEdgeOntoTerrain(Vector3 point)
+        {
+            if (_mountainManager == null)
+                return point + Vector3.up * _heightOffset;
+            float? y = _mountainManager.GetHeightAtWorldPos(point);
+            if (y.HasValue)
+                point.y = y.Value + _heightOffset;
+            return point;
         }
 
         private static void BuildFillMesh(List<Vector3> left, List<Vector3> right, Mesh mesh)

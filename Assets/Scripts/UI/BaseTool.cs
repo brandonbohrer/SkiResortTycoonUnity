@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
+using System.Collections.Generic;
 
 namespace SkiResortTycoon.UI
 {
@@ -118,13 +120,26 @@ namespace SkiResortTycoon.UI
             return Vector3.zero;
         }
         
+        private static PointerEventData _sharedPointerData;
+        private static readonly List<RaycastResult> _sharedRaycastResults = new List<RaycastResult>();
+
         /// <summary>
-        /// Checks if the mouse is over a UI element (to prevent world interaction)
+        /// Checks if the mouse is over a UI element using a fresh raycast
+        /// every call, avoiding the stale EventSystem cache that can stick
+        /// after clicking a button.
         /// </summary>
         protected bool IsMouseOverUI()
         {
-            return UnityEngine.EventSystems.EventSystem.current != null && 
-                   UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
+            var es = EventSystem.current;
+            if (es == null) return false;
+
+            if (_sharedPointerData == null)
+                _sharedPointerData = new PointerEventData(es);
+
+            _sharedPointerData.position = Input.mousePosition;
+            _sharedRaycastResults.Clear();
+            es.RaycastAll(_sharedPointerData, _sharedRaycastResults);
+            return _sharedRaycastResults.Count > 0;
         }
         
         void Update()

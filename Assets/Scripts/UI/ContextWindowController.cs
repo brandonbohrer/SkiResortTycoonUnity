@@ -778,12 +778,29 @@ namespace SkiResortTycoon.UI
             if (visible)
             {
                 _panelRoot.SetActive(true);
-                if (instant && _canvasGroup != null) _canvasGroup.alpha = 1f;
+                if (_canvasGroup != null)
+                {
+                    _canvasGroup.blocksRaycasts = true;
+                    if (instant) _canvasGroup.alpha = 1f;
+                }
             }
-            else if (instant)
+            else
             {
-                if (_canvasGroup != null) _canvasGroup.alpha = 0f;
-                _panelRoot.SetActive(false);
+                // Immediately stop blocking raycasts so the fading panel
+                // cannot intercept clicks while it animates out.
+                if (_canvasGroup != null)
+                {
+                    _canvasGroup.blocksRaycasts = false;
+                    if (instant)
+                    {
+                        _canvasGroup.alpha = 0f;
+                        _panelRoot.SetActive(false);
+                    }
+                }
+                else if (instant)
+                {
+                    _panelRoot.SetActive(false);
+                }
             }
         }
 

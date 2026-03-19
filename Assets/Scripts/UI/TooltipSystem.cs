@@ -52,7 +52,16 @@ namespace SkiResortTycoon.UI
             Instance = this;
             
             _rectTransform = _tooltipObject?.GetComponent<RectTransform>();
-            
+
+            // Ensure the tooltip never intercepts raycasts
+            if (_tooltipObject != null)
+            {
+                var cg = _tooltipObject.GetComponent<CanvasGroup>();
+                if (cg == null) cg = _tooltipObject.AddComponent<CanvasGroup>();
+                cg.blocksRaycasts = false;
+                cg.interactable = false;
+            }
+
             // Find canvas
             var canvas = GetComponentInParent<Canvas>();
             if (canvas != null)

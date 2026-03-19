@@ -1,6 +1,8 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using TMPro;
+using System.Collections.Generic;
 using SkiResortTycoon.UI;
 
 namespace SkiResortTycoon.UnityBridge
@@ -340,9 +342,8 @@ namespace SkiResortTycoon.UnityBridge
                     return;
                 }
                 
-                // Don't do selection over UI
-                if (UnityEngine.EventSystems.EventSystem.current != null && 
-                    UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
+                // Don't do selection over UI (fresh raycast avoids stale cache)
+                if (IsPointerOverUIFresh())
                 {
                     if (_hoveredStructure != null)
                     {
@@ -740,6 +741,23 @@ namespace SkiResortTycoon.UnityBridge
                 Cursor.SetCursor(null, Vector2.zero, CursorMode.Auto);
                 _isCustomCursorActive = false;
             }
+        }
+
+        private static PointerEventData _uiPointerData;
+        private static readonly List<RaycastResult> _uiRaycastResults = new List<RaycastResult>();
+
+        private static bool IsPointerOverUIFresh()
+        {
+            var es = EventSystem.current;
+            if (es == null) return false;
+
+            if (_uiPointerData == null)
+                _uiPointerData = new PointerEventData(es);
+
+            _uiPointerData.position = Input.mousePosition;
+            _uiRaycastResults.Clear();
+            es.RaycastAll(_uiPointerData, _uiRaycastResults);
+            return _uiRaycastResults.Count > 0;
         }
         
         private void CreateDefaultPointerCursor()

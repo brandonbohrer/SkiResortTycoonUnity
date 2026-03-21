@@ -60,6 +60,11 @@ namespace SkiResortTycoon.UnityBridge
 
         // ── Preview instance (used during interactive placement) ────────
         private LiftInstance _preview;
+        private bool _previewPoseCached;
+        private Vector3 _previewBasePos;
+        private Vector3 _previewTopPos;
+        private LiftType _previewLiftType;
+        private const float PREVIEW_POSE_EPSILON = 0.05f;
 
         /// <summary>Access a built lift's root for later queries (e.g. chair mover).</summary>
         public LiftInstance GetLiftInstance(int liftId)
@@ -133,11 +138,24 @@ namespace SkiResortTycoon.UnityBridge
         /// </summary>
         public void UpdatePreview(Vector3 basePos, Vector3 topPos, LiftType liftType)
         {
+            if (_preview != null && _previewPoseCached && liftType == _previewLiftType)
+            {
+                if (Vector3.Distance(basePos, _previewBasePos) <= PREVIEW_POSE_EPSILON &&
+                    Vector3.Distance(topPos, _previewTopPos) <= PREVIEW_POSE_EPSILON)
+                {
+                    return;
+                }
+            }
+
             // Tear down old preview
             DestroyPreview();
 
             _preview = CreateLiftHierarchy(basePos, topPos, "LiftPreview", liftType);
             // No chair mover on preview (static snapshot)
+            _previewPoseCached = true;
+            _previewBasePos = basePos;
+            _previewTopPos = topPos;
+            _previewLiftType = liftType;
         }
 
         /// <summary>Destroy the live preview.</summary>
@@ -148,6 +166,7 @@ namespace SkiResortTycoon.UnityBridge
                 Destroy(_preview.Root);
                 _preview = null;
             }
+            _previewPoseCached = false;
         }
 
         // ── Tree clearing ───────────────────────────────────────────────

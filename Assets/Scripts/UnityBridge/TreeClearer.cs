@@ -11,6 +11,8 @@ namespace SkiResortTycoon.UnityBridge
     {
         private static TreeClearer _instance;
         private GameObject _treesContainer;
+        private Transform[] _cachedTreeTransforms;
+        private int _cachedTreeTransformCount = -1;
 
         // ── Preview tree management (for interactive placement) ────────
         private readonly HashSet<GameObject> _previewClearedTrees = new HashSet<GameObject>();
@@ -105,7 +107,7 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (!TryEnsureTreesContainer()) return;
 
-            Transform[] trees = _treesContainer.GetComponentsInChildren<Transform>(true);
+            Transform[] trees = GetTreeTransforms();
             int totalCleared = 0;
 
             for (int i = 0; i < trees.Length; i++)
@@ -130,7 +132,7 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (!TryEnsureTreesContainer()) return 0;
 
-            Transform[] trees = _treesContainer.GetComponentsInChildren<Transform>(true);
+            Transform[] trees = GetTreeTransforms();
             int clearedCount = 0;
 
             foreach (Transform tree in trees)
@@ -160,7 +162,7 @@ namespace SkiResortTycoon.UnityBridge
             if (pathPoints == null || pathPoints.Count < 2) return;
             if (!TryEnsureTreesContainer()) return;
 
-            Transform[] allTransforms = _treesContainer.GetComponentsInChildren<Transform>(true);
+            Transform[] allTransforms = GetTreeTransforms();
 
             for (int i = 0; i < allTransforms.Length; i++)
             {
@@ -248,6 +250,21 @@ namespace SkiResortTycoon.UnityBridge
             }
 
             return true;
+        }
+
+        private Transform[] GetTreeTransforms()
+        {
+            if (_treesContainer == null)
+                return System.Array.Empty<Transform>();
+
+            int currentCount = _treesContainer.transform.childCount;
+            if (_cachedTreeTransforms == null || _cachedTreeTransformCount != currentCount)
+            {
+                _cachedTreeTransforms = _treesContainer.GetComponentsInChildren<Transform>(true);
+                _cachedTreeTransformCount = currentCount;
+            }
+
+            return _cachedTreeTransforms;
         }
     }
 }

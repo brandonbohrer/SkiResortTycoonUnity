@@ -32,6 +32,10 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private Color _defaultColor = Color.white;
         [Tooltip("Material used for the lift cursor sphere. Must be assigned — Shader.Find is not used in builds.")]
         [SerializeField] private Material _cursorMaterialTemplate;
+        [Tooltip("Limits heavy lift preview rebuild work while dragging (seconds between refreshes).")]
+        [SerializeField] private float _previewRefreshInterval = 0.05f;
+        [Tooltip("Minimum cursor movement (meters) before forcing a preview refresh.")]
+        [SerializeField] private float _previewMinMoveDistance = 0.35f;
         
         [Header("Prefab Builder (optional - enables 3D lift visuals)")]
         [SerializeField] private LiftPrefabBuilder _prefabBuilder;
@@ -46,6 +50,13 @@ namespace SkiResortTycoon.UnityBridge
         private TileCoord _bottomStation;
         private LiftData _currentLift;
         private GameObject _cursorVisual;
+        private bool _previewVisible;
+        private bool _hasLastPreviewPose;
+        private Vector3 _lastPreviewBaseWorld;
+        private Vector3 _lastPreviewTopWorld;
+        private LiftType _lastPreviewLiftType;
+        private float _nextPreviewRefreshTime;
+        private readonly List<Vector3> _previewPathPoints = new List<Vector3>(64);
 
         // ── Events ───────────────────────────────────────────────────────────
 
@@ -186,19 +197,13 @@ namespace SkiResortTycoon.UnityBridge
                 
                 if (topWorld.y > baseWorld.y)
                 {
-                    if (_prefabBuilder != null)
-                        _prefabBuilder.UpdatePreview(baseWorld, topWorld, _selectedLiftType);
-                    
-                    float length = Vector3.Distance(baseWorld, topWorld);
-                    int samples = Mathf.Max(2, Mathf.CeilToInt(length / 3f) + 1);
-                    var points = new List<Vector3>();
-                    for (int i = 0; i < samples; i++)
-                        points.Add(Vector3.Lerp(baseWorld, topWorld, (float)i / (samples - 1)));
-                    TreeClearer.ClearTreesForPreview(points, corridorWidth: 8f);
+                    MaybeRefreshLivePreview(baseWorld, topWorld);
+                    _previewVisible = true;
 
                     // Fire live stat update for the context window
                     if (_liftSystem != null && OnLiftPreviewUpdated != null)
                     {
+                        float length = Vector3.Distance(baseWorld, topWorld);
                         float elevation = topWorld.y - baseWorld.y;
                         int baseCost    = _liftSystem.BaseCost;
                         int addedCost   = (int)(length * _liftSystem.CostPerTile)
@@ -208,13 +213,12 @@ namespace SkiResortTycoon.UnityBridge
                 }
                 else
                 {
-                    if (_prefabBuilder != null) _prefabBuilder.DestroyPreview();
-                    TreeClearer.RestorePreviewTrees();
+                    HideLivePreview();
                 }
             }
             else if (!_hasBottomStation)
             {
-                TreeClearer.RestorePreviewTrees();
+                HideLivePreview();
             }
             
             // ── Click to place ───────────────────────────────────────────
@@ -424,14 +428,14 @@ namespace SkiResortTycoon.UnityBridge
             _currentLift = null;
             _isBuildMode = false;
             if (_cursorVisual != null) _cursorVisual.SetActive(false);
+            HideLivePreview();
         }
 
         private void CancelPlacement()
         {
             _hasBottomStation = false;
             _currentLift = null;
-            if (_prefabBuilder != null) _prefabBuilder.DestroyPreview();
-            TreeClearer.RestorePreviewTrees();
+            HideLivePreview();
         }
         
         private Vector3? GetMountainPositionUnderMouse()
@@ -449,6 +453,53 @@ namespace SkiResortTycoon.UnityBridge
                 _currentLift.Type = liftType;
                 _currentLift.Capacity = LiftTypeSpecs.GetCapacityPerHour(liftType);
             }
+        }
+
+        private void MaybeRefreshLivePreview(Vector3 baseWorld, Vector3 topWorld)
+        {
+            float now = Time.unscaledTime;
+            bool hasPose = _hasLastPreviewPose;
+            float topDelta = hasPose ? Vector3.Distance(topWorld, _lastPreviewTopWorld) : float.MaxValue;
+            float baseDelta = hasPose ? Vector3.Distance(baseWorld, _lastPreviewBaseWorld) : float.MaxValue;
+            bool typeChanged = !hasPose || _selectedLiftType != _lastPreviewLiftType;
+            bool movedEnough = !hasPose || topDelta >= _previewMinMoveDistance || baseDelta >= _previewMinMoveDistance;
+            bool intervalElapsed = now >= _nextPreviewRefreshTime;
+
+            if (!typeChanged && !movedEnough && !intervalElapsed)
+                return;
+
+            if (_prefabBuilder != null)
+                _prefabBuilder.UpdatePreview(baseWorld, topWorld, _selectedLiftType);
+
+            float length = Vector3.Distance(baseWorld, topWorld);
+            int samples = Mathf.Max(2, Mathf.CeilToInt(length / 3f) + 1);
+            _previewPathPoints.Clear();
+            if (_previewPathPoints.Capacity < samples)
+                _previewPathPoints.Capacity = samples;
+            for (int i = 0; i < samples; i++)
+                _previewPathPoints.Add(Vector3.Lerp(baseWorld, topWorld, (float)i / (samples - 1)));
+            TreeClearer.ClearTreesForPreview(_previewPathPoints, corridorWidth: 8f);
+
+            _hasLastPreviewPose = true;
+            _lastPreviewBaseWorld = baseWorld;
+            _lastPreviewTopWorld = topWorld;
+            _lastPreviewLiftType = _selectedLiftType;
+            _nextPreviewRefreshTime = now + Mathf.Max(0.01f, _previewRefreshInterval);
+        }
+
+        private void HideLivePreview()
+        {
+            if (!_previewVisible && !_hasLastPreviewPose)
+                return;
+
+            if (_prefabBuilder != null)
+                _prefabBuilder.DestroyPreview();
+            TreeClearer.RestorePreviewTrees();
+
+            _previewVisible = false;
+            _hasLastPreviewPose = false;
+            _nextPreviewRefreshTime = 0f;
+            _previewPathPoints.Clear();
         }
         
         void OnGUI()

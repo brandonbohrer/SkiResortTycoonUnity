@@ -17,7 +17,7 @@ namespace SkiResortTycoon.Core.SatisfactionFactors
     public class SkillMatchFactor : ISatisfactionFactor
     {
         public string Name => "SkillMatch";
-        public float Weight => 1.2f;
+        public float Weight => 1.35f;
 
         private readonly SkillLevel _skill;
 
@@ -31,8 +31,8 @@ namespace SkiResortTycoon.Core.SatisfactionFactors
             if (needs.RunsCompleted == 0)
             {
                 if (needs.DesiredRuns > 0)
-                    return 0.3f;
-                return 0.7f;
+                    return 0.2f;
+                return 0.5f;
             }
 
             float score = 1.0f;
@@ -52,9 +52,16 @@ namespace SkiResortTycoon.Core.SatisfactionFactors
 
             // Not completing desired runs is frustrating, especially if they're leaving early
             if (completionRatio < 0.5f)
-                score -= 0.2f;
+                score -= 0.28f;
             else if (completionRatio < 0.8f)
-                score -= 0.1f;
+                score -= 0.14f;
+
+            // Mountain accessibility: penalize layouts that don't provide enough
+            // skill-appropriate / preferred terrain options in the connected network.
+            float accessiblePenalty = (1f - needs.SkillAccessibleTrailRatio) * 0.35f;
+            float preferredAccessPenalty = (1f - needs.PreferredAccessibleTrailRatio) * 0.22f;
+            score -= accessiblePenalty;
+            score -= preferredAccessPenalty;
 
             return System.Math.Max(0f, System.Math.Min(1f, score));
         }

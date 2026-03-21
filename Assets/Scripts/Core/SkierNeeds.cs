@@ -75,6 +75,12 @@ namespace SkiResortTycoon.Core
         
         /// <summary>Desired runs for this session (synced from Skier for factor access).</summary>
         public int DesiredRuns { get; set; }
+
+        /// <summary>0-1 ratio of base-reachable trails that are skill-allowed.</summary>
+        public float SkillAccessibleTrailRatio { get; set; }
+
+        /// <summary>0-1 ratio of allowed trails that match strong preference for this skill.</summary>
+        public float PreferredAccessibleTrailRatio { get; set; }
         
         public SkierNeeds()
         {
@@ -95,6 +101,8 @@ namespace SkiResortTycoon.Core
             TicketPriceRatio = 1.0f;
             RunsCompleted = 0;
             DesiredRuns = 5;
+            SkillAccessibleTrailRatio = 0.5f;
+            PreferredAccessibleTrailRatio = 0.5f;
         }
         
         // ── Need updates ────────────────────────────────────────────────

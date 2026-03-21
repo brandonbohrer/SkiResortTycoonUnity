@@ -54,7 +54,7 @@ namespace SkiResortTycoon.Core
                 totalWeight += factor.Weight;
             }
             
-            return totalWeight > 0f ? totalScore / totalWeight : 0.8f;
+            return totalWeight > 0f ? totalScore / totalWeight : 0.5f;
         }
         
         /// <summary>

@@ -11,7 +11,7 @@ namespace SkiResortTycoon.Core.SatisfactionFactors
     public class NeedsFulfillmentFactor : ISatisfactionFactor
     {
         public string Name => "NeedsFulfillment";
-        public float Weight => 1.0f; // Core driver of satisfaction
+        public float Weight => 1.2f; // Core driver of satisfaction
         
         public float Evaluate(SkierNeeds needs)
         {
@@ -25,11 +25,11 @@ namespace SkiResortTycoon.Core.SatisfactionFactors
             
             // ── Penalty for failed lodge attempts ───────────────────────
             // Each failed attempt = -0.1 (resort has a capacity/accessibility problem)
-            score -= needs.UnfulfilledNeedAttempts * 0.1f;
+            score -= needs.UnfulfilledNeedAttempts * 0.16f;
             
             // ── Penalty for extended time with urgent needs ─────────────
             // Max penalty of -0.4 at 60+ game minutes with urgent needs
-            float urgentPenalty = System.Math.Min(0.4f, needs.TimeWithUrgentNeeds / 150f);
+            float urgentPenalty = System.Math.Min(0.55f, needs.TimeWithUrgentNeeds / 120f);
             score -= urgentPenalty;
             
             return System.Math.Max(0f, System.Math.Min(1f, score));
@@ -44,9 +44,9 @@ namespace SkiResortTycoon.Core.SatisfactionFactors
             if (needLevel < threshold)
                 return 0f;
             
-            // Scale from 0 at threshold to 0.25 at 1.0
+            // Scale from 0 at threshold to 0.35 at 1.0
             float excessRatio = (needLevel - threshold) / (1f - threshold);
-            return 0.15f + excessRatio * 0.10f;
+            return 0.18f + excessRatio * 0.17f;
         }
     }
 }

@@ -12,18 +12,18 @@ namespace SkiResortTycoon.Core
     public class ResortValuation
     {
         // ── Tunable weights ─────────────────────────────────────────────
-        public float BaseValue { get; set; } = 10f;
-        public float ValuePerLift { get; set; } = 8f;
-        public float ValuePerTrail { get; set; } = 4f;
+        public float BaseValue { get; set; } = 9f;
+        public float ValuePerLift { get; set; } = 6f;
+        public float ValuePerTrail { get; set; } = 3f;
         
         // Amenity bonuses per lodge
-        public float FoodBonus { get; set; } = 4f;
-        public float BathroomBonus { get; set; } = 2f;
+        public float FoodBonus { get; set; } = 3f;
+        public float BathroomBonus { get; set; } = 1.5f;
         public float RestBonus { get; set; } = 1f;
         
         // Difficulty variety bonus tiers (by distinct difficulty count)
         // 1 type = 0, 2 = 5, 3 = 10, 4+ = 15
-        private static readonly float[] VarietyBonusTiers = { 0f, 0f, 5f, 10f, 15f };
+        private static readonly float[] VarietyBonusTiers = { 0f, 0f, 3f, 6f, 9f };
         
         /// <summary>
         /// Calculates the fair ticket price.

@@ -253,6 +253,8 @@ namespace SkiResortTycoon.Saving
         public int fallCount;
         public int fallsOnMislabeledTrails;
         public float ticketPriceRatio;
+        public float skillAccessibleTrailRatio;
+        public float preferredAccessibleTrailRatio;
         // World position when saved (for restore-at-place)
         public float worldX, worldY, worldZ;
         // Facing direction (quaternion) so skiers restore same rotation
@@ -303,6 +305,9 @@ namespace SkiResortTycoon.Saving
         public float todayRevenue;
         public float todayExpenses;
         public float todayLodgeRevenue;
+        public float demandMomentum;
+        public int consecutiveStrongServiceDays;
+        public float smoothedTargetActiveSkiers;
     }
 
     [Serializable]

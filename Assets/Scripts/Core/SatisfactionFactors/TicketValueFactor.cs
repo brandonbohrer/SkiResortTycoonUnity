@@ -13,46 +13,36 @@ namespace SkiResortTycoon.Core.SatisfactionFactors
     public class TicketValueFactor : ISatisfactionFactor
     {
         public string Name => "TicketValue";
-        public float Weight => 0.8f;
+        public float Weight => 1.4f;
         
         public float Evaluate(SkierNeeds needs)
         {
             float ratio = needs.TicketPriceRatio;
             
-            // ── Bargain zone (ratio ≤ 1.0): bonus feeling ──────────────
+            // ── Bargain zone (ratio ≤ 1.0): modest forgiveness, not a free pass ──────────────
             if (ratio <= 1.0f)
             {
-                // The lower the ratio, the more forgiving guests are.
-                // ratio 0.5 → score 1.0 (great deal!)
-                // ratio 1.0 → score 0.9 (fair, neutral)
-                return 0.9f + (1.0f - ratio) * 0.2f;  // 0.9 to 1.1, clamped to 1.0 max
+                // ratio 1.0 -> 0.82 (fair but not "amazing"), ratio 0.5 -> 0.91
+                return 0.82f + (1.0f - ratio) * 0.18f;
             }
-            
-            // ── Premium zone (ratio > 1.0): expectations rise ──────────
-            // Need good experience to justify the premium price.
+
+            // ── Premium zone (ratio > 1.0): increasingly harsh ──────────
             float experienceQuality = CalculateExperienceQuality(needs);
-            
-            if (ratio <= 1.5f)
+
+            if (ratio <= 1.25f)
             {
-                // Mild premium: good experience = neutral, bad = penalty
-                // Lerp between "needs okay experience" and "needs good experience"
-                float premiumSeverity = (ratio - 1.0f) / 0.5f; // 0 at 1.0, 1 at 1.5
-                float requiredQuality = 0.4f + premiumSeverity * 0.2f; // 0.4 to 0.6
-                
-                if (experienceQuality >= requiredQuality)
-                    return 0.8f + (experienceQuality - requiredQuality) * 0.3f;
-                else
-                    return 0.5f + experienceQuality * 0.5f; // 0.5 to 0.7 range
+                // Mild premium already hurts unless the day is excellent.
+                float severity = (ratio - 1.0f) / 0.25f;
+                float priceTerm = 0.72f - severity * 0.28f; // 0.72 -> 0.44
+                return System.Math.Max(0.10f, System.Math.Min(1f, priceTerm * 0.6f + experienceQuality * 0.4f));
             }
             else
             {
-                // High premium (ratio > 1.5): needs excellent experience
-                if (experienceQuality >= 0.7f)
-                    return 0.6f + experienceQuality * 0.3f; // 0.81-0.9
-                else if (experienceQuality >= 0.4f)
-                    return 0.3f + experienceQuality * 0.4f; // 0.46-0.58
-                else
-                    return 0.2f + experienceQuality * 0.3f; // 0.2-0.32
+                // Heavy premium rapidly collapses value perception.
+                float excess = ratio - 1.25f;
+                float priceDecay = (float)System.Math.Exp(-2.2f * excess);
+                float combined = priceDecay * (0.35f + experienceQuality * 0.65f);
+                return System.Math.Max(0.05f, System.Math.Min(1f, combined));
             }
         }
         
@@ -70,13 +60,13 @@ namespace SkiResortTycoon.Core.SatisfactionFactors
                 float runCompletion = (float)needs.RunsCompleted / needs.DesiredRuns;
                 runCompletion = System.Math.Min(1f, runCompletion);
                 // Not completing desired runs is a moderate penalty
-                score -= (1f - runCompletion) * 0.3f;
+                score -= (1f - runCompletion) * 0.35f;
             }
             
             // Unfulfilled needs penalty (tried to find lodge but couldn't)
             if (needs.UnfulfilledNeedAttempts > 0)
             {
-                float needsPenalty = System.Math.Min(0.3f, needs.UnfulfilledNeedAttempts * 0.1f);
+                float needsPenalty = System.Math.Min(0.45f, needs.UnfulfilledNeedAttempts * 0.15f);
                 score -= needsPenalty;
             }
             
@@ -84,7 +74,7 @@ namespace SkiResortTycoon.Core.SatisfactionFactors
             // More than 60 game minutes with urgent needs = significant penalty
             if (needs.TimeWithUrgentNeeds > 0f)
             {
-                float urgentPenalty = System.Math.Min(0.3f, needs.TimeWithUrgentNeeds / 200f);
+                float urgentPenalty = System.Math.Min(0.45f, needs.TimeWithUrgentNeeds / 150f);
                 score -= urgentPenalty;
             }
             

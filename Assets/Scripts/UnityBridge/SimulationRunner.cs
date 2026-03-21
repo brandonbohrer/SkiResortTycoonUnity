@@ -19,6 +19,8 @@ namespace SkiResortTycoon.UnityBridge
         private DailyFinancialRecord _lastFinancialRecord;
         private DayStats _lastDayStats;
         private bool _systemsWired = false;
+        private float _fairPriceRefreshTimer = 0f;
+        private const float FAIR_PRICE_REFRESH_INTERVAL = 1f;
         
         public Simulation Sim => _sim;
         public DailyFinancialRecord LastFinancialRecord => _lastFinancialRecord;
@@ -35,6 +37,16 @@ namespace SkiResortTycoon.UnityBridge
             if (_sim == null) return;
             
             TryWireSystems();
+
+            if (_systemsWired)
+            {
+                _fairPriceRefreshTimer += Time.deltaTime;
+                if (_fairPriceRefreshTimer >= FAIR_PRICE_REFRESH_INTERVAL)
+                {
+                    _fairPriceRefreshTimer = 0f;
+                    UpdateFairPrice();
+                }
+            }
             
             if (_skierVisualizer == null)
                 _skierVisualizer = FindObjectOfType<SkierVisualizer>();
@@ -78,6 +90,7 @@ namespace SkiResortTycoon.UnityBridge
                 UpdateFairPrice();
                 
                 _systemsWired = true;
+                _fairPriceRefreshTimer = 0f;
                 Debug.Log("[SimulationRunner] Systems wired to Simulation!");
             }
         }
@@ -220,7 +233,11 @@ namespace SkiResortTycoon.UnityBridge
             Debug.Log($"  Net Income: ${r.NetIncome:N0}");
             Debug.Log($"  Money:      ${_sim.State.Money:N0}");
             Debug.Log($"  Satisfaction: {_sim.Satisfaction.Satisfaction:F1}/100 (multiplier: {_sim.Satisfaction.GetVisitorMultiplier():F2}x)");
-            Debug.Log($"  Demand: {_sim.EconomySystem.GetDemandMultiplier():F2}x");
+            Debug.Log($"  Demand (price): {_sim.EconomySystem.GetDemandMultiplier():F2}x");
+            Debug.Log($"  Demand (fill): {_sim.VisitorSystem.LastFillRate:F2}x");
+            Debug.Log($"  Demand progression boost: {_sim.VisitorSystem.LastProgressionBoost:F2}x");
+            Debug.Log($"  Demand raw target: {_sim.VisitorSystem.LastRawTarget:F1} | smoothed target: {_sim.State.SmoothedTargetActiveSkiers:F1}");
+            Debug.Log($"  Demand momentum: {_sim.State.DemandMomentum:F2} | strong-day streak: {_sim.State.ConsecutiveStrongServiceDays}");
             Debug.Log("========================================");
             
             // Log visitor flow stats if available
@@ -228,6 +245,13 @@ namespace SkiResortTycoon.UnityBridge
             {
                 Debug.Log($"Served: {_lastDayStats.ServedVisitors}/{_lastDayStats.TotalVisitors} " +
                           $"({GetPercentage(_lastDayStats.ServedVisitors, _lastDayStats.TotalVisitors):F0}%)");
+                Debug.Log($"Skill access: {_lastDayStats.AvgSkillAccess:P0} | Preferred access: {_lastDayStats.AvgPreferredAccess:P0}");
+            }
+
+            if (_skierVisualizer != null && _skierVisualizer.GuestStats != null)
+            {
+                var gs = _skierVisualizer.GuestStats;
+                Debug.Log($"Guest factors -> Price: {gs.AvgPriceFairness:F2}, Access: {gs.AvgTrailAccess:F2}, Food/Needs: {gs.AvgFoodSatisfaction:F2}, Wait: {gs.AvgWaitTimeSatisfaction:F2}");
             }
         }
         

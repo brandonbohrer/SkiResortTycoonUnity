@@ -231,7 +231,10 @@ namespace SkiResortTycoon.Saving
                 lodgesBuilt = state.LodgesBuilt,
                 todayRevenue = state.TodayRevenue,
                 todayExpenses = state.TodayExpenses,
-                todayLodgeRevenue = state.TodayLodgeRevenue
+                todayLodgeRevenue = state.TodayLodgeRevenue,
+                demandMomentum = state.DemandMomentum,
+                consecutiveStrongServiceDays = state.ConsecutiveStrongServiceDays,
+                smoothedTargetActiveSkiers = state.SmoothedTargetActiveSkiers
             };
 
             if (runner.Sim.TimeController != null)
@@ -351,6 +354,9 @@ namespace SkiResortTycoon.Saving
                 state.TodayRevenue = data.simulationState.todayRevenue;
                 state.TodayExpenses = data.simulationState.todayExpenses;
                 state.TodayLodgeRevenue = data.simulationState.todayLodgeRevenue;
+                state.DemandMomentum = data.simulationState.demandMomentum;
+                state.ConsecutiveStrongServiceDays = data.simulationState.consecutiveStrongServiceDays;
+                state.SmoothedTargetActiveSkiers = data.simulationState.smoothedTargetActiveSkiers;
             }
 
             if (data.timeController != null && runner.Sim.TimeController != null)

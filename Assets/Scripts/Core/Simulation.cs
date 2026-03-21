@@ -130,6 +130,8 @@ namespace SkiResortTycoon.Core
                     _satisfaction.UpdateSatisfaction(dayStats);
                 }
             }
+
+            UpdateDemandMomentum(dayStats);
             
             // Process all financials via EconomySystem
             var record = _economySystem.ProcessEndOfDay(
@@ -157,6 +159,29 @@ namespace SkiResortTycoon.Core
             _timeSystem.ResetToOpen(_state);
             
             return record;
+        }
+
+        private void UpdateDemandMomentum(DayStats dayStats)
+        {
+            if (dayStats == null || dayStats.TotalVisitors <= 0)
+                return;
+
+            float servedRate = dayStats.ServedVisitors / (float)System.Math.Max(1, dayStats.TotalVisitors);
+            float satScore = (_satisfaction.Satisfaction - 35f) / 55f; // 35->0, 90->1
+            satScore = System.Math.Max(0f, System.Math.Min(1f, satScore));
+
+            // 1.0 at fair pricing; lower when overpriced.
+            float priceScore = System.Math.Min(1f, _economySystem.GetDemandMultiplier());
+
+            float serviceQuality = servedRate * 0.5f + satScore * 0.35f + priceScore * 0.15f;
+            float momentumDelta = (serviceQuality - 0.58f) * 0.25f;
+
+            _state.DemandMomentum = System.Math.Max(0f, System.Math.Min(1f, _state.DemandMomentum + momentumDelta));
+
+            if (serviceQuality >= 0.72f)
+                _state.ConsecutiveStrongServiceDays++;
+            else if (serviceQuality < 0.60f)
+                _state.ConsecutiveStrongServiceDays = 0;
         }
         
         // Helper to get registry (will be set by Unity bridge)

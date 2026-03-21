@@ -75,9 +75,10 @@ namespace SkiResortTycoon.Core
                 float traversalScore = System.Math.Max(0f, 1f - needs.TotalWalkingDistance / 500f);
                 totalTraversal += traversalScore;
                 
-                // Trail access: use the SkillMatch factor's score directly
-                float accessScore = skier.SatisfactionTracker.GetFactorScore("SkillMatch", needs);
-                if (accessScore < 0f) accessScore = 0.7f; // factor not registered
+                // Trail access: combine direct network access metrics so this UI
+                // reflects actual mountain connectivity, not only completed runs.
+                float accessScore = needs.SkillAccessibleTrailRatio * 0.65f
+                    + needs.PreferredAccessibleTrailRatio * 0.35f;
                 totalTrailAccess += accessScore;
                 
                 // Food satisfaction: how well are hunger/bladder needs being met?

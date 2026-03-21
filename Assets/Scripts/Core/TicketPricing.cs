@@ -21,9 +21,9 @@ namespace SkiResortTycoon.Core
         }
         
         // ── Demand curve parameters (tunable) ───────────────────────────
-        public float MaxDemandBonus { get; set; } = 1.3f;   // At ratio ≤ 0.5
-        public float MinDemand { get; set; } = 0.05f;       // Floor at extreme prices
-        public float DecayRate { get; set; } = 1.5f;        // Exponential decay steepness
+        public float MaxDemandBonus { get; set; } = 1.10f;  // At ratio ≤ 0.8
+        public float MinDemand { get; set; } = 0.03f;       // Floor at extreme prices
+        public float DecayRate { get; set; } = 2.3f;        // Exponential decay steepness
         
         /// <summary>
         /// Price ratio = ticketPrice / fairPrice.
@@ -45,7 +45,7 @@ namespace SkiResortTycoon.Core
         {
             float ratio = GetPriceRatio(fairPrice);
             
-            if (ratio <= 0.5f)
+            if (ratio <= 0.8f)
             {
                 // Deep bargain — max demand
                 return MaxDemandBonus;
@@ -53,7 +53,7 @@ namespace SkiResortTycoon.Core
             else if (ratio <= 1.0f)
             {
                 // Below fair price — linear interpolation from MaxDemandBonus to 1.0
-                float t = (ratio - 0.5f) / 0.5f; // 0 at 0.5, 1 at 1.0
+                float t = (ratio - 0.8f) / 0.2f; // 0 at 0.8, 1 at 1.0
                 return MaxDemandBonus + (1.0f - MaxDemandBonus) * t;
             }
             else

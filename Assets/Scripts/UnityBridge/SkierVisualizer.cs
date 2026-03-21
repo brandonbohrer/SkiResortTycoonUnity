@@ -91,6 +91,8 @@ namespace SkiResortTycoon.UnityBridge
         [Header("Lodge Settings")]
         [SerializeField] private float _lodgeCheckRadius = 30f; // How far skiers look for lodges
         [SerializeField] private float _lodgeVisitChance = 0.25f; // 25% chance to visit lodge after trail
+        [SerializeField] private float _guaranteedLodgeVisitAfterMinutes = 120f; // If still no lodge visit, force one attempt
+        [SerializeField] private float _lodgeVisitPressureStartMinutes = 45f; // Start ramping lodge chance after this many game minutes
 
         [Header("AI Config")]
         [SerializeField] private SkierAIConfig _aiConfig; // Assign a SkierAIConfig ScriptableObject asset
@@ -229,6 +231,8 @@ namespace SkiResortTycoon.UnityBridge
                     vs.Skier.CurrentGoal = null;
                     count++;
                 }
+
+                UpdateTrailAccessibilityMetrics(vs.Skier);
             }
             _downstreamCache.Clear(); // Topology changed, clear cached downstream values
             
@@ -299,6 +303,8 @@ namespace SkiResortTycoon.UnityBridge
                     fallCount = n.FallCount,
                     fallsOnMislabeledTrails = n.FallsOnMislabeledTrails,
                     ticketPriceRatio = n.TicketPriceRatio,
+                    skillAccessibleTrailRatio = n.SkillAccessibleTrailRatio,
+                    preferredAccessibleTrailRatio = n.PreferredAccessibleTrailRatio,
                     worldX = pos.x,
                     worldY = pos.y,
                     worldZ = pos.z,
@@ -654,10 +660,42 @@ namespace SkiResortTycoon.UnityBridge
             skier.Needs.FallCount = dto.fallCount;
             skier.Needs.FallsOnMislabeledTrails = dto.fallsOnMislabeledTrails;
             skier.Needs.TicketPriceRatio = dto.ticketPriceRatio;
+            skier.Needs.SkillAccessibleTrailRatio = dto.skillAccessibleTrailRatio;
+            skier.Needs.PreferredAccessibleTrailRatio = dto.preferredAccessibleTrailRatio;
             skier.Needs.RunsCompleted = dto.runsCompleted;
             skier.Needs.PreferredRunsCompleted = dto.preferredRunsCompleted;
             skier.Needs.DesiredRuns = dto.desiredRuns;
             return skier;
+        }
+
+        private void UpdateTrailAccessibilityMetrics(Skier skier)
+        {
+            if (skier == null || skier.Needs == null || _distribution == null || _liftBuilder == null)
+                return;
+
+            var reachableIds = _liftBuilder.Connectivity?.Connections?.GetTrailsConnectedToBase();
+            if (reachableIds == null || reachableIds.Count == 0 || _trailDrawer == null || _trailDrawer.TrailSystem == null)
+                return;
+
+            int reachable = 0;
+            int allowed = 0;
+            int preferred = 0;
+            foreach (int trailId in reachableIds)
+            {
+                var trail = _trailDrawer.TrailSystem.GetTrail(trailId);
+                if (trail == null || !trail.IsValid) continue;
+                reachable++;
+
+                if (!_distribution.IsAllowed(skier.Skill, trail.Difficulty))
+                    continue;
+
+                allowed++;
+                if (_distribution.GetPreference(skier.Skill, trail.Difficulty) >= 0.25f)
+                    preferred++;
+            }
+
+            skier.Needs.SkillAccessibleTrailRatio = reachable > 0 ? allowed / (float)reachable : 0f;
+            skier.Needs.PreferredAccessibleTrailRatio = allowed > 0 ? preferred / (float)allowed : 0f;
         }
 
         private static bool _logFilterInitialized = false;
@@ -792,6 +830,7 @@ namespace SkiResortTycoon.UnityBridge
                 // Update skier needs over time (hunger, bladder increase)
                 if (effectiveGameMinutes > 0f)
                 {
+                    skier.Skier.TimeOnMountain += effectiveGameMinutes;
                     skier.Skier.Needs.UpdateNeeds(effectiveGameMinutes);
                     
                     // Track walking distance during walk phases
@@ -1218,6 +1257,7 @@ namespace SkiResortTycoon.UnityBridge
                 skier.Needs.TicketPriceRatio = _simRunner.Sim.EconomySystem.GetPriceRatio();
             }
             skier.Needs.DesiredRuns = skier.DesiredRuns;
+            UpdateTrailAccessibilityMetrics(skier);
             
             // Log spawning info
             if (_enableDebugLogs) Debug.Log($"[Skier {skier.SkierId}] {skier.Skill} spawned → Lift {startLift.LiftId} → Trail {targetTrail.TrailId} ({targetTrail.Difficulty})");
@@ -1968,15 +2008,23 @@ namespace SkiResortTycoon.UnityBridge
                 bool hasUrgentNeed = vs.Skier.Needs.HasUrgentNeed() && 
                                      vs.Skier.Needs.GetMostUrgentNeed() != "Fatigue"; // Fatigue = keep skiing, just slower
                 float lodgeChance = Config != null ? Config.lodgeVisitChance : _lodgeVisitChance;
-                bool randomVisit = Random.value < lodgeChance;
+                bool hasVisitedToday = vs.Skier.Needs.LodgeVisitCount > 0;
+                float minutesOnMountain = vs.Skier.TimeOnMountain;
+                float pressureT = Mathf.Clamp01((minutesOnMountain - _lodgeVisitPressureStartMinutes) /
+                    Mathf.Max(1f, _guaranteedLodgeVisitAfterMinutes - _lodgeVisitPressureStartMinutes));
+                float pressuredChance = Mathf.Clamp01(lodgeChance + pressureT * 0.60f);
+                bool shouldForceVisit = !hasVisitedToday && minutesOnMountain >= _guaranteedLodgeVisitAfterMinutes;
+                bool randomVisit = Random.value < pressuredChance;
                 
-                if (hasUrgentNeed || randomVisit)
+                if (hasUrgentNeed || randomVisit || shouldForceVisit)
                 {
                     LodgeFacility targetLodge = FindBestLodge(trailEndPos);
                     if (targetLodge != null)
                     {
                         float distToLodge = Vector3.Distance(trailEndPos, targetLodge.Position);
-                        string reason = hasUrgentNeed ? $"urgent {vs.Skier.Needs.GetMostUrgentNeed()}" : "random visit";
+                        string reason = hasUrgentNeed
+                            ? $"urgent {vs.Skier.Needs.GetMostUrgentNeed()}"
+                            : (shouldForceVisit ? "guaranteed daily visit" : "random visit");
                         
                         if (distToLodge <= 30f)
                         {

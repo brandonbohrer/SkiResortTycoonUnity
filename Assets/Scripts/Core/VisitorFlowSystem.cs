@@ -27,6 +27,10 @@ namespace SkiResortTycoon.Core
         public float TotalRevenue { get; set; }
         public float TotalExpenses { get; set; }
         public float NetIncome { get; set; }
+
+        // Accessibility quality (0-1): "can guests reach terrain suitable for their skill?"
+        public float AvgSkillAccess { get; set; }
+        public float AvgPreferredAccess { get; set; }
         
         public DayStats()
         {
@@ -106,9 +110,13 @@ namespace SkiResortTycoon.Core
             }
             
             // Simulate each visitor individually
+            float totalSkillAccess = 0f;
+            float totalPreferredAccess = 0f;
             foreach (var visitor in visitors)
             {
-                bool served = SimulateSkier(visitor, reachableTrails, stats);
+                bool served = SimulateSkier(visitor, reachableTrails, stats, out float skillAccess, out float preferredAccess);
+                totalSkillAccess += skillAccess;
+                totalPreferredAccess += preferredAccess;
                 
                 visitor.WasServed = served;
                 
@@ -123,6 +131,12 @@ namespace SkiResortTycoon.Core
                     stats.UnservedBySkill[visitor.Skill]++;
                 }
             }
+
+            if (visitors.Count > 0)
+            {
+                stats.AvgSkillAccess = totalSkillAccess / visitors.Count;
+                stats.AvgPreferredAccess = totalPreferredAccess / visitors.Count;
+            }
             
             return stats;
         }
@@ -131,12 +145,19 @@ namespace SkiResortTycoon.Core
         /// Simulates a single skier's day.
         /// Returns true if served (found at least one valid destination).
         /// </summary>
-        private bool SimulateSkier(Skier skier, List<TrailData> reachableTrails, DayStats stats)
+        private bool SimulateSkier(Skier skier, List<TrailData> reachableTrails, DayStats stats,
+            out float skillAccess, out float preferredAccess)
         {
+            int totalReachable = reachableTrails.Count;
+
             // Filter by skill caps
             var allowedTrails = reachableTrails
                 .Where(t => _distribution.IsAllowed(skier.Skill, t.Difficulty))
                 .ToList();
+
+            skillAccess = totalReachable > 0 ? allowedTrails.Count / (float)totalReachable : 0f;
+            int preferredReachable = allowedTrails.Count(t => _distribution.GetPreference(skier.Skill, t.Difficulty) >= 0.25f);
+            preferredAccess = allowedTrails.Count > 0 ? preferredReachable / (float)allowedTrails.Count : 0f;
             
             if (allowedTrails.Count == 0)
             {

@@ -26,11 +26,11 @@ namespace SkiResortTycoon.Core
         public const float MaxRestPrice = 10f;
         
         // ── Satisfaction penalty scaling ─────────────────────────────────
-        // At 2x baseline: -0.1 satisfaction per visit
-        // At 3x baseline: -0.2 per visit
-        // Capped at -0.5 per visit
-        private const float PenaltyPerRatio = 0.1f;
-        private const float MaxPenaltyPerVisit = 0.5f;
+        // At 2x baseline: -0.22 satisfaction per visit
+        // At 3x baseline: -0.44 per visit
+        // Capped at -0.75 per visit
+        private const float PenaltyPerRatio = 0.22f;
+        private const float MaxPenaltyPerVisit = 0.75f;
         
         // ── Revenue tracking ────────────────────────────────────────────
         public float TotalRevenue { get; set; }
@@ -87,9 +87,9 @@ namespace SkiResortTycoon.Core
         /// </summary>
         private float CalculatePenaltyForRatio(float ratio)
         {
-            // Below baseline: small bonus (capped at +0.05)
+            // Below baseline: tiny bonus
             if (ratio <= 1f)
-                return System.Math.Min(0.05f, (1f - ratio) * 0.05f);
+                return System.Math.Min(0.03f, (1f - ratio) * 0.03f);
             
             // Above baseline: increasing penalty
             return -(ratio - 1f) * PenaltyPerRatio;

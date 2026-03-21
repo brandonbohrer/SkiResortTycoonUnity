@@ -10,10 +10,10 @@ namespace SkiResortTycoon.Core
         private float _fractionalVisitors = 0f;
         
         // Configuration: visitors per minute based on infrastructure
-        private float _baseVisitorsPerMinute = 0.5f;
-        private float _visitorsPerLift = 0.3f;
-        private float _visitorsPerTrail = 0.2f;
-        private float _visitorsPerLodge = 0.15f;
+        private float _baseVisitorsPerMinute = 0.38f;
+        private float _visitorsPerLift = 0.20f;
+        private float _visitorsPerTrail = 0.14f;
+        private float _visitorsPerLodge = 0.10f;
         
         // Satisfaction multiplier (set by Simulation)
         public float SatisfactionMultiplier { get; set; } = 1.0f;
@@ -46,12 +46,17 @@ namespace SkiResortTycoon.Core
         public int TargetActiveSkiers { get; private set; } = 10;
         
         // Skier capacity parameters
-        private const int MIN_SKIERS = 5;
+        private const int MIN_SKIERS = 4;
         private const int HARD_CAP = 300;
-        private const float SKIERS_PER_LIFT = 15f;
-        private const float SKIERS_PER_TRAIL = 8f;
-        private const float SKIERS_PER_LODGE = 5f;
-        private const float BASE_SKIERS = 8f;
+        private const float SKIERS_PER_LIFT = 10f;
+        private const float SKIERS_PER_TRAIL = 5f;
+        private const float SKIERS_PER_LODGE = 3f;
+        private const float BASE_SKIERS = 6f;
+
+        // Debug/telemetry visibility for UI and logging
+        public float LastRawTarget { get; private set; }
+        public float LastFillRate { get; private set; }
+        public float LastProgressionBoost { get; private set; }
         
         /// <summary>
         /// Accumulates visitors based on lifts and trails.
@@ -78,7 +83,7 @@ namespace SkiResortTycoon.Core
                 _fractionalVisitors -= wholeVisitors;
             }
             
-            UpdateTargetActiveSkiers(state);
+            UpdateTargetActiveSkiers(state, minutesPassed);
         }
         
         /// <summary>
@@ -86,20 +91,54 @@ namespace SkiResortTycoon.Core
         /// Infrastructure determines the "capacity ceiling" — a big resort CAN hold more.
         /// Satisfaction and pricing determine how full that capacity gets.
         /// </summary>
-        private void UpdateTargetActiveSkiers(SimulationState state)
+        private void UpdateTargetActiveSkiers(SimulationState state, float minutesPassed)
         {
             float infrastructureCapacity = BASE_SKIERS
                 + state.LiftsBuilt * SKIERS_PER_LIFT
                 + state.TrailsBuilt * SKIERS_PER_TRAIL
                 + LodgeCount * SKIERS_PER_LODGE;
-            
+
             float fillRate = SatisfactionMultiplier * PriceMultiplier;
-            fillRate = System.Math.Max(0.1f, System.Math.Min(1.5f, fillRate));
-            
-            float target = infrastructureCapacity * fillRate;
-            
+            fillRate = System.Math.Max(0.08f, System.Math.Min(1.2f, fillRate));
+
+            float progressionBoost = CalculateProgressionBoost(state);
+            float rawTarget = infrastructureCapacity * fillRate * progressionBoost;
+            LastRawTarget = rawTarget;
+            LastFillRate = fillRate;
+            LastProgressionBoost = progressionBoost;
+
+            float smoothed = state.SmoothedTargetActiveSkiers;
+            if (smoothed <= 0f)
+            {
+                smoothed = rawTarget;
+            }
+            else
+            {
+                // Anti-spike smoothing: demand rises slowly early game, faster as
+                // momentum is earned; demand can still drop quickly on bad choices.
+                float riseRatePerMinute = 0.020f + state.DemandMomentum * 0.020f;
+                float fallRatePerMinute = 0.055f;
+                float rate = rawTarget >= smoothed ? riseRatePerMinute : fallRatePerMinute;
+                float alpha = 1f - (float)System.Math.Exp(-rate * minutesPassed);
+                smoothed += (rawTarget - smoothed) * alpha;
+            }
+
+            state.SmoothedTargetActiveSkiers = smoothed;
             TargetActiveSkiers = System.Math.Max(MIN_SKIERS, 
-                System.Math.Min(HARD_CAP, (int)target));
+                System.Math.Min(HARD_CAP, (int)smoothed));
+        }
+
+        private float CalculateProgressionBoost(SimulationState state)
+        {
+            float momentum = System.Math.Max(0f, System.Math.Min(1f, state.DemandMomentum));
+            float streak = System.Math.Max(0, state.ConsecutiveStrongServiceDays);
+
+            // Strong S-curve source: sustained service quality ("word of mouth").
+            // Little boost early, then stronger acceleration once quality is stable.
+            float momentumTerm = momentum * momentum; // ease-in
+            float streakTerm = 1f - (float)System.Math.Exp(-streak / 4f);
+            float boost = 0.90f + momentumTerm * 0.35f + streakTerm * 0.20f;
+            return System.Math.Max(0.85f, System.Math.Min(1.45f, boost));
         }
         
         /// <summary>

@@ -10,13 +10,14 @@ namespace SkiResortTycoon.Core.SatisfactionFactors
     public class LodgePricingFactor : ISatisfactionFactor
     {
         public string Name => "LodgePricing";
-        public float Weight => 0.6f; // Matters but secondary to needs
+        public float Weight => 1.0f;
         
         public float Evaluate(SkierNeeds needs)
         {
-            // Start at 1.0 (no visits = no complaints about pricing)
+            // If a skier never visits a lodge all day, treat it as mild dissatisfaction.
+            // This avoids "free perfect score" when lodge routing/access is poor.
             if (needs.LodgeVisitCount == 0)
-                return 1.0f;
+                return 0.72f;
             
             // CumulativePricePenalty is a sum of negative values from lodge visits
             // Average penalty per visit tells us if prices are consistently bad
@@ -27,7 +28,7 @@ namespace SkiResortTycoon.Core.SatisfactionFactors
             // avgPenalty -0.1 = slightly expensive = score 0.8
             // avgPenalty -0.3 = very expensive = score 0.4
             // avgPenalty -0.5 = gouging = score 0.0
-            float score = 1.0f + (avgPenalty * 2f); // Scale penalty to 0-1 range
+            float score = 1.0f + (avgPenalty * 3f);
             
             return System.Math.Max(0f, System.Math.Min(1f, score));
         }

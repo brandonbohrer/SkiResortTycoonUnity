@@ -19,10 +19,12 @@ namespace SkiResortTycoon.Core
         private float _realtimeSatisfaction = 50f;
         
         // Configuration
-        public float UnservedPenalty { get; set; } = 15f;   // Max penalty from unserved visitors (on 0-100 scale)
-        public float MinSatisfaction { get; set; } = 10f;
+        public float UnservedPenalty { get; set; } = 24f;   // Max penalty from unserved visitors (on 0-100 scale)
+        public float MinSatisfaction { get; set; } = 5f;
         public float MaxSatisfaction { get; set; } = 100f;
         public float Baseline { get; set; } = 50f;
+        public float RealtimeBlendUpward { get; set; } = 0.80f;
+        public float RealtimeBlendDownward { get; set; } = 0.92f;
         
         /// <summary>
         /// Current resort satisfaction (0-100, baseline 50).
@@ -60,8 +62,9 @@ namespace SkiResortTycoon.Core
             {
                 _realtimeSatisfaction = total / count;
                 
-                // Blend real-time into main satisfaction: 70% real-time, 30% historical
-                _satisfaction = _realtimeSatisfaction * 0.7f + _satisfaction * 0.3f;
+                // More reactive than before, and intentionally harsher on drops.
+                float blend = _realtimeSatisfaction < _satisfaction ? RealtimeBlendDownward : RealtimeBlendUpward;
+                _satisfaction = _realtimeSatisfaction * blend + _satisfaction * (1f - blend);
                 _satisfaction = Math.Max(MinSatisfaction, Math.Min(MaxSatisfaction, _satisfaction));
             }
         }
@@ -79,6 +82,16 @@ namespace SkiResortTycoon.Core
             
             // Unserved penalty on 0-100 scale
             float delta = -UnservedPenalty * unservedRate;
+
+            // Accessibility penalty: if skill-appropriate terrain is hard to reach,
+            // satisfaction should fall even if ticket price is fair.
+            if (stats.AvgSkillAccess > 0f)
+            {
+                float blockedSkill = 1f - stats.AvgSkillAccess;
+                float blockedPreferred = 1f - stats.AvgPreferredAccess;
+                delta -= blockedSkill * 8f;
+                delta -= blockedPreferred * 5f;
+            }
             _satisfaction += delta;
             
             _satisfaction = Math.Max(MinSatisfaction, Math.Min(MaxSatisfaction, _satisfaction));

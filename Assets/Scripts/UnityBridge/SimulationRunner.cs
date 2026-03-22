@@ -14,6 +14,12 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private LiftBuilder _liftBuilder;
         [SerializeField] private TrailDrawer _trailDrawer;
         [SerializeField] private SkierVisualizer _skierVisualizer;
+        
+        [Header("Performance Test Mode")]
+        [SerializeField] private bool _enablePerformanceTestMode = false;
+        [SerializeField] private bool _performanceTestDay1Only = true;
+        [SerializeField] private int _performanceStartingMoney = 2000000;
+        [SerializeField] private int _performanceTargetDay1Skiers = 300;
 
         private Simulation _sim;
         private DailyFinancialRecord _lastFinancialRecord;
@@ -21,6 +27,7 @@ namespace SkiResortTycoon.UnityBridge
         private bool _systemsWired = false;
         private float _fairPriceRefreshTimer = 0f;
         private const float FAIR_PRICE_REFRESH_INTERVAL = 1f;
+        private bool _performanceMoneyApplied = false;
         
         public Simulation Sim => _sim;
         public DailyFinancialRecord LastFinancialRecord => _lastFinancialRecord;
@@ -54,6 +61,8 @@ namespace SkiResortTycoon.UnityBridge
                 _sim.State.ActiveSkierCount = _skierVisualizer.ActiveSkierCount;
             else
                 _sim.State.ActiveSkierCount = 0;
+
+            ApplyPerformanceTestModeIfEnabled();
 
             // Update lodge count for visitor system
             _sim.State.LodgesBuilt = LodgeManager.Instance != null ? LodgeManager.Instance.AllLodges.Count : 0;
@@ -163,6 +172,24 @@ namespace SkiResortTycoon.UnityBridge
             
             // Update fair price for next day (infrastructure may have changed)
             UpdateFairPrice();
+        }
+
+        private void ApplyPerformanceTestModeIfEnabled()
+        {
+            if (_sim == null) return;
+
+            bool dayGate = !_performanceTestDay1Only || _sim.State.DayIndex == 1;
+            bool active = _enablePerformanceTestMode && dayGate;
+
+            if (_enablePerformanceTestMode && !_performanceMoneyApplied)
+            {
+                _sim.State.Money = Mathf.Max(0, _performanceStartingMoney);
+                _performanceMoneyApplied = true;
+            }
+
+            _sim.VisitorSystem.ForcedTargetActiveSkiers = active
+                ? (int?)Mathf.Max(0, _performanceTargetDay1Skiers)
+                : null;
         }
         
         /// <summary>

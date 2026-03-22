@@ -231,16 +231,32 @@ namespace SkiResortTycoon.Core
         /// </summary>
         public void RemoveLift(LiftData lift)
         {
-            // Unregister snap points
-            UnregisterSnapPoints(lift);
-            
-            // Free up tiles
-            var bottomTile = _terrain.Grid.GetTile(lift.BottomStation);
-            var topTile = _terrain.Grid.GetTile(lift.TopStation);
-            if (bottomTile != null) bottomTile.Occupied = false;
-            if (topTile != null) topTile.Occupied = false;
-            
-            _lifts.Remove(lift);
+            if (lift == null) return;
+            RemoveLiftById(lift.LiftId);
+        }
+
+        /// <summary>
+        /// Removes a lift by id (authoritative and robust against stale object references).
+        /// </summary>
+        public void RemoveLiftById(int liftId)
+        {
+            if (liftId <= 0) return;
+
+            var target = _lifts.Find(l => l != null && l.LiftId == liftId);
+            if (target != null && _terrain != null && _terrain.Grid != null)
+            {
+                // Free up tiles for legacy tile-mode data.
+                var bottomTile = _terrain.Grid.GetTile(target.BottomStation);
+                var topTile = _terrain.Grid.GetTile(target.TopStation);
+                if (bottomTile != null) bottomTile.Occupied = false;
+                if (topTile != null) topTile.Occupied = false;
+            }
+
+            // Always unregister by owner id so ghost snap points can't survive.
+            if (_snapRegistry != null)
+                _snapRegistry.UnregisterByOwner(liftId);
+
+            _lifts.RemoveAll(l => l != null && l.LiftId == liftId);
         }
         
         /// <summary>
@@ -248,7 +264,9 @@ namespace SkiResortTycoon.Core
         /// </summary>
         public List<LiftData> GetAllLifts()
         {
-            return new List<LiftData>(_lifts);
+            // Performance: return the live list to avoid per-call allocations in hot loops.
+            // Callers should treat this list as read-only.
+            return _lifts;
         }
         
         /// <summary>

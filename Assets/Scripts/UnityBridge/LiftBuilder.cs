@@ -50,6 +50,7 @@ namespace SkiResortTycoon.UnityBridge
         private TileCoord _bottomStation;
         private LiftData _currentLift;
         private GameObject _cursorVisual;
+        private Renderer _cursorRenderer;
         private bool _previewVisible;
         private bool _hasLastPreviewPose;
         private Vector3 _lastPreviewBaseWorld;
@@ -114,11 +115,11 @@ namespace SkiResortTycoon.UnityBridge
                 _cursorVisual = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 _cursorVisual.name = "LiftCursor";
                 _cursorVisual.transform.localScale = Vector3.one * 2.0f;
-                var rend = _cursorVisual.GetComponent<Renderer>();
+                _cursorRenderer = _cursorVisual.GetComponent<Renderer>();
                 if (_cursorMaterialTemplate != null)
                 {
-                    rend.material = new Material(_cursorMaterialTemplate);
-                    rend.material.color = _defaultColor;
+                    _cursorRenderer.material = new Material(_cursorMaterialTemplate);
+                    _cursorRenderer.material.color = _defaultColor;
                 }
                 else
                 {
@@ -184,8 +185,8 @@ namespace SkiResortTycoon.UnityBridge
                 if (_cursorVisual != null)
                 {
                     _cursorVisual.transform.position = _magneticCursor.SnappedPosition;
-                    var rend = _cursorVisual.GetComponent<Renderer>();
-                    rend.material.color = _magneticCursor.IsSnapped ? _snapColor : _defaultColor;
+                    if (_cursorRenderer != null)
+                        _cursorRenderer.material.color = _magneticCursor.IsSnapped ? _snapColor : _defaultColor;
                 }
             }
             

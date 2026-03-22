@@ -23,8 +23,12 @@ namespace SkiResortTycoon.UnityBridge
             public int TrailId;
             public TrailData Trail;
             public readonly List<int> SkierIds = new List<int>();
+            public readonly Dictionary<int, int> SkierIndices = new Dictionary<int, int>();
             public float BoardDistanceAlongTrail;
             public bool BoardDistanceInitialized;
+            public float[] SegmentCumulativeDistances;
+            public float TotalTrailLength;
+            public int CachedTrailPointCount;
         }
 
         private sealed class LiftQueueState
@@ -36,6 +40,7 @@ namespace SkiResortTycoon.UnityBridge
 
         private readonly Dictionary<int, LiftQueueState> _liftStates = new Dictionary<int, LiftQueueState>();
         private readonly Dictionary<int, SkierAssignment> _skierAssignments = new Dictionary<int, SkierAssignment>();
+        private readonly Dictionary<int, bool> _skierReadyForBoarding = new Dictionary<int, bool>();
         private readonly System.Func<Vector3, float?> _terrainHeightSampler;
 
         private const float BoardOffsetMeters = 1.5f;
@@ -62,11 +67,20 @@ namespace SkiResortTycoon.UnityBridge
             FeederQueueState feederState = GetOrCreateFeederQueue(liftState, feederTrailId, feederTrail);
 
             feederState.SkierIds.Add(skierId);
+            feederState.SkierIndices[skierId] = feederState.SkierIds.Count - 1;
+            _skierReadyForBoarding[skierId] = false;
             _skierAssignments[skierId] = new SkierAssignment
             {
                 LiftId = lift.LiftId,
                 FeederTrailId = feederTrailId
             };
+        }
+
+        public void SetSkierReadyForBoarding(int skierId, bool isReady)
+        {
+            if (!_skierAssignments.ContainsKey(skierId))
+                return;
+            _skierReadyForBoarding[skierId] = isReady;
         }
 
         public void RemoveSkier(int skierId)
@@ -82,7 +96,8 @@ namespace SkiResortTycoon.UnityBridge
             if (!liftState.FeederQueues.TryGetValue(assignment.FeederTrailId, out FeederQueueState feederState))
                 return;
 
-            feederState.SkierIds.Remove(skierId);
+            RemoveSkierFromFeederQueue(feederState, skierId);
+            _skierReadyForBoarding.Remove(skierId);
         }
 
         public bool TryGetAssignedSlotWorldPosition(int skierId, out Vector3 slotWorldPos)
@@ -96,8 +111,7 @@ namespace SkiResortTycoon.UnityBridge
             if (!liftState.FeederQueues.TryGetValue(assignment.FeederTrailId, out FeederQueueState feederState))
                 return false;
 
-            int queueIndex = feederState.SkierIds.IndexOf(skierId);
-            if (queueIndex < 0)
+            if (!feederState.SkierIndices.TryGetValue(skierId, out int queueIndex) || queueIndex < 0)
                 return false;
 
             slotWorldPos = ComputeSlotWorldPosition(liftState, feederState, queueIndex);
@@ -113,7 +127,7 @@ namespace SkiResortTycoon.UnityBridge
             if (!_liftStates.TryGetValue(liftId, out LiftQueueState liftState))
                 return false;
 
-            if (!TryGetRoundRobinFront(liftState, out int selectedTrailId, out int frontSkierId))
+            if (!TryGetRoundRobinFrontReady(liftState, out int selectedTrailId, out int frontSkierId))
                 return false;
             if (assignment.FeederTrailId != selectedTrailId)
                 return false;
@@ -125,7 +139,32 @@ namespace SkiResortTycoon.UnityBridge
         public void ClearAll()
         {
             _skierAssignments.Clear();
+            _skierReadyForBoarding.Clear();
             _liftStates.Clear();
+        }
+
+        /// <summary>
+        /// Removes all queue state for a demolished lift.
+        /// Any skiers assigned to this lift are unassigned so they can re-route.
+        /// </summary>
+        public void RemoveLift(int liftId)
+        {
+            if (!_liftStates.TryGetValue(liftId, out LiftQueueState liftState))
+                return;
+
+            foreach (var feeder in liftState.FeederQueues.Values)
+            {
+                for (int i = 0; i < feeder.SkierIds.Count; i++)
+                {
+                    int skierId = feeder.SkierIds[i];
+                    _skierAssignments.Remove(skierId);
+                    _skierReadyForBoarding.Remove(skierId);
+                }
+                feeder.SkierIds.Clear();
+                feeder.SkierIndices.Clear();
+            }
+
+            _liftStates.Remove(liftId);
         }
 
         /// <summary>Snapshot current queue state for save. Order per feeder is preserved.</summary>
@@ -175,17 +214,27 @@ namespace SkiResortTycoon.UnityBridge
             if (!liftState.FeederQueues.TryGetValue(assignment.FeederTrailId, out FeederQueueState feederState))
                 return;
 
-            if (feederState.SkierIds.Count > 0 && feederState.SkierIds[0] == skierId)
-            {
-                feederState.SkierIds.RemoveAt(0);
-            }
-            else
-            {
-                feederState.SkierIds.Remove(skierId);
-            }
+            RemoveSkierFromFeederQueue(feederState, skierId);
 
             _skierAssignments.Remove(skierId);
+            _skierReadyForBoarding.Remove(skierId);
             AdvanceRoundRobinCursorAfterService(liftState, assignment.FeederTrailId);
+        }
+
+        private static void RemoveSkierFromFeederQueue(FeederQueueState feederState, int skierId)
+        {
+            if (feederState == null) return;
+            if (!feederState.SkierIndices.TryGetValue(skierId, out int idx))
+                return;
+
+            feederState.SkierIds.RemoveAt(idx);
+            feederState.SkierIndices.Remove(skierId);
+
+            // Preserve FIFO ordering: shift index map for everyone after removed slot.
+            for (int i = idx; i < feederState.SkierIds.Count; i++)
+            {
+                feederState.SkierIndices[feederState.SkierIds[i]] = i;
+            }
         }
 
         private LiftQueueState GetOrCreateLiftState(LiftData lift)
@@ -230,7 +279,7 @@ namespace SkiResortTycoon.UnityBridge
             return ids;
         }
 
-        private static bool TryGetRoundRobinFront(LiftQueueState liftState, out int selectedTrailId, out int frontSkierId)
+        private bool TryGetRoundRobinFrontReady(LiftQueueState liftState, out int selectedTrailId, out int frontSkierId)
         {
             selectedTrailId = -1;
             frontSkierId = -1;
@@ -249,8 +298,12 @@ namespace SkiResortTycoon.UnityBridge
                 if (feeder.SkierIds.Count == 0)
                     continue;
 
+                int candidateSkierId = feeder.SkierIds[0];
+                if (!_skierReadyForBoarding.TryGetValue(candidateSkierId, out bool isReady) || !isReady)
+                    continue;
+
                 selectedTrailId = trailId;
-                frontSkierId = feeder.SkierIds[0];
+                frontSkierId = candidateSkierId;
                 return true;
             }
 
@@ -284,6 +337,8 @@ namespace SkiResortTycoon.UnityBridge
                 return ComputeFallbackSlotPosition(liftState.Lift, queueIndex);
             }
 
+            EnsureTrailCache(feederState);
+
             if (!feederState.BoardDistanceInitialized)
             {
                 Vector3 boardRef = new Vector3(
@@ -300,7 +355,7 @@ namespace SkiResortTycoon.UnityBridge
                 liftState.Lift.StartPosition.Y,
                 liftState.Lift.StartPosition.Z
             );
-            Vector3 trailContact = SampleTrailCenterlineAtDistance(feederState.Trail, feederState.BoardDistanceAlongTrail);
+            Vector3 trailContact = SampleTrailCenterlineAtDistance(feederState, feederState.BoardDistanceAlongTrail);
 
             Vector3 toTrail = trailContact - liftBottom;
             toTrail.y = 0f;
@@ -326,7 +381,7 @@ namespace SkiResortTycoon.UnityBridge
 
             float rawDistance = feederState.BoardDistanceAlongTrail - alongOffset;
             Vector3 slotPos = rawDistance >= 0f
-                ? SampleTrailCenterlineAtDistance(feederState.Trail, rawDistance)
+                ? SampleTrailCenterlineAtDistance(feederState, rawDistance)
                 : SampleTrailStartExtension(feederState.Trail, -rawDistance);
 
             if (lane > 0)
@@ -338,7 +393,7 @@ namespace SkiResortTycoon.UnityBridge
                 slotPos += perpDir * lane * SnakeLaneSpacing;
             }
 
-            slotPos = AvoidLodgeFootprints(feederState.Trail, Mathf.Max(0f, rawDistance), slotPos);
+            slotPos = AvoidLodgeFootprints(feederState, Mathf.Max(0f, rawDistance), slotPos);
             return GroundToTerrain(slotPos);
         }
 
@@ -346,8 +401,8 @@ namespace SkiResortTycoon.UnityBridge
         {
             float boardDist = feederState.BoardDistanceAlongTrail;
             float sampleOffset = 2f;
-            Vector3 p1 = SampleTrailCenterlineAtDistance(feederState.Trail, Mathf.Max(0f, boardDist - sampleOffset));
-            Vector3 p2 = SampleTrailCenterlineAtDistance(feederState.Trail, boardDist + sampleOffset);
+            Vector3 p1 = SampleTrailCenterlineAtDistance(feederState, Mathf.Max(0f, boardDist - sampleOffset));
+            Vector3 p2 = SampleTrailCenterlineAtDistance(feederState, boardDist + sampleOffset);
             Vector3 dir = p2 - p1;
             dir.y = 0f;
             if (dir.sqrMagnitude < 0.0001f)
@@ -380,38 +435,73 @@ namespace SkiResortTycoon.UnityBridge
             return GroundToTerrain(pos);
         }
 
-        private Vector3 SampleTrailCenterlineAtDistance(TrailData trail, float distance)
+        private void EnsureTrailCache(FeederQueueState feederState)
         {
+            if (feederState == null || feederState.Trail == null || feederState.Trail.WorldPathPoints == null)
+                return;
+
+            var pts = feederState.Trail.WorldPathPoints;
+            int pointCount = pts.Count;
+            if (pointCount < 2)
+            {
+                feederState.SegmentCumulativeDistances = null;
+                feederState.TotalTrailLength = 0f;
+                feederState.CachedTrailPointCount = pointCount;
+                return;
+            }
+
+            if (feederState.SegmentCumulativeDistances != null && feederState.CachedTrailPointCount == pointCount)
+                return;
+
+            int segCount = pointCount - 1;
+            if (feederState.SegmentCumulativeDistances == null || feederState.SegmentCumulativeDistances.Length != segCount)
+                feederState.SegmentCumulativeDistances = new float[segCount];
+
+            float total = 0f;
+            for (int i = 0; i < segCount; i++)
+            {
+                total += Vector3.Distance(V3f(pts[i]), V3f(pts[i + 1]));
+                feederState.SegmentCumulativeDistances[i] = total;
+            }
+
+            feederState.TotalTrailLength = total;
+            feederState.CachedTrailPointCount = pointCount;
+        }
+
+        private Vector3 SampleTrailCenterlineAtDistance(FeederQueueState feederState, float distance)
+        {
+            TrailData trail = feederState != null ? feederState.Trail : null;
             var pts = trail.WorldPathPoints;
             if (pts == null || pts.Count == 0)
                 return Vector3.zero;
             if (pts.Count == 1)
                 return V3f(pts[0]);
 
-            float totalLen = 0f;
-            for (int i = 0; i < pts.Count - 1; i++)
-                totalLen += Vector3.Distance(V3f(pts[i]), V3f(pts[i + 1]));
+            EnsureTrailCache(feederState);
+            float totalLen = feederState.TotalTrailLength;
 
             if (totalLen <= 0.001f)
                 return V3f(pts[0]);
 
             float remaining = Mathf.Clamp(distance, 0f, totalLen);
-            for (int i = 0; i < pts.Count - 1; i++)
+            var cumulative = feederState.SegmentCumulativeDistances;
+            int lo = 0;
+            int hi = cumulative.Length - 1;
+            while (lo < hi)
             {
-                Vector3 a = V3f(pts[i]);
-                Vector3 b = V3f(pts[i + 1]);
-                float segLen = Vector3.Distance(a, b);
-                if (segLen <= 0.001f)
-                    continue;
-                if (remaining <= segLen)
-                {
-                    float t = remaining / segLen;
-                    return Vector3.Lerp(a, b, t);
-                }
-                remaining -= segLen;
+                int mid = (lo + hi) >> 1;
+                if (cumulative[mid] < remaining) lo = mid + 1;
+                else hi = mid;
             }
 
-            return V3f(pts[pts.Count - 1]);
+            int segIdx = lo;
+            float segStart = segIdx > 0 ? cumulative[segIdx - 1] : 0f;
+            float segLen = cumulative[segIdx] - segStart;
+            if (segLen <= 0.001f)
+                return V3f(pts[segIdx]);
+
+            float t = Mathf.Clamp01((remaining - segStart) / segLen);
+            return Vector3.Lerp(V3f(pts[segIdx]), V3f(pts[segIdx + 1]), t);
         }
 
         private static Vector3 SampleTrailStartExtension(TrailData trail, float overflowDistance)
@@ -433,12 +523,13 @@ namespace SkiResortTycoon.UnityBridge
             return start - dir * overflowDistance;
         }
 
-        private Vector3 AvoidLodgeFootprints(TrailData trail, float startDistance, Vector3 startPos)
+        private Vector3 AvoidLodgeFootprints(FeederQueueState feederState, float startDistance, Vector3 startPos)
         {
             Vector3 candidate = startPos;
             LodgeManager lodgeMgr = LodgeManager.Instance;
             if (lodgeMgr == null || lodgeMgr.AllLodges == null || lodgeMgr.AllLodges.Count == 0)
                 return candidate;
+            TrailData trail = feederState != null ? feederState.Trail : null;
             if (trail == null || trail.WorldPathPoints == null || trail.WorldPathPoints.Count < 2)
                 return candidate;
 
@@ -451,7 +542,7 @@ namespace SkiResortTycoon.UnityBridge
                     return candidate;
 
                 dist = Mathf.Max(0f, dist - step);
-                candidate = SampleTrailCenterlineAtDistance(trail, dist);
+                candidate = SampleTrailCenterlineAtDistance(feederState, dist);
             }
 
             return candidate;

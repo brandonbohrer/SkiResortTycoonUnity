@@ -136,6 +136,9 @@ namespace SkiResortTycoon.UnityBridge
         // Downstream value cache (cleared when mountain topology changes)
         private Dictionary<(SkillLevel, int), float> _downstreamCache = new Dictionary<(SkillLevel, int), float>();
         private LiftQueueManager _liftQueueManager;
+        private readonly List<(string item, float score)> _exitSoftmaxOptions = new List<(string item, float score)>(2);
+        private readonly List<TrailData> _trailChoiceBuffer = new List<TrailData>(2);
+        private readonly HashSet<int> _activeLiftIds = new HashSet<int>();
         
         // Cached guest stats for UI (updated every 2s alongside satisfaction)
         private GuestSatisfactionStats _cachedGuestStats = new GuestSatisfactionStats();
@@ -807,6 +810,7 @@ namespace SkiResortTycoon.UnityBridge
             // Cache base position for returning-to-base proximity checks
             Vector3 cachedBasePos = Vector3.zero;
             bool hasBase = false;
+            RefreshActiveLiftIdCache();
             {
                 var baseSpawns = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
                 if (baseSpawns.Count > 0)
@@ -820,6 +824,17 @@ namespace SkiResortTycoon.UnityBridge
             for (int i = _activeSkiers.Count - 1; i >= 0; i--)
             {
                 var skier = _activeSkiers[i];
+
+                // Hard guard against ghost-lift references after demolitions.
+                if (skier.CurrentLift != null && !IsLiftOperational(skier.CurrentLift))
+                {
+                    HandleLiftDemolished(skier);
+                }
+                else if (skier.IsQueuedForLift && skier.QueuedLiftId > 0 && !_activeLiftIds.Contains(skier.QueuedLiftId))
+                {
+                    ClearQueueForSkier(skier);
+                    ChooseNewDestination(skier);
+                }
                 
                 // Control animator speed based on game speed and pause state
                 if (skier.Animator != null)
@@ -1008,6 +1023,67 @@ namespace SkiResortTycoon.UnityBridge
             vs.IsQueuedForLift = false;
             vs.QueuedLiftId = -1;
             vs.QueuedTrailId = int.MinValue;
+            vs.HasQueueSlotWorldPos = false;
+            vs.HasLastAssignedQueueTarget = false;
+            vs.NextQueueSlotRefreshTime = 0f;
+        }
+
+        public void NotifyLiftDemolished(int liftId)
+        {
+            if (_liftQueueManager != null)
+                _liftQueueManager.RemoveLift(liftId);
+
+            if (_activeSkiers == null) return;
+            for (int i = 0; i < _activeSkiers.Count; i++)
+            {
+                var vs = _activeSkiers[i];
+                if (vs == null || vs.CurrentLift == null) continue;
+                if (vs.CurrentLift.LiftId != liftId) continue;
+                HandleLiftDemolished(vs);
+            }
+        }
+
+        private void RefreshActiveLiftIdCache()
+        {
+            _activeLiftIds.Clear();
+            if (_liftBuilder?.LiftSystem?.Lifts == null) return;
+            var lifts = _liftBuilder.LiftSystem.Lifts;
+            for (int i = 0; i < lifts.Count; i++)
+            {
+                var lift = lifts[i];
+                if (lift != null && lift.IsValid)
+                    _activeLiftIds.Add(lift.LiftId);
+            }
+        }
+
+        private bool IsLiftOperational(LiftData lift)
+        {
+            if (lift == null || !lift.IsValid)
+                return false;
+            return _activeLiftIds.Contains(lift.LiftId);
+        }
+
+        private void HandleLiftDemolished(VisualSkier vs)
+        {
+            if (vs == null) return;
+
+            ClearQueueForSkier(vs);
+            vs.IsWaitingForChair = false;
+            vs.CurrentLiftWaitSeconds = 0f;
+            vs.CurrentLift = null;
+            vs.Skier.CurrentLiftId = -1;
+
+            Vector3 pos = vs.GameObject != null ? vs.GameObject.transform.position : Vector3.zero;
+            if (vs.Phase == SkierPhase.RidingLift)
+            {
+                vs.IsReturningToBase = true;
+                int excludeId = vs.CurrentTrail != null ? vs.CurrentTrail.TrailId : -1;
+                if (!TryMergeOntoNearbyTrail(vs, pos, excludeId, 120f))
+                    WalkTowardBase(vs, pos);
+                return;
+            }
+
+            ChooseNewDestination(vs);
         }
         
         /// <summary>
@@ -1352,6 +1428,12 @@ namespace SkiResortTycoon.UnityBridge
 
         private void HandleWalkingToLift(VisualSkier vs)
         {
+            if (vs.CurrentLift != null && !IsLiftOperational(vs.CurrentLift))
+            {
+                HandleLiftDemolished(vs);
+                return;
+            }
+
             if (vs.CurrentLift == null)
             {
                 ClearQueueForSkier(vs);
@@ -1396,15 +1478,43 @@ namespace SkiResortTycoon.UnityBridge
             {
                 ClearQueueForSkier(vs);
                 _liftQueueManager.EnsureSkierQueued(vs.Skier.SkierId, vs.CurrentLift, feederTrailId, vs.CurrentTrail);
+                _liftQueueManager.SetSkierReadyForBoarding(vs.Skier.SkierId, false);
                 vs.IsQueuedForLift = true;
                 vs.QueuedLiftId = vs.CurrentLift.LiftId;
                 vs.QueuedTrailId = feederTrailId;
             }
 
-            if (_liftQueueManager.TryGetAssignedSlotWorldPosition(vs.Skier.SkierId, out Vector3 queueSlotPos))
+            Vector3 queueSlotPos = Vector3.zero;
+
+            float now = Time.unscaledTime;
+            float slotRefreshInterval = GetQueueSlotRefreshInterval();
+            bool shouldRefreshQueueSlot = !vs.HasQueueSlotWorldPos || now >= vs.NextQueueSlotRefreshTime || reachedQueueSlotThisFrame;
+            if (shouldRefreshQueueSlot)
             {
-                queueSlotPos.y += SKI_HEIGHT_OFFSET;
-                vs.Motion.SetWalkTarget(queueSlotPos);
+                if (_liftQueueManager.TryGetAssignedSlotWorldPosition(vs.Skier.SkierId, out Vector3 latestSlotPos))
+                {
+                    latestSlotPos.y += SKI_HEIGHT_OFFSET;
+                    vs.CachedQueueSlotWorldPos = latestSlotPos;
+                    vs.HasQueueSlotWorldPos = true;
+                }
+                else
+                {
+                    vs.HasQueueSlotWorldPos = false;
+                }
+                vs.NextQueueSlotRefreshTime = now + slotRefreshInterval;
+            }
+
+            if (vs.HasQueueSlotWorldPos)
+            {
+                queueSlotPos = vs.CachedQueueSlotWorldPos;
+
+                if (!vs.HasLastAssignedQueueTarget || Vector3.SqrMagnitude(vs.LastAssignedQueueTarget - queueSlotPos) > 0.04f)
+                {
+                    vs.Motion.SetWalkTarget(queueSlotPos);
+                    vs.LastAssignedQueueTarget = queueSlotPos;
+                    vs.HasLastAssignedQueueTarget = true;
+                }
+
                 vs.Skier.CurrentState = SkierState.InQueue;
                 vs.Skier.CurrentLiftId = vs.CurrentLift.LiftId;
 
@@ -1415,6 +1525,8 @@ namespace SkiResortTycoon.UnityBridge
                     deltaToSlot.y = 0f;
                     reachedQueueSlotThisFrame = deltaToSlot.magnitude <= 0.75f;
                 }
+
+                _liftQueueManager.SetSkierReadyForBoarding(vs.Skier.SkierId, reachedQueueSlotThisFrame);
             }
             else
             {
@@ -1425,6 +1537,7 @@ namespace SkiResortTycoon.UnityBridge
                     vs.CurrentLift.StartPosition.Z
                 );
                 vs.Motion.SetWalkTarget(liftBottom);
+                _liftQueueManager.SetSkierReadyForBoarding(vs.Skier.SkierId, false);
             }
 
             // While queued, always face the lift boarding direction.
@@ -1526,10 +1639,25 @@ namespace SkiResortTycoon.UnityBridge
             }
         }
 
+        private float GetQueueSlotRefreshInterval()
+        {
+            int skierCount = _activeSkiers != null ? _activeSkiers.Count : 0;
+            if (skierCount >= 180) return 0.22f;
+            if (skierCount >= 140) return 0.16f;
+            if (skierCount >= 100) return 0.11f;
+            return 0.07f;
+        }
+
         // ── RidingLift ──────────────────────────────────────────────────
 
         private void HandleRidingLift(VisualSkier vs)
         {
+            if (vs.CurrentLift != null && !IsLiftOperational(vs.CurrentLift))
+            {
+                HandleLiftDemolished(vs);
+                return;
+            }
+
             if (!vs.Motion.ReachedLiftTop) return;
             
             // Fire traffic event: skier exited lift at top
@@ -1671,7 +1799,12 @@ namespace SkiResortTycoon.UnityBridge
             // If so, offer the skier the choice to exit (using the decision engine).
             // This is NOT the old TryJunctionSwitch which detected random trail segments.
             // This only triggers at structurally meaningful exit points.
-            TryMidTrailExits(vs);
+            int decisionInterval = 2;
+            int skierCount = _activeSkiers != null ? _activeSkiers.Count : 0;
+            if (skierCount >= 160) decisionInterval = 4;
+            else if (skierCount >= 110) decisionInterval = 3;
+            if (((Time.frameCount + vs.Skier.SkierId) % decisionInterval) == 0)
+                TryMidTrailExits(vs);
         }
 
         private void RollForFall(VisualSkier vs, TrailData trail)
@@ -1810,12 +1943,10 @@ namespace SkiResortTycoon.UnityBridge
                     
                     // Softmax between "continue" and "exit to lift"
                     float temperature = Config != null ? Config.softmaxTemperature : 1.5f;
-                    var options = new List<(string item, float score)>
-                    {
-                        ("continue", currentTrailValue),
-                        ("exit", liftValue)
-                    };
-                    int choice = SkierDecisionEngine.SoftmaxSelect(options, temperature);
+                    _exitSoftmaxOptions.Clear();
+                    _exitSoftmaxOptions.Add(("continue", currentTrailValue));
+                    _exitSoftmaxOptions.Add(("exit", liftValue));
+                    int choice = SkierDecisionEngine.SoftmaxSelect(_exitSoftmaxOptions, temperature);
                     
                     if (choice == 1) // chose to exit
                     {
@@ -1863,10 +1994,12 @@ namespace SkiResortTycoon.UnityBridge
                 if (!_distribution.IsAllowed(vs.Skier.Skill, trail.Difficulty)) continue;
 
                 var ctx = BuildContext(vs);
-                var candidates = new List<TrailData> { vs.CurrentTrail, trail };
+                _trailChoiceBuffer.Clear();
+                _trailChoiceBuffer.Add(vs.CurrentTrail);
+                _trailChoiceBuffer.Add(trail);
 
                 var chosenTrail = SkierDecisionEngine.ChooseTrail(
-                    candidates, ctx, Config, Traffic?.State, _distribution, ComputeTrailDownstreamValue
+                    _trailChoiceBuffer, ctx, Config, Traffic?.State, _distribution, ComputeTrailDownstreamValue
                 );
 
                 if (chosenTrail != null && chosenTrail.TrailId != vs.CurrentTrail.TrailId)
@@ -3578,6 +3711,11 @@ namespace SkiResortTycoon.UnityBridge
             public bool IsQueuedForLift;
             public int QueuedLiftId;
             public int QueuedTrailId;
+            public Vector3 CachedQueueSlotWorldPos;
+            public bool HasQueueSlotWorldPos;
+            public float NextQueueSlotRefreshTime;
+            public Vector3 LastAssignedQueueTarget;
+            public bool HasLastAssignedQueueTarget;
             
             // Pending trail merge: skier is walking to a trail edge before merging onto it
             public TrailData PendingTrailMerge;

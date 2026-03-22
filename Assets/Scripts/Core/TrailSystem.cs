@@ -438,7 +438,9 @@ namespace SkiResortTycoon.Core
         /// </summary>
         public List<TrailData> GetAllTrails()
         {
-            return new List<TrailData>(_trails);
+            // Performance: return the live list to avoid per-call allocations in hot loops.
+            // Callers should treat this list as read-only.
+            return _trails;
         }
         
         /// <summary>

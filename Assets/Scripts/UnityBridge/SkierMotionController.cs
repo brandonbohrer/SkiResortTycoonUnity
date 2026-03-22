@@ -502,7 +502,7 @@ namespace SkiResortTycoon.UnityBridge
                     _distanceAlongTrail = _arcMergeDist;
                 }
 
-                return GroundToTerrain(arcPos);
+                return GroundToKnownSurfaceY(arcPos, arcPos.y);
             }
 
             // ── Normal trail following ──────────────────────────────
@@ -523,7 +523,7 @@ namespace SkiResortTycoon.UnityBridge
 
             _currentTangent = tangent;
 
-            return GroundToTerrain(trailTarget);
+            return GroundToKnownSurfaceY(trailTarget, trailTarget.y);
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -548,16 +548,7 @@ namespace SkiResortTycoon.UnityBridge
             // Clamp distance
             distance = Mathf.Clamp(distance, 0f, _trailTotalLength);
 
-            // Binary-style search: find the segment that contains 'distance'
-            int segIdx = 0;
-            for (int i = 0; i < _segmentCumulativeDistances.Length; i++)
-            {
-                if (_segmentCumulativeDistances[i] >= distance)
-                {
-                    segIdx = i;
-                    break;
-                }
-            }
+            int segIdx = FindSegmentIndex(distance);
 
             float segStart = segIdx > 0 ? _segmentCumulativeDistances[segIdx - 1] : 0f;
             float segEnd = _segmentCumulativeDistances[segIdx];
@@ -602,16 +593,7 @@ namespace SkiResortTycoon.UnityBridge
             if (_currentTrail == null || _currentTrail.WorldPathPoints == null || _currentTrail.WorldPathPoints.Count < 2)
                 return 10f; // default moderate slope
 
-            // Find segment
-            int segIdx = 0;
-            for (int i = 0; i < _segmentCumulativeDistances.Length; i++)
-            {
-                if (_segmentCumulativeDistances[i] >= _distanceAlongTrail)
-                {
-                    segIdx = i;
-                    break;
-                }
-            }
+            int segIdx = FindSegmentIndex(_distanceAlongTrail);
 
             var pts = _currentTrail.WorldPathPoints;
             Vector3 a = V3f(pts[segIdx]);
@@ -669,18 +651,21 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (_terrainHeightSampler == null)
             {
-                pos.y += _heightOffset;
-                return pos;
+                return GroundToKnownSurfaceY(pos, pos.y);
             }
 
             float? terrainY = _terrainHeightSampler(pos);
             if (!terrainY.HasValue)
             {
-                pos.y += _heightOffset;
-                return pos;
+                return GroundToKnownSurfaceY(pos, pos.y);
             }
 
-            float targetY = terrainY.Value + _heightOffset;
+            return GroundToKnownSurfaceY(pos, terrainY.Value);
+        }
+
+        private Vector3 GroundToKnownSurfaceY(Vector3 pos, float surfaceY)
+        {
+            float targetY = surfaceY + _heightOffset;
 
             if (!_groundedYInitialized)
             {
@@ -695,6 +680,22 @@ namespace SkiResortTycoon.UnityBridge
 
             pos.y = _groundedY;
             return pos;
+        }
+
+        private int FindSegmentIndex(float distance)
+        {
+            if (_segmentCumulativeDistances == null || _segmentCumulativeDistances.Length == 0)
+                return 0;
+
+            int lo = 0;
+            int hi = _segmentCumulativeDistances.Length - 1;
+            while (lo < hi)
+            {
+                int mid = (lo + hi) >> 1;
+                if (_segmentCumulativeDistances[mid] < distance) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
         }
 
         // ─────────────────────────────────────────────────────────────────

@@ -23,6 +23,7 @@ namespace SkiResortTycoon.UnityBridge
         
         private Dictionary<int, LineRenderer> _liftRenderers = new Dictionary<int, LineRenderer>();
         private LineRenderer _previewRenderer;
+        private Camera _previewCamera;
         
         /// <summary>True when a LiftPrefabBuilder is active (3D models replace lines).</summary>
         private bool UsePrefabs => _liftBuilder != null && _liftBuilder.PrefabBuilder != null;
@@ -116,8 +117,10 @@ namespace SkiResortTycoon.UnityBridge
                 _previewRenderer.SetPosition(0, _liftBuilder.BottomWorldPosition.Value);
                 
                 // Get current mouse position on mountain
+                if (_previewCamera == null)
+                    _previewCamera = Camera.main;
                 Vector3? mousePos = _gridRenderer != null
-                    ? _gridRenderer.RaycastMountain(Camera.main, Input.mousePosition)
+                    ? _gridRenderer.RaycastMountain(_previewCamera, Input.mousePosition)
                     : null;
                 
                 if (mousePos.HasValue)

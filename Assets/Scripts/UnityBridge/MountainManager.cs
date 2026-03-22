@@ -19,6 +19,8 @@ namespace SkiResortTycoon.UnityBridge
 
         // Cached layer mask built from the mountain mesh's layer for fast single-hit raycasts
         private int _mountainLayerMask = -1;
+        private readonly RaycastHit[] _mouseRayHits = new RaycastHit[128];
+        private readonly RaycastHit[] _heightRayHits = new RaycastHit[128];
         
         private Core.TerrainData _terrainData;
         
@@ -76,17 +78,9 @@ namespace SkiResortTycoon.UnityBridge
             Ray ray = camera.ScreenPointToRay(screenPosition);
             
             // Raycast against mountain - check the mountain itself or any of its children
-            RaycastHit[] hits = Physics.RaycastAll(ray, 10000f);
-            
-            foreach (RaycastHit hit in hits)
-            {
-                // Accept hits on the mountain or its children (collider might be on a child)
-                if (hit.collider.transform == _mountainMesh.transform || 
-                    hit.collider.transform.IsChildOf(_mountainMesh.transform))
-                {
-                    return hit.point;
-                }
-            }
+            int hitCount = Physics.RaycastNonAlloc(ray, _mouseRayHits, 10000f);
+            if (TryGetNearestMountainHit(_mouseRayHits, hitCount, out RaycastHit nearest))
+                return nearest.point;
             
             return null;
         }
@@ -115,18 +109,39 @@ namespace SkiResortTycoon.UnityBridge
                 return null;
             }
             
-            // Fallback: RaycastAll when mountain is on the default layer
-            RaycastHit[] hits = Physics.RaycastAll(ray, 2000f);
-            foreach (RaycastHit hit in hits)
-            {
-                if (hit.collider.transform == _mountainMesh.transform || 
-                    hit.collider.transform.IsChildOf(_mountainMesh.transform))
-                {
-                    return hit.point.y;
-                }
-            }
+            // Fallback: non-alloc multi-hit raycast when mountain is on default layer
+            int hitCount = Physics.RaycastNonAlloc(ray, _heightRayHits, 2000f);
+            if (TryGetNearestMountainHit(_heightRayHits, hitCount, out RaycastHit nearest))
+                return nearest.point.y;
             
             return null;
+        }
+
+        private bool TryGetNearestMountainHit(RaycastHit[] hits, int hitCount, out RaycastHit nearestHit)
+        {
+            nearestHit = default;
+            bool found = false;
+            float nearestDistance = float.MaxValue;
+            Transform mountainTransform = _mountainMesh != null ? _mountainMesh.transform : null;
+            if (mountainTransform == null || hitCount <= 0) return false;
+
+            for (int i = 0; i < hitCount; i++)
+            {
+                RaycastHit hit = hits[i];
+                if (hit.collider == null) continue;
+                Transform hitTransform = hit.collider.transform;
+                if (hitTransform != mountainTransform && !hitTransform.IsChildOf(mountainTransform))
+                    continue;
+
+                if (hit.distance < nearestDistance)
+                {
+                    nearestDistance = hit.distance;
+                    nearestHit = hit;
+                    found = true;
+                }
+            }
+
+            return found;
         }
         
         /// <summary>

@@ -91241,9 +91241,8 @@ MonoBehaviour:
   _restDurationSeconds: 30
   _snapRadius: 20
   _footprintRadius: 15
-  _useSquarePerimeter: 1
   _perimeterHalfSize: 25
-  _perimeterPointSpacing: 2.5
+  _perimeterSpacing: 5
   _hasBathroom: 1
   _hasFood: 1
   _hasRest: 1
@@ -173885,7 +173884,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 1076513334}
   m_HandleRect: {fileID: 1076513333}
   m_Direction: 2
-  m_Value: 0
+  m_Value: 1
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -219519,6 +219518,8 @@ MonoBehaviour:
   _cursorFillColor: {r: 0.29, g: 0.56, b: 0.85, a: 0.15}
   _cursorBorderColor: {r: 0.29, g: 0.56, b: 0.85, a: 1}
   _snapBorderColor: {r: 0.2, g: 0.8, b: 0.2, a: 1}
+  _invalidStartFill: {r: 0.85, g: 0.2, b: 0.2, a: 0.15}
+  _invalidStartBorder: {r: 0.85, g: 0.2, b: 0.2, a: 1}
 --- !u!1001 &1014031714
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -323577,6 +323578,8 @@ MonoBehaviour:
   _snapColor: {r: 0, g: 1, b: 0, a: 1}
   _defaultColor: {r: 1, g: 1, b: 1, a: 1}
   _cursorMaterialTemplate: {fileID: 0}
+  _previewRefreshInterval: 0.05
+  _previewMinMoveDistance: 0.35
   _prefabBuilder: {fileID: 1504220264}
 --- !u!4 &1504220262
 Transform:
@@ -357904,6 +357907,10 @@ MonoBehaviour:
   _liftBuilder: {fileID: 1504220261}
   _trailDrawer: {fileID: 1091263535}
   _skierVisualizer: {fileID: 1971900455}
+  _enablePerformanceTestMode: 1
+  _performanceTestDay1Only: 1
+  _performanceStartingMoney: 2000000
+  _performanceTargetDay1Skiers: 300
 --- !u!114 &1670639975
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -429481,6 +429488,8 @@ MonoBehaviour:
   _spawnInterval: 2
   _lodgeCheckRadius: 30
   _lodgeVisitChance: 0.15
+  _guaranteedLodgeVisitAfterMinutes: 120
+  _lodgeVisitPressureStartMinutes: 45
   _aiConfig: {fileID: 11400000, guid: 1647284333a2a4771a84642f6262eb80, type: 2}
   _skierAnimations:
     beginnerSkiing: {fileID: 7400000, guid: 45c227bf10dae466b8b266fdf80cbae5, type: 2}

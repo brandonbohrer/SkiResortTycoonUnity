@@ -699,14 +699,18 @@ namespace SkiResortTycoon.UI
         
         private void DeleteLift()
         {
+            int liftId = _currentStructure != null ? _currentStructure.StructureId : -1;
             var lift = _currentStructure?.LiftData;
-            if (lift == null)
+            string liftName = lift != null ? lift.Name : (_currentStructure != null ? _currentStructure.StructureName : "Lift");
+            if (liftId <= 0 && lift == null)
             {
                 Debug.LogWarning("[StructureDetailsPanel] DeleteLift: LiftData is null");
                 return;
             }
+            if (liftId <= 0 && lift != null)
+                liftId = lift.LiftId;
             
-            Debug.Log($"[StructureDetailsPanel] DeleteLift: Removing lift '{lift.Name}' (ID: {lift.LiftId})");
+            Debug.Log($"[StructureDetailsPanel] DeleteLift: Removing lift '{liftName}' (ID: {liftId})");
             
             // Find the LiftBuilder to access LiftSystem
             var liftBuilder = FindObjectOfType<LiftBuilder>();
@@ -722,22 +726,27 @@ namespace SkiResortTycoon.UI
                 return;
             }
             
-            // Remove from core system
-            liftBuilder.LiftSystem.RemoveLift(lift);
+            // Remove from core system using authoritative id-based deletion.
+            liftBuilder.LiftSystem.RemoveLiftById(liftId);
             Debug.Log("[StructureDetailsPanel] DeleteLift: Removed from LiftSystem");
             
             // Remove visual
             var prefabBuilder = liftBuilder.PrefabBuilder;
             if (prefabBuilder != null)
             {
-                prefabBuilder.DestroyLift(lift.LiftId);
+                prefabBuilder.DestroyLift(liftId);
                 Debug.Log("[StructureDetailsPanel] DeleteLift: Destroyed visual via PrefabBuilder");
             }
             
             // Rebuild connections
             liftBuilder.Connectivity?.RebuildConnections();
+
+            // Immediately disperse any skiers targeting this demolished lift.
+            var skierVisualizer = FindObjectOfType<SkierVisualizer>();
+            if (skierVisualizer != null)
+                skierVisualizer.NotifyLiftDemolished(liftId);
             
-            NotificationManager.Instance?.ShowSuccess($"Deleted {lift.Name}");
+            NotificationManager.Instance?.ShowSuccess($"Deleted {liftName}");
         }
         
         private void DeleteTrail()

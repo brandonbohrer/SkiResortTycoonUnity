@@ -57,6 +57,7 @@ namespace SkiResortTycoon.Core
         public float LastRawTarget { get; private set; }
         public float LastFillRate { get; private set; }
         public float LastProgressionBoost { get; private set; }
+        public int? ForcedTargetActiveSkiers { get; set; }
         
         /// <summary>
         /// Accumulates visitors based on lifts and trails.
@@ -93,6 +94,17 @@ namespace SkiResortTycoon.Core
         /// </summary>
         private void UpdateTargetActiveSkiers(SimulationState state, float minutesPassed)
         {
+            if (ForcedTargetActiveSkiers.HasValue)
+            {
+                int forced = System.Math.Max(MIN_SKIERS, System.Math.Min(HARD_CAP, ForcedTargetActiveSkiers.Value));
+                state.SmoothedTargetActiveSkiers = forced;
+                LastRawTarget = forced;
+                LastFillRate = 1f;
+                LastProgressionBoost = 1f;
+                TargetActiveSkiers = forced;
+                return;
+            }
+
             float infrastructureCapacity = BASE_SKIERS
                 + state.LiftsBuilt * SKIERS_PER_LIFT
                 + state.TrailsBuilt * SKIERS_PER_TRAIL

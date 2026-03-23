@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using SkiResortTycoon.Core;
 
 namespace SkiResortTycoon.UnityBridge
 {
@@ -41,8 +42,11 @@ namespace SkiResortTycoon.UnityBridge
         private List<GameObject> _chairsDown;
         private int _chairCount;
 
-        // ── Chair occupancy (for skier attachment) ──────────────────────
-        private bool[] _occupied;
+        /// <summary>1 = classic chair; 2 = two skiers can share (pair or solo center).</summary>
+        private int _seatsPerChair;
+
+        // ── Chair occupancy (riders currently on each up-lane chair) ───
+        private int[] _riderCount;
 
         // ── Conveyor phase (0 → 1, wraps) ──────────────────────────────
         private float _phase;
@@ -57,11 +61,14 @@ namespace SkiResortTycoon.UnityBridge
         /// <summary>Number of chairs per lane.</summary>
         public int ChairCount => _chairCount;
 
+        public int SeatsPerChair => _seatsPerChair;
+
         /// <summary>
         /// Called by LiftPrefabBuilder after hierarchy is built.
         /// </summary>
         public void Initialise(LiftInstance inst, Vector3 basePos, Vector3 topPos,
-            float upX, float downX, float chairY, SimulationRunner simulationRunner, float chairSpeed)
+            float upX, float downX, float chairY, SimulationRunner simulationRunner, float chairSpeed,
+            LiftType liftType)
         {
             _basePos = basePos;
             _topPos  = topPos;
@@ -71,6 +78,8 @@ namespace SkiResortTycoon.UnityBridge
             _simulationRunner = simulationRunner;
             if (chairSpeed > 0.01f)
                 _speed = chairSpeed;
+
+            _seatsPerChair = Mathf.Max(1, LiftTypeSpecs.GetSeatsPerChair(liftType));
 
             Vector3 delta = topPos - basePos;
             _length = delta.magnitude;
@@ -118,7 +127,7 @@ namespace SkiResortTycoon.UnityBridge
             _chairsDown = inst.ChairsDown ?? new List<GameObject>();
             _chairCount = _chairsUp.Count; // same count for both lanes
 
-            _occupied = new bool[_chairCount];
+            _riderCount = new int[_chairCount];
 
             _phase = 0f;
             _initialised = true;
@@ -139,6 +148,14 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         /// <summary>
+        /// Bench lateral (perpendicular to lift, horizontal) for seating offsets.
+        /// </summary>
+        public Vector3 GetBenchRightWorld()
+        {
+            return _right.sqrMagnitude > 0.0001f ? _right : Vector3.right;
+        }
+
+        /// <summary>
         /// Get the 0-1 progress of up-lane chair at index along the lift.
         /// 0 = at base, 1 = at top.
         /// </summary>
@@ -152,26 +169,50 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         /// <summary>
-        /// Claim the nearest unoccupied up-lane chair to a world position.
-        /// Only considers chairs within the bottom 5% of the lift path
-        /// and within 20m to prevent skiers from flying up to chairs.
-        /// Returns the chair index, or -1 if no chairs available.
+        /// One skier boards: 1-seat lift, or 2-seat lift alone (center seat).
         /// </summary>
-        public int ClaimNearestUpChair(Vector3 worldPos)
+        public bool TryClaimSoloBoarding(Vector3 worldPos, out int chairIndex)
         {
-            if (!_initialised || _chairCount == 0) return -1;
+            chairIndex = -1;
+            if (!_initialised || _chairCount == 0) return false;
 
+            int bestIdx = FindBestEmptyChairIndex(worldPos, out float bestDist);
+            if (bestIdx < 0) return false;
+
+            _riderCount[bestIdx] = 1;
+            chairIndex = bestIdx;
+            return true;
+        }
+
+        /// <summary>
+        /// Two skiers board together on the same chair (only for 2-seat lifts).
+        /// </summary>
+        public bool TryClaimPairBoarding(Vector3 worldPosA, Vector3 worldPosB, out int chairIndex)
+        {
+            chairIndex = -1;
+            if (!_initialised || _chairCount == 0 || _seatsPerChair < 2) return false;
+
+            Vector3 mid = (worldPosA + worldPosB) * 0.5f;
+            int bestIdx = FindBestEmptyChairIndex(mid, out _);
+            if (bestIdx < 0) return false;
+
+            _riderCount[bestIdx] = 2;
+            chairIndex = bestIdx;
+            return true;
+        }
+
+        private int FindBestEmptyChairIndex(Vector3 worldPos, out float bestDist)
+        {
+            bestDist = float.MaxValue;
             int bestIdx = -1;
-            float bestDist = float.MaxValue;
             const float MAX_CLAIM_DISTANCE = 20f;
-            const float MAX_PROGRESS = 0.05f; // bottom 5% only
+            const float MAX_PROGRESS = 0.05f;
 
             for (int i = 0; i < _chairCount; i++)
             {
-                if (_occupied[i]) continue;
+                if (_riderCount[i] != 0) continue;
                 if (_chairsUp[i] == null) continue;
 
-                // Only claim chairs at the very bottom of the lift
                 float tUp = GetUpChairProgress(i);
                 if (tUp > MAX_PROGRESS) continue;
 
@@ -185,21 +226,16 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
 
-            if (bestIdx >= 0)
-            {
-                _occupied[bestIdx] = true;
-            }
-
             return bestIdx;
         }
 
         /// <summary>
-        /// Release a previously claimed chair.
+        /// Release one rider from this chair when they exit at the top.
         /// </summary>
         public void ReleaseChair(int index)
         {
-            if (index >= 0 && index < _chairCount)
-                _occupied[index] = false;
+            if (index >= 0 && index < _chairCount && _riderCount[index] > 0)
+                _riderCount[index]--;
         }
 
         /// <summary>
@@ -241,12 +277,12 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         /// <summary>
-        /// Claim a specific chair by index (for restore from save). Does not check position.
+        /// Restore-from-save: mark one rider occupying this chair (call once per restored skier on that chair).
         /// </summary>
-        public void ClaimChairByIndex(int index)
+        public void RegisterRestoredRider(int index)
         {
-            if (index >= 0 && index < _chairCount)
-                _occupied[index] = true;
+            if (index >= 0 && index < _chairCount && _riderCount[index] < _seatsPerChair)
+                _riderCount[index]++;
         }
 
         private void Update()

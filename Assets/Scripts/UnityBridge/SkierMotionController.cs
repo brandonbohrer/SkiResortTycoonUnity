@@ -4,6 +4,15 @@ using SkiResortTycoon.Core;
 
 namespace SkiResortTycoon.UnityBridge
 {
+    /// <summary>Where the skier sits relative to the chair pivot (for 2-seat visuals).</summary>
+    public enum LiftChairSeatLayout : byte
+    {
+        SingleChairSolo = 0,
+        DoubleChairSoloCenter = 1,
+        DoubleChairPairLeft = 2,
+        DoubleChairPairRight = 3
+    }
+
     /// <summary>
     /// Handles all skier position, rotation, and boundary math.
     /// Owns the "where is the skier right now?" question so that
@@ -52,6 +61,7 @@ namespace SkiResortTycoon.UnityBridge
         // ── Chair attachment (skier rides a specific chair) ──────────────
         private LiftChairMover _chairMover;
         private int _assignedChairIndex = -1;
+        private LiftChairSeatLayout _chairSeatLayout = LiftChairSeatLayout.SingleChairSolo;
 
         // ── Walk-to-lift target ─────────────────────────────────────────
         private Vector3 _walkTarget;
@@ -113,6 +123,9 @@ namespace SkiResortTycoon.UnityBridge
 
         /// <summary>Chair mover when riding a lift (for save/restore). Null if not on a chair.</summary>
         public LiftChairMover ChairMover => _chairMover;
+
+        /// <summary>Seating position on the chair (for save).</summary>
+        public LiftChairSeatLayout ChairSeatLayout => _chairSeatLayout;
 
         /// <summary>Current lateral offset (-1..1).</summary>
         public float LateralOffset => _lateralOffset;
@@ -223,19 +236,22 @@ namespace SkiResortTycoon.UnityBridge
             ReachedLiftTop = false;
             _chairMover = null;
             _assignedChairIndex = -1;
+            _chairSeatLayout = LiftChairSeatLayout.SingleChairSolo;
         }
 
         /// <summary>
         /// Assign the lift with a specific chair to ride.
         /// The skier will snap to the chair's position each frame.
         /// </summary>
-        public void SetLift(LiftData lift, LiftChairMover mover, int chairIndex)
+        public void SetLift(LiftData lift, LiftChairMover mover, int chairIndex,
+            LiftChairSeatLayout seatLayout = LiftChairSeatLayout.SingleChairSolo)
         {
             _currentLift = lift;
             _liftProgress = 0f;
             ReachedLiftTop = false;
             _chairMover = mover;
             _assignedChairIndex = chairIndex;
+            _chairSeatLayout = seatLayout;
         }
 
         /// <summary>Set the position the skier should walk toward (lift bottom).</summary>
@@ -407,14 +423,7 @@ namespace SkiResortTycoon.UnityBridge
             {
                 Vector3 chairPos = _chairMover.GetUpChairPosition(_assignedChairIndex);
                 float progress = _chairMover.GetUpChairProgress(_assignedChairIndex);
-
-                if (progress >= 0.95f)
-                {
-                    ReachedLiftTop = true;
-                    _chairMover.ReleaseChair(_assignedChairIndex);
-                    _chairMover = null;
-                    _assignedChairIndex = -1;
-                }
+                Vector3 benchRight = _chairMover.GetBenchRightWorld();
 
                 // Tangent is lift direction
                 Vector3 start = V3f(_currentLift.StartPosition);
@@ -426,6 +435,23 @@ namespace SkiResortTycoon.UnityBridge
                 // Sit in the chair: lower Y and nudge forward
                 chairPos.y += SKIER_SEAT_Y_OFFSET;
                 chairPos += _currentTangent * SKIER_SEAT_FORWARD_OFFSET;
+
+                // Side-by-side on doubles, centered when riding alone
+                const float PAIR_HALF_WIDTH = 0.75f;
+                if (_chairSeatLayout == LiftChairSeatLayout.DoubleChairPairLeft)
+                    chairPos -= benchRight * PAIR_HALF_WIDTH;
+                else if (_chairSeatLayout == LiftChairSeatLayout.DoubleChairPairRight)
+                    chairPos += benchRight * PAIR_HALF_WIDTH;
+
+                if (progress >= 0.95f)
+                {
+                    ReachedLiftTop = true;
+                    _chairMover.ReleaseChair(_assignedChairIndex);
+                    _chairMover = null;
+                    _assignedChairIndex = -1;
+                    _chairSeatLayout = LiftChairSeatLayout.SingleChairSolo;
+                }
+
                 return chairPos;
             }
 

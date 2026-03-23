@@ -262,6 +262,8 @@ namespace SkiResortTycoon.Saving
         // Lift: exact chair and progress (0-1 along lift) so we can restore seat
         public int liftChairIndex;
         public float liftChairProgress;
+        /// <summary>0=1-seat or double solo center, 2=left pair, 3=right pair (see LiftChairSeatLayout).</summary>
+        public int liftChairSeatSlot;
         // Fall state: exact spot and timer
         public bool isFalling;
         public bool hasFallen;

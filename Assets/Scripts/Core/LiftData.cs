@@ -41,7 +41,22 @@ namespace SkiResortTycoon.Core
 
         public static bool IsImplemented(LiftType type)
         {
-            return type == LiftType.OneSeatLowSpeed || type == LiftType.OneSeatHighSpeed;
+            switch (type)
+            {
+                case LiftType.OneSeatLowSpeed:
+                case LiftType.OneSeatHighSpeed:
+                case LiftType.TwoSeatLowSpeed:
+                case LiftType.TwoSeatHighSpeed:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>How many skiers can share one chair (visual + occupancy).</summary>
+        public static int GetSeatsPerChair(LiftType type)
+        {
+            return type == LiftType.TwoSeatLowSpeed || type == LiftType.TwoSeatHighSpeed ? 2 : 1;
         }
 
         /// <summary>Next tier in the upgrade chain, or null if already max.</summary>

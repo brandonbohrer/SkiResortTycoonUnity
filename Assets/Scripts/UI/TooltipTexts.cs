@@ -79,10 +79,10 @@ namespace SkiResortTycoon.UI
             public const string OneSeatHighSpeedContent = "Build a 1-seat high-speed lift.\n1.5x chair speed and higher capacity than low-speed.";
 
             public const string TwoSeatLowSpeedHeader = "2-Seat Low Speed";
-            public const string TwoSeatLowSpeedContent = "Build a 2-seat low-speed lift.\nNot implemented yet.";
+            public const string TwoSeatLowSpeedContent = "Build a 2-seat low-speed lift.\nWider chairs; pairs can load together in the queue.";
 
             public const string TwoSeatHighSpeedHeader = "2-Seat High Speed";
-            public const string TwoSeatHighSpeedContent = "Build a 2-seat high-speed lift.\nNot implemented yet.";
+            public const string TwoSeatHighSpeedContent = "Build a 2-seat high-speed lift.\n1.5x chair speed, wider chairs, pair loading.";
             
             public static string GetCategoryContent(string categoryName)
             {

@@ -50,6 +50,8 @@ namespace SkiResortTycoon.UnityBridge
         private const int SlotsPerLane = 5;
         private const float SnakeSlotSpacing = 2.0f;
         private const float SnakeLaneSpacing = 2.5f;
+        /// <summary>Lateral spacing between two skiers in the same queue row (2-seat lifts).</summary>
+        private const float QueuePairSideSpacing = 0.55f;
 
         public LiftQueueManager(System.Func<Vector3, float?> terrainHeightSampler)
         {
@@ -127,12 +129,39 @@ namespace SkiResortTycoon.UnityBridge
             if (!_liftStates.TryGetValue(liftId, out LiftQueueState liftState))
                 return false;
 
-            if (!TryGetRoundRobinFrontReady(liftState, out int selectedTrailId, out int frontSkierId))
+            if (!TryGetRoundRobinFrontBoarding(liftState, out int selectedTrailId, out bool pairMode, out int primarySkierId))
                 return false;
             if (assignment.FeederTrailId != selectedTrailId)
                 return false;
 
-            return frontSkierId == skierId;
+            // Pair boarding is driven only by the front skier (index 0); partner is pulled in the same frame.
+            return skierId == primarySkierId;
+        }
+
+        /// <summary>
+        /// If this skier is the primary front skier and a pair load is ready, returns the second skier id.
+        /// </summary>
+        public bool TryGetPairBoardingPartner(int skierId, int liftId, out int partnerSkierId)
+        {
+            partnerSkierId = -1;
+            if (!_skierAssignments.TryGetValue(skierId, out SkierAssignment assignment))
+                return false;
+            if (assignment.LiftId != liftId)
+                return false;
+            if (!_liftStates.TryGetValue(liftId, out LiftQueueState liftState))
+                return false;
+            if (LiftTypeSpecs.GetSeatsPerChair(liftState.Lift.Type) < 2)
+                return false;
+            if (!TryGetRoundRobinFrontBoarding(liftState, out int selectedTrailId, out bool pairMode, out int primarySkierId))
+                return false;
+            if (assignment.FeederTrailId != selectedTrailId || skierId != primarySkierId || !pairMode)
+                return false;
+            if (!liftState.FeederQueues.TryGetValue(selectedTrailId, out FeederQueueState feeder))
+                return false;
+            if (feeder.SkierIds.Count < 2)
+                return false;
+            partnerSkierId = feeder.SkierIds[1];
+            return true;
         }
 
         /// <summary>Clear all queue state (for restore-from-save).</summary>
@@ -221,6 +250,31 @@ namespace SkiResortTycoon.UnityBridge
             AdvanceRoundRobinCursorAfterService(liftState, assignment.FeederTrailId);
         }
 
+        /// <summary>Remove two front skiers from the same feeder and advance round-robin once (pair load).</summary>
+        public void NotifyPairBoarded(int skierIdA, int skierIdB)
+        {
+            if (!_skierAssignments.TryGetValue(skierIdA, out SkierAssignment a))
+                return;
+            if (!_skierAssignments.TryGetValue(skierIdB, out SkierAssignment b))
+                return;
+            if (a.LiftId != b.LiftId || a.FeederTrailId != b.FeederTrailId)
+                return;
+            if (!_liftStates.TryGetValue(a.LiftId, out LiftQueueState liftState))
+                return;
+            if (!liftState.FeederQueues.TryGetValue(a.FeederTrailId, out FeederQueueState feederState))
+                return;
+
+            RemoveSkierFromFeederQueue(feederState, skierIdA);
+            RemoveSkierFromFeederQueue(feederState, skierIdB);
+
+            _skierAssignments.Remove(skierIdA);
+            _skierAssignments.Remove(skierIdB);
+            _skierReadyForBoarding.Remove(skierIdA);
+            _skierReadyForBoarding.Remove(skierIdB);
+
+            AdvanceRoundRobinCursorAfterService(liftState, a.FeederTrailId);
+        }
+
         private static void RemoveSkierFromFeederQueue(FeederQueueState feederState, int skierId)
         {
             if (feederState == null) return;
@@ -279,16 +333,18 @@ namespace SkiResortTycoon.UnityBridge
             return ids;
         }
 
-        private bool TryGetRoundRobinFrontReady(LiftQueueState liftState, out int selectedTrailId, out int frontSkierId)
+        private bool TryGetRoundRobinFrontBoarding(LiftQueueState liftState, out int selectedTrailId, out bool pairMode, out int primarySkierId)
         {
             selectedTrailId = -1;
-            frontSkierId = -1;
+            pairMode = false;
+            primarySkierId = -1;
 
             List<int> orderedIds = GetOrderedTrailIds(liftState);
             int queueCount = orderedIds.Count;
             if (queueCount == 0)
                 return false;
 
+            int seatsPerChair = LiftTypeSpecs.GetSeatsPerChair(liftState.Lift.Type);
             int start = Mathf.Clamp(liftState.RoundRobinCursor, 0, queueCount - 1);
             for (int i = 0; i < queueCount; i++)
             {
@@ -298,12 +354,37 @@ namespace SkiResortTycoon.UnityBridge
                 if (feeder.SkierIds.Count == 0)
                     continue;
 
-                int candidateSkierId = feeder.SkierIds[0];
-                if (!_skierReadyForBoarding.TryGetValue(candidateSkierId, out bool isReady) || !isReady)
+                int skier0 = feeder.SkierIds[0];
+                if (!_skierReadyForBoarding.TryGetValue(skier0, out bool ready0) || !ready0)
                     continue;
 
+                if (seatsPerChair < 2)
+                {
+                    selectedTrailId = trailId;
+                    pairMode = false;
+                    primarySkierId = skier0;
+                    return true;
+                }
+
+                // 2-seat lifts: pair only when two skiers are at the front row and both ready; else solo if alone.
+                if (feeder.SkierIds.Count >= 2)
+                {
+                    int skier1 = feeder.SkierIds[1];
+                    if (_skierReadyForBoarding.TryGetValue(skier1, out bool ready1) && ready1)
+                    {
+                        selectedTrailId = trailId;
+                        pairMode = true;
+                        primarySkierId = skier0;
+                        return true;
+                    }
+
+                    // Second skier not ready yet — wait so they can load together when applicable.
+                    continue;
+                }
+
                 selectedTrailId = trailId;
-                frontSkierId = candidateSkierId;
+                pairMode = false;
+                primarySkierId = skier0;
                 return true;
             }
 
@@ -330,11 +411,21 @@ namespace SkiResortTycoon.UnityBridge
             liftState.RoundRobinCursor = (servedIndex + 1) % queueCount;
         }
 
+        private static int QueueSeatsPerRow(LiftData lift)
+        {
+            if (lift == null) return 1;
+            return Mathf.Max(1, LiftTypeSpecs.GetSeatsPerChair(lift.Type));
+        }
+
         private Vector3 ComputeSlotWorldPosition(LiftQueueState liftState, FeederQueueState feederState, int queueIndex)
         {
+            int spr = QueueSeatsPerRow(liftState.Lift);
+            int rowAlong = queueIndex / spr;
+            int seatInRow = queueIndex % spr;
+
             if (feederState.Trail == null || feederState.Trail.WorldPathPoints == null || feederState.Trail.WorldPathPoints.Count < 2)
             {
-                return ComputeFallbackSlotPosition(liftState.Lift, queueIndex);
+                return ComputeFallbackSlotPosition(liftState.Lift, rowAlong, seatInRow, spr);
             }
 
             EnsureTrailCache(feederState);
@@ -361,17 +452,22 @@ namespace SkiResortTycoon.UnityBridge
             toTrail.y = 0f;
             float bridgeDist = toTrail.magnitude;
             Vector3 bridgeDir = bridgeDist > 0.01f ? toTrail / bridgeDist : Vector3.zero;
+            Vector3 bridgePerp = Vector3.Cross(Vector3.up, bridgeDir).normalized;
+            if (bridgePerp.sqrMagnitude < 0.001f)
+                bridgePerp = Vector3.right;
 
             int bridgeSlots = Mathf.Max(0, Mathf.FloorToInt(bridgeDist / SnakeSlotSpacing));
 
-            if (queueIndex <= bridgeSlots)
+            if (rowAlong <= bridgeSlots)
             {
-                float distFromLift = queueIndex * SnakeSlotSpacing;
+                float distFromLift = rowAlong * SnakeSlotSpacing;
                 Vector3 pos = liftBottom + bridgeDir * Mathf.Min(distFromLift, bridgeDist);
+                if (spr > 1)
+                    pos += bridgePerp * (seatInRow - (spr - 1) * 0.5f) * QueuePairSideSpacing;
                 return GroundToTerrain(pos);
             }
 
-            int snakeIndex = queueIndex - bridgeSlots - 1;
+            int snakeIndex = rowAlong - bridgeSlots - 1;
             int lane = snakeIndex / SlotsPerLane;
             int posInLane = snakeIndex % SlotsPerLane;
 
@@ -384,14 +480,16 @@ namespace SkiResortTycoon.UnityBridge
                 ? SampleTrailCenterlineAtDistance(feederState, rawDistance)
                 : SampleTrailStartExtension(feederState.Trail, -rawDistance);
 
+            Vector3 trailDirForPair = ComputeTrailDirectionAtBoarding(feederState);
+            Vector3 perpDir = Vector3.Cross(Vector3.up, trailDirForPair).normalized;
+            if (perpDir.sqrMagnitude < 0.001f)
+                perpDir = Vector3.right;
+
             if (lane > 0)
-            {
-                Vector3 trailDir = ComputeTrailDirectionAtBoarding(feederState);
-                Vector3 perpDir = Vector3.Cross(Vector3.up, trailDir).normalized;
-                if (perpDir.sqrMagnitude < 0.001f)
-                    perpDir = Vector3.right;
                 slotPos += perpDir * lane * SnakeLaneSpacing;
-            }
+
+            if (spr > 1)
+                slotPos += perpDir * (seatInRow - (spr - 1) * 0.5f) * QueuePairSideSpacing;
 
             slotPos = AvoidLodgeFootprints(feederState, Mathf.Max(0f, rawDistance), slotPos);
             return GroundToTerrain(slotPos);
@@ -410,7 +508,7 @@ namespace SkiResortTycoon.UnityBridge
             return dir.normalized;
         }
 
-        private Vector3 ComputeFallbackSlotPosition(LiftData lift, int queueIndex)
+        private Vector3 ComputeFallbackSlotPosition(LiftData lift, int rowAlong, int seatInRow, int spr)
         {
             Vector3 liftStart = new Vector3(lift.StartPosition.X, lift.StartPosition.Y, lift.StartPosition.Z);
             Vector3 liftEnd = new Vector3(lift.EndPosition.X, lift.EndPosition.Y, lift.EndPosition.Z);
@@ -421,8 +519,8 @@ namespace SkiResortTycoon.UnityBridge
             else
                 dir.Normalize();
 
-            int lane = queueIndex / SlotsPerLane;
-            int posInLane = queueIndex % SlotsPerLane;
+            int lane = rowAlong / SlotsPerLane;
+            int posInLane = rowAlong % SlotsPerLane;
             float alongOffset = (lane % 2 == 0)
                 ? posInLane * SnakeSlotSpacing
                 : (SlotsPerLane - 1 - posInLane) * SnakeSlotSpacing;
@@ -432,6 +530,8 @@ namespace SkiResortTycoon.UnityBridge
                 perpDir = Vector3.right;
 
             Vector3 pos = liftStart - dir * (BoardOffsetMeters + alongOffset) + perpDir * lane * SnakeLaneSpacing;
+            if (spr > 1)
+                pos += perpDir * (seatInRow - (spr - 1) * 0.5f) * QueuePairSideSpacing;
             return GroundToTerrain(pos);
         }
 

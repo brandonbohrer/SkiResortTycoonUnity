@@ -271,6 +271,7 @@ namespace SkiResortTycoon.UnityBridge
                     liftChairIndex = vs.Motion.AssignedChairIndex;
                     liftChairProgress = vs.Motion.ChairMover.GetUpChairProgress(liftChairIndex);
                 }
+                int liftChairSeatSlot = (int)vs.Motion.ChairSeatLayout;
                 float inLodgeX = 0f, inLodgeY = 0f, inLodgeZ = 0f;
                 float lodgeRestTimer = 0f;
                 if (vs.Phase == SkierPhase.InLodge && vs.TargetLodge != null)
@@ -320,6 +321,7 @@ namespace SkiResortTycoon.UnityBridge
                     queuedTrailId = vs.QueuedTrailId,
                     liftChairIndex = liftChairIndex,
                     liftChairProgress = liftChairProgress,
+                    liftChairSeatSlot = liftChairSeatSlot,
                     isFalling = vs.IsFalling,
                     hasFallen = vs.HasFallen,
                     fallenTimerMinutes = vs.FallenTimerMinutes,
@@ -536,8 +538,12 @@ namespace SkiResortTycoon.UnityBridge
                         mover.ApplyPhaseImmediate();
                         _liftPhasesRestoredForLoad.Add(restoreLift.LiftId);
                     }
-                    mover.ClaimChairByIndex(dto.liftChairIndex);
-                    motion.SetLift(restoreLift, mover, dto.liftChairIndex);
+                    mover.RegisterRestoredRider(dto.liftChairIndex);
+                    var seatLayout = (LiftChairSeatLayout)Mathf.Clamp(dto.liftChairSeatSlot, 0, 3);
+                    if (seatLayout == LiftChairSeatLayout.SingleChairSolo &&
+                        LiftTypeSpecs.GetSeatsPerChair(restoreLift.Type) >= 2)
+                        seatLayout = LiftChairSeatLayout.DoubleChairSoloCenter;
+                    motion.SetLift(restoreLift, mover, dto.liftChairIndex, seatLayout);
                     phase = SkierPhase.RidingLift;
                     skier.CurrentState = SkierState.RidingLift;
                     skier.CurrentLiftId = restoreLift.LiftId;
@@ -1565,78 +1571,134 @@ namespace SkiResortTycoon.UnityBridge
                     return;
                 }
 
-                // Try to claim a chair BEFORE transitioning to RidingLift
                 LiftChairMover chairMover = null;
-                int chairIndex = -1;
                 if (_liftBuilder.PrefabBuilder != null)
                 {
                     var liftInst = _liftBuilder.PrefabBuilder.GetLiftInstance(vs.CurrentLift.LiftId);
                     if (liftInst != null && liftInst.Root != null)
-                    {
                         chairMover = liftInst.Root.GetComponent<LiftChairMover>();
-                        if (chairMover != null)
-                        {
-                            chairIndex = chairMover.ClaimNearestUpChair(vs.GameObject.transform.position);
-                        }
-                    }
                 }
 
-                // No chair available → stay at bottom, wait in queue, retry next frame
-                if (chairMover == null || chairIndex < 0)
+                if (chairMover == null)
                 {
-                    // Track wait time — accumulate real-time seconds (game speed already affects game minutes)
-                    vs.IsWaitingForChair = true;
-                    float effectiveDelta = Time.deltaTime;
-                    if (_simRunner.Sim?.TimeController != null)
-                        effectiveDelta = _simRunner.Sim.TimeController.GetEffectiveDeltaTime(Time.deltaTime);
-                    vs.CurrentLiftWaitSeconds += effectiveDelta;
-                    vs.Skier.Needs.AddWaitTime(effectiveDelta);
+                    AccumulateLiftWait(vs);
                     return;
                 }
 
-                // Chair claimed — log total wait if they waited
-                if (vs.IsWaitingForChair && vs.CurrentLiftWaitSeconds > 0f)
+                // Pair load: front two skiers board the same chair together (side by side).
+                if (_liftQueueManager.TryGetPairBoardingPartner(vs.Skier.SkierId, vs.CurrentLift.LiftId, out int partnerId))
                 {
-                    float waitGameMinutes = 0f;
-                    if (_simRunner.Sim?.TimeSystem != null)
-                        waitGameMinutes = vs.CurrentLiftWaitSeconds * _simRunner.Sim.TimeSystem.SpeedMinutesPerSecond;
-                    _skierAI.OnLiftWait(vs.Skier, waitGameMinutes);
-                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Waited {vs.CurrentLiftWaitSeconds:F1}s ({waitGameMinutes:F0} game min) for lift {vs.CurrentLift.LiftId}");
+                    var partnerVs = FindVisualSkierById(partnerId);
+                    if (partnerVs != null &&
+                        chairMover.TryClaimPairBoarding(
+                            vs.GameObject.transform.position,
+                            partnerVs.GameObject.transform.position,
+                            out int pairChairIndex))
+                    {
+                        _liftQueueManager.NotifyPairBoarded(vs.Skier.SkierId, partnerId);
+                        LogLiftWaitIfNeeded(vs);
+                        LogLiftWaitIfNeeded(partnerVs);
+                        CompleteSkierBoardingAndRideLift(vs, chairMover, pairChairIndex, LiftChairSeatLayout.DoubleChairPairLeft);
+                        CompleteSkierBoardingAndRideLift(partnerVs, chairMover, pairChairIndex, LiftChairSeatLayout.DoubleChairPairRight);
+                        if (_enableDebugLogs)
+                            Debug.Log($"[Skier {vs.Skier.SkierId}] + [{partnerId}] paired boarding lift {vs.CurrentLift.LiftId}, chair {pairChairIndex}");
+                    }
+                    else
+                        AccumulateLiftWait(vs);
+
+                    return;
                 }
+
+                // Solo: one-seat lift, or only one skier in the front row on a double chair (center seat).
+                if (!chairMover.TryClaimSoloBoarding(vs.GameObject.transform.position, out int chairIndex))
+                {
+                    AccumulateLiftWait(vs);
+                    return;
+                }
+
+                LogLiftWaitIfNeeded(vs);
+                _liftQueueManager.NotifySkierBoarded(vs.Skier.SkierId);
+
+                LiftChairSeatLayout soloLayout = LiftTypeSpecs.GetSeatsPerChair(vs.CurrentLift.Type) >= 2
+                    ? LiftChairSeatLayout.DoubleChairSoloCenter
+                    : LiftChairSeatLayout.SingleChairSolo;
+
+                CompleteSkierBoardingAndRideLift(vs, chairMover, chairIndex, soloLayout);
+
+                if (_enableDebugLogs)
+                    Debug.Log($"[Skier {vs.Skier.SkierId}] Boarding lift {vs.CurrentLift.LiftId}, chair {chairIndex}, layout {soloLayout}");
+            }
+        }
+
+        private static VisualSkier FindVisualSkierById(List<VisualSkier> active, int skierId)
+        {
+            if (active == null) return null;
+            for (int i = 0; i < active.Count; i++)
+            {
+                var v = active[i];
+                if (v?.Skier != null && v.Skier.SkierId == skierId)
+                    return v;
+            }
+            return null;
+        }
+
+        private VisualSkier FindVisualSkierById(int skierId) => FindVisualSkierById(_activeSkiers, skierId);
+
+        private void AccumulateLiftWait(VisualSkier vs)
+        {
+            vs.IsWaitingForChair = true;
+            float effectiveDelta = Time.deltaTime;
+            if (_simRunner.Sim?.TimeController != null)
+                effectiveDelta = _simRunner.Sim.TimeController.GetEffectiveDeltaTime(Time.deltaTime);
+            vs.CurrentLiftWaitSeconds += effectiveDelta;
+            vs.Skier.Needs.AddWaitTime(effectiveDelta);
+        }
+
+        private void LogLiftWaitIfNeeded(VisualSkier vs)
+        {
+            if (!vs.IsWaitingForChair || vs.CurrentLiftWaitSeconds <= 0f)
+            {
                 vs.IsWaitingForChair = false;
                 vs.CurrentLiftWaitSeconds = 0f;
-                _liftQueueManager.NotifySkierBoarded(vs.Skier.SkierId);
-                vs.IsQueuedForLift = false;
-                vs.QueuedLiftId = -1;
-                vs.QueuedTrailId = int.MinValue;
-
-                // Chair claimed — now transition to riding
-                vs.LiftsRidden.Add(vs.CurrentLift.LiftId);
-                
-                // Update skier state so PlanNewGoal knows where we are
-                vs.Skier.CurrentState = SkierState.RidingLift;
-                vs.Skier.CurrentLiftId = vs.CurrentLift.LiftId;
-                
-                // Advance goal past the RideLift step
-                if (vs.Skier.CurrentGoal != null && !vs.Skier.CurrentGoal.IsComplete)
-                {
-                    var step = vs.Skier.CurrentGoal.GetCurrentStep();
-                    if (step != null && step.StepType == PathStepType.RideLift && step.EntityId == vs.CurrentLift.LiftId)
-                    {
-                        vs.Skier.CurrentGoal.AdvanceToNextStep();
-                        if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Goal advanced past RideLift({vs.CurrentLift.LiftId}) → next step ready");
-                    }
-                }
-                
-                // Transition to riding the lift with the claimed chair
-                vs.Phase = SkierPhase.RidingLift;
-                vs.Motion.SetLift(vs.CurrentLift, chairMover, chairIndex);
-                
-                // Fire traffic event: skier entered lift
-                if (Traffic != null) Traffic.FireLiftEntered(vs.Skier.SkierId, vs.CurrentLift.LiftId);
-                
-                if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Boarding lift {vs.CurrentLift.LiftId}, chair {chairIndex}");
+                return;
             }
+
+            float waitGameMinutes = 0f;
+            if (_simRunner.Sim?.TimeSystem != null)
+                waitGameMinutes = vs.CurrentLiftWaitSeconds * _simRunner.Sim.TimeSystem.SpeedMinutesPerSecond;
+            _skierAI.OnLiftWait(vs.Skier, waitGameMinutes);
+            if (_enableDebugLogs)
+                Debug.Log($"[Skier {vs.Skier.SkierId}] Waited {vs.CurrentLiftWaitSeconds:F1}s ({waitGameMinutes:F0} game min) for lift {vs.CurrentLift.LiftId}");
+            vs.IsWaitingForChair = false;
+            vs.CurrentLiftWaitSeconds = 0f;
+        }
+
+        private void CompleteSkierBoardingAndRideLift(VisualSkier vs, LiftChairMover mover, int chairIndex, LiftChairSeatLayout layout)
+        {
+            vs.IsQueuedForLift = false;
+            vs.QueuedLiftId = -1;
+            vs.QueuedTrailId = int.MinValue;
+
+            vs.LiftsRidden.Add(vs.CurrentLift.LiftId);
+            vs.Skier.CurrentState = SkierState.RidingLift;
+            vs.Skier.CurrentLiftId = vs.CurrentLift.LiftId;
+
+            if (vs.Skier.CurrentGoal != null && !vs.Skier.CurrentGoal.IsComplete)
+            {
+                var step = vs.Skier.CurrentGoal.GetCurrentStep();
+                if (step != null && step.StepType == PathStepType.RideLift && step.EntityId == vs.CurrentLift.LiftId)
+                {
+                    vs.Skier.CurrentGoal.AdvanceToNextStep();
+                    if (_enableDebugLogs)
+                        Debug.Log($"[Skier {vs.Skier.SkierId}] Goal advanced past RideLift({vs.CurrentLift.LiftId}) → next step ready");
+                }
+            }
+
+            vs.Phase = SkierPhase.RidingLift;
+            vs.Motion.SetLift(vs.CurrentLift, mover, chairIndex, layout);
+
+            if (Traffic != null)
+                Traffic.FireLiftEntered(vs.Skier.SkierId, vs.CurrentLift.LiftId);
         }
 
         private float GetQueueSlotRefreshInterval()

@@ -323782,6 +323782,7 @@ MonoBehaviour:
   _lowSpeedChairSpeed: 3
   _highSpeedMultiplier: 1.5
   _oneSeatSpacingMultiplier: 2
+  _twoSeatChairWidthScale: 1.25
   _cableUpX: 1.5
   _cableDownX: -1.5
   _cableY: 7.8

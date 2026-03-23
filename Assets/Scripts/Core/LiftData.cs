@@ -1,3 +1,5 @@
+using System;
+
 namespace SkiResortTycoon.Core
 {
     /// <summary>
@@ -40,6 +42,29 @@ namespace SkiResortTycoon.Core
         public static bool IsImplemented(LiftType type)
         {
             return type == LiftType.OneSeatLowSpeed || type == LiftType.OneSeatHighSpeed;
+        }
+
+        /// <summary>Next tier in the upgrade chain, or null if already max.</summary>
+        public static LiftType? GetNextUpgrade(LiftType current)
+        {
+            if (current == LiftType.TwoSeatHighSpeed) return null;
+            return (LiftType)((int)current + 1);
+        }
+
+        /// <summary>
+        /// Cash cost for upgrading <paramref name="from"/> to the next tier (same lift geometry).
+        /// Scales slightly with lift length and vertical.
+        /// </summary>
+        public static int GetUpgradeCostToNext(LiftType from, LiftData lift, LiftSystem liftSystem)
+        {
+            if (lift == null || liftSystem == null) return 10_000;
+            if (!GetNextUpgrade(from).HasValue) return 0;
+
+            int variablePortion = (int)(lift.Length * liftSystem.CostPerTile
+                + lift.ElevationGain * liftSystem.CostPerHeightUnit);
+            int step = (int)from;
+            int baseStep = 8_000 + step * 5_000;
+            return Math.Max(5_000, baseStep + variablePortion / 5);
         }
     }
     

@@ -183,8 +183,13 @@ namespace SkiResortTycoon.UI
         [SerializeField] private Button _findButton;
         [SerializeField] private Button _followButton;
 
+        [Header("Lift Upgrade (only when a lift is selected)")]
+        [Tooltip("Assign the Upgrade button from the context window. Hidden for trails, lodges, skiers, and build modes.")]
+        [SerializeField] private Button _liftUpgradeButton;
+
         // ── Internal state ────────────────────────────────────────────
         private SelectableStructure _current;
+        private GameObject _liftUpgradeTooltipOverlay;
         private bool  _visible;
         private float _targetAlpha;
 
@@ -317,6 +322,9 @@ namespace SkiResortTycoon.UI
                 SetupTooltip(_followButton, TooltipTexts.ContextWindow.FollowHeader, TooltipTexts.ContextWindow.FollowContent);
             }
 
+            if (_liftUpgradeButton != null)
+                _liftUpgradeButton.onClick.AddListener(OnLiftUpgradeClicked);
+
             // Expand buttons start hidden; DifficultyPicker itself is never touched
             SetExpandButtonsActive(false);
 
@@ -389,6 +397,8 @@ namespace SkiResortTycoon.UI
                     SetActionButtons(find: true, follow: true, demolish: false);
                     break;
             }
+
+            UpdateLiftUpgradeButtonForSelection();
         }
 
         public void Hide()
@@ -398,6 +408,7 @@ namespace SkiResortTycoon.UI
             _liftBuildOnCancel   = null;
             CollapsePickerIfOpen();
             SetPanelVisible(false);
+            SetLiftUpgradeButtonVisible(false);
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -445,6 +456,7 @@ namespace SkiResortTycoon.UI
             if (_liftBuildConfirmButton != null) _liftBuildConfirmButton.gameObject.SetActive(false);
             if (_liftBuildCancelButton  != null) _liftBuildCancelButton.gameObject.SetActive(false);
             SetActionButtons(find: false, follow: false, demolish: false);
+            SetLiftUpgradeButtonVisible(false);
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -497,6 +509,7 @@ namespace SkiResortTycoon.UI
             // Reveal Confirm / Cancel buttons
             if (_liftBuildConfirmButton != null) _liftBuildConfirmButton.gameObject.SetActive(true);
             if (_liftBuildCancelButton  != null) _liftBuildCancelButton.gameObject.SetActive(true);
+            SetLiftUpgradeButtonVisible(false);
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -622,6 +635,8 @@ namespace SkiResortTycoon.UI
             SetText(_ridesAllTimeValue, ridesAllTime.ToString("N0"));
             SetText(_avgWaitTimeValue,  "—");           // not yet implemented
             SetText(_liftUpkeepValue,   "$500 / day");  // matches ExpenseTracker.CostPerLift
+
+            RefreshLiftUpgradeButtonAppearance();
         }
 
         private string LiftTypeLabel(LiftType type)
@@ -816,6 +831,147 @@ namespace SkiResortTycoon.UI
             if (_demolishButton != null) _demolishButton.gameObject.SetActive(demolish);
         }
 
+        private void UpdateLiftUpgradeButtonForSelection()
+        {
+            bool liftSelected = _current != null && _current.Type == StructureType.Lift;
+            SetLiftUpgradeButtonVisible(liftSelected);
+            if (liftSelected)
+                RefreshLiftUpgradeButtonAppearance();
+        }
+
+        private void SetLiftUpgradeButtonVisible(bool visible)
+        {
+            if (_liftUpgradeButton != null)
+                _liftUpgradeButton.gameObject.SetActive(visible);
+        }
+
+        private void EnsureLiftUpgradeTooltipOverlay()
+        {
+            if (_liftUpgradeButton == null || _liftUpgradeTooltipOverlay != null) return;
+
+            _liftUpgradeTooltipOverlay = new GameObject("LiftUpgradeTooltipHit", typeof(RectTransform), typeof(Image), typeof(TooltipTrigger));
+            _liftUpgradeTooltipOverlay.transform.SetParent(_liftUpgradeButton.transform, false);
+            _liftUpgradeTooltipOverlay.transform.SetAsLastSibling();
+
+            var rt = _liftUpgradeTooltipOverlay.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+
+            var img = _liftUpgradeTooltipOverlay.GetComponent<Image>();
+            img.color = new Color(1f, 1f, 1f, 0.01f);
+            img.raycastTarget = false;
+        }
+
+        private void ApplyLiftUpgradeTooltip(string header, string content, bool useOverlayForTooltip)
+        {
+            EnsureLiftUpgradeTooltipOverlay();
+            SetupTooltip(_liftUpgradeButton, header, content);
+
+            if (_liftUpgradeTooltipOverlay != null)
+            {
+                var img = _liftUpgradeTooltipOverlay.GetComponent<Image>();
+                if (img != null) img.raycastTarget = useOverlayForTooltip;
+
+                var overlayTt = _liftUpgradeTooltipOverlay.GetComponent<TooltipTrigger>();
+                if (overlayTt != null)
+                    overlayTt.SetContent(header, content);
+            }
+        }
+
+        /// <summary>
+        /// Tooltip + interactable state for the lift upgrade button (only valid while a lift is selected).
+        /// </summary>
+        private void RefreshLiftUpgradeButtonAppearance()
+        {
+            if (_liftUpgradeButton == null) return;
+
+            var lift = _current?.LiftData;
+            var liftBuilder = FindObjectOfType<LiftBuilder>();
+            liftBuilder?.EnsureReady();
+            var liftSystem = liftBuilder != null ? liftBuilder.LiftSystem : null;
+
+            if (liftBuilder == null || liftSystem == null)
+            {
+                _liftUpgradeButton.interactable = false;
+                ApplyLiftUpgradeTooltip(
+                    TooltipTexts.ContextWindow.LiftUpgradeMaxHeader,
+                    "Lift system is not available.",
+                    useOverlayForTooltip: true);
+                return;
+            }
+
+            var next = lift != null ? LiftTypeSpecs.GetNextUpgrade(lift.Type) : null;
+            if (lift == null || next == null)
+            {
+                _liftUpgradeButton.interactable = false;
+                ApplyLiftUpgradeTooltip(
+                    TooltipTexts.ContextWindow.LiftUpgradeMaxHeader,
+                    TooltipTexts.ContextWindow.LiftUpgradeMaxContent,
+                    useOverlayForTooltip: true);
+                return;
+            }
+
+            int cost = LiftTypeSpecs.GetUpgradeCostToNext(lift.Type, lift, liftSystem);
+            string nextName = LiftTypeSpecs.GetDisplayName(next.Value);
+            string affordContent =
+                $"Upgrade to {nextName}.\nCost: ${cost:N0}.";
+
+            int money = -1;
+            var sim = FindObjectOfType<SimulationRunner>()?.Sim;
+            if (sim?.State != null)
+                money = sim.State.Money;
+
+            bool canAfford = money < 0 || money >= cost;
+
+            if (!canAfford)
+            {
+                _liftUpgradeButton.interactable = false;
+                ApplyLiftUpgradeTooltip(
+                    TooltipTexts.ContextWindow.LiftUpgradeCannotAffordHeader,
+                    $"Not enough cash.\nCost: ${cost:N0}.",
+                    useOverlayForTooltip: true);
+                return;
+            }
+
+            _liftUpgradeButton.interactable = true;
+            ApplyLiftUpgradeTooltip(
+                TooltipTexts.ContextWindow.LiftUpgradeHeader,
+                affordContent,
+                useOverlayForTooltip: false);
+        }
+
+        private void OnLiftUpgradeClicked()
+        {
+            if (_current == null || _current.Type != StructureType.Lift || _liftUpgradeButton == null || !_liftUpgradeButton.interactable)
+                return;
+
+            var lift = _current.LiftData;
+            if (lift == null) return;
+
+            var liftBuilder = FindObjectOfType<LiftBuilder>();
+            if (liftBuilder == null)
+            {
+                NotificationManager.Instance?.ShowError("Lift system not available.");
+                return;
+            }
+
+            liftBuilder.EnsureReady();
+
+            if (!liftBuilder.TryUpgradeLift(lift, out SelectableStructure newRoot, out string err))
+            {
+                NotificationManager.Instance?.ShowError(err);
+                RefreshLiftUpgradeButtonAppearance();
+                return;
+            }
+
+            if (newRoot != null && StructureSelectionManager.Instance != null)
+                StructureSelectionManager.Instance.SelectStructure(newRoot);
+            else
+                PopulateLift();
+        }
+
         private static void SetText(TextMeshProUGUI label, string text, Color? color = null)
         {
             if (label == null) return;
@@ -972,6 +1128,7 @@ namespace SkiResortTycoon.UI
             if (_liftBuildConfirmButton != null) _liftBuildConfirmButton.gameObject.SetActive(false);
             if (_liftBuildCancelButton  != null) _liftBuildCancelButton.gameObject.SetActive(false);
             SetActionButtons(find: false, follow: false, demolish: false);
+            SetLiftUpgradeButtonVisible(false);
         }
 
         /// <summary>
@@ -1059,6 +1216,7 @@ namespace SkiResortTycoon.UI
             // Confirm/Cancel visible immediately for lodge building
             if (_liftBuildConfirmButton != null) _liftBuildConfirmButton.gameObject.SetActive(true);
             if (_liftBuildCancelButton  != null) _liftBuildCancelButton.gameObject.SetActive(true);
+            SetLiftUpgradeButtonVisible(false);
         }
 
         private void OnLiftBuildConfirm()

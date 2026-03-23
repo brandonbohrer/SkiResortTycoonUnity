@@ -96,6 +96,9 @@ namespace SkiResortTycoon.UnityBridge
             ? (Vector3?)MountainManager.ToUnityVector3(_currentLift.StartPosition) : null;
         public LiftPrefabBuilder PrefabBuilder => _prefabBuilder;
         public LiftType SelectedLiftType => _selectedLiftType;
+
+        /// <summary>Creates the lift system if needed (e.g. UI before the first Update).</summary>
+        public void EnsureReady() => EnsureInitialized();
         
         void Start()
         {
@@ -375,6 +378,68 @@ namespace SkiResortTycoon.UnityBridge
                 OnLiftPlaced?.Invoke(selectable);
             else
                 OnLiftCancelled?.Invoke(); // treat failed confirm as cancel
+        }
+
+        /// <summary>
+        /// Upgrades an existing lift by one tier (core data, money, visuals). Returns false if nothing changed.
+        /// When the prefab is rebuilt, <paramref name="upgradedRoot"/> is the new selectable root (may differ from the previous instance).
+        /// </summary>
+        public bool TryUpgradeLift(LiftData lift, out SelectableStructure upgradedRoot, out string errorMessage)
+        {
+            upgradedRoot = null;
+            errorMessage = "";
+            EnsureInitialized();
+            if (_liftSystem == null)
+            {
+                errorMessage = "Lift system not available.";
+                return false;
+            }
+            if (lift == null)
+            {
+                errorMessage = "No lift selected.";
+                return false;
+            }
+            if (_liftSystem.GetLift(lift.LiftId) != lift)
+            {
+                errorMessage = "Lift not found.";
+                return false;
+            }
+
+            var next = LiftTypeSpecs.GetNextUpgrade(lift.Type);
+            if (!next.HasValue)
+            {
+                errorMessage = "Already at max level.";
+                return false;
+            }
+
+            int cost = LiftTypeSpecs.GetUpgradeCostToNext(lift.Type, lift, _liftSystem);
+            if (_simulationRunner == null || _simulationRunner.Sim == null || _simulationRunner.Sim.State == null)
+            {
+                errorMessage = "Simulation not ready.";
+                return false;
+            }
+            if (_simulationRunner.Sim.State.Money < cost)
+            {
+                errorMessage = $"Not enough money. Need ${cost:N0}.";
+                return false;
+            }
+
+            _simulationRunner.Sim.State.Money -= cost;
+            lift.Type = next.Value;
+            lift.Capacity = LiftTypeSpecs.GetCapacityPerHour(next.Value);
+            lift.BuildCost += cost;
+
+            if (_prefabBuilder != null)
+            {
+                var root = _prefabBuilder.BuildLift(lift);
+                upgradedRoot = root != null ? root.GetComponent<SelectableStructure>() : null;
+            }
+
+            var skierViz = FindObjectOfType<SkierVisualizer>();
+            if (skierViz != null)
+                skierViz.InvalidateAllSkierGoals();
+
+            return true;
         }
 
         /// <summary>

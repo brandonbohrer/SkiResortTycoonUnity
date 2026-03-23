@@ -128,6 +128,11 @@ namespace SkiResortTycoon.UI
             public const string FollowHeader = "Follow";
             public const string FollowContent = "Enter first-person view and see through this skier's eyes.\nExit with Escape or WASD.";
             
+            public const string LiftUpgradeHeader = "Upgrade Lift";
+            public const string LiftUpgradeMaxHeader = "Cannot Upgrade";
+            public const string LiftUpgradeMaxContent = "This lift is already at max level.";
+            public const string LiftUpgradeCannotAffordHeader = "Cannot Upgrade";
+            
             // Build Buttons
             public const string ConfirmHeader = "Confirm";
             public const string ConfirmContent = "Confirm and build this structure.";

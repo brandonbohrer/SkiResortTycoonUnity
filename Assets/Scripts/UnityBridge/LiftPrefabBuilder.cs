@@ -46,6 +46,8 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private float _lowSpeedChairSpeed = 3f;
         [SerializeField] private float _highSpeedMultiplier = 1.5f;
         [SerializeField] private float _oneSeatSpacingMultiplier = 2f; // doubles chair spacing vs old baseline
+        [Tooltip("Local X scale on chair roots for 1-seat lifts (fraction of prefab width).")]
+        [SerializeField] private float _oneSeatChairWidthScale = 0.75f;
         [Tooltip("Extra local X scale on chair roots for 2-seat lifts (bench width). Assumes chair forward follows the cable; adjust axis in code if your mesh uses Z for width.")]
         [SerializeField] private float _twoSeatChairWidthScale = 1.25f;
 
@@ -379,7 +381,7 @@ namespace SkiResortTycoon.UnityBridge
                     Quaternion upSegRot = GetPolylineRotStatic(anchorPoints, cumT, t, liftRot);
                     var chairUp = Instantiate(_chairPrefab, upPos, upSegRot, inst.ChairsUpParent.transform);
                     chairUp.name = $"Chair_{i}";
-                    ApplyTwoSeatChairWidthScale(chairUp.transform, liftType);
+                    ApplyChairWidthScaleForLiftType(chairUp.transform, liftType);
                     inst.ChairsUp.Add(chairUp);
 
                     // Down lane: top → base (reversed along polyline)
@@ -388,12 +390,17 @@ namespace SkiResortTycoon.UnityBridge
                     Quaternion downSegRot = GetPolylineRotStatic(anchorPoints, cumT, 1f - t, liftRot) * Quaternion.Euler(0f, 180f, 0f);
                     var chairDown = Instantiate(_chairPrefab, downPos, downSegRot, inst.ChairsDownParent.transform);
                     chairDown.name = $"Chair_{i}";
-                    ApplyTwoSeatChairWidthScale(chairDown.transform, liftType);
+                    ApplyChairWidthScaleForLiftType(chairDown.transform, liftType);
                     inst.ChairsDown.Add(chairDown);
                 }
             }
 
             return inst;
+        }
+
+        private static bool IsOneSeatLiftType(LiftType type)
+        {
+            return type == LiftType.OneSeatLowSpeed || type == LiftType.OneSeatHighSpeed;
         }
 
         private static bool IsTwoSeatLiftType(LiftType type)
@@ -402,15 +409,22 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         /// <summary>
-        /// Widen chair mesh along local X for 2-seat variants (option A: single prefab, non-uniform scale).
+        /// Non-uniform local X scale on chair roots: narrower 1-seat, wider 2-seat (same prefab).
         /// </summary>
-        private void ApplyTwoSeatChairWidthScale(Transform chairRoot, LiftType liftType)
+        private void ApplyChairWidthScaleForLiftType(Transform chairRoot, LiftType liftType)
         {
-            if (chairRoot == null || !IsTwoSeatLiftType(liftType) || _twoSeatChairWidthScale <= 0f)
-                return;
+            if (chairRoot == null) return;
+
+            float widthMult = 0f;
+            if (IsTwoSeatLiftType(liftType) && _twoSeatChairWidthScale > 0f)
+                widthMult = _twoSeatChairWidthScale;
+            else if (IsOneSeatLiftType(liftType) && _oneSeatChairWidthScale > 0f)
+                widthMult = _oneSeatChairWidthScale;
+
+            if (widthMult <= 0f) return;
 
             Vector3 s = chairRoot.localScale;
-            chairRoot.localScale = new Vector3(s.x * _twoSeatChairWidthScale, s.y, s.z);
+            chairRoot.localScale = new Vector3(s.x * widthMult, s.y, s.z);
         }
 
         private float GetChairSpacingForType(LiftType type)

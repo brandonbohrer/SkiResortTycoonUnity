@@ -1090,6 +1090,31 @@ namespace SkiResortTycoon.UI
             if (StructureSelectionManager.Instance != null)
                 StructureSelectionManager.Instance.DeselectStructure();
 
+            // Lift: must remove from core lift system + connectivity + queues,
+            // not just destroy the visual root.
+            if (target.Type == StructureType.Lift)
+            {
+                int liftId = target.StructureId;
+                if (liftId <= 0 && target.LiftData != null)
+                    liftId = target.LiftData.LiftId;
+
+                var liftBuilder = FindObjectOfType<LiftBuilder>();
+                if (liftBuilder != null && liftBuilder.LiftSystem != null && liftId > 0)
+                {
+                    liftBuilder.LiftSystem.RemoveLiftById(liftId);
+                    liftBuilder.PrefabBuilder?.DestroyLift(liftId);
+                    liftBuilder.Connectivity?.RebuildConnections();
+
+                    var skierVisualizer = FindObjectOfType<SkierVisualizer>();
+                    if (skierVisualizer != null)
+                        skierVisualizer.NotifyLiftDemolished(liftId);
+                }
+
+                if (target.gameObject != null)
+                    Destroy(target.gameObject);
+                return;
+            }
+
             // Trail: remove from TrailSystem so the visualizer doesn't recreate it
             if (target.Type == StructureType.Trail && target.TrailData != null)
             {

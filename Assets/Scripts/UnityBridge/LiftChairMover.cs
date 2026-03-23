@@ -13,8 +13,10 @@ namespace SkiResortTycoon.UnityBridge
     /// Also provides chair-claim API so that skiers can attach to a specific
     /// up-lane chair and ride it to the top.
     ///
+    /// Execution order is early so chair transforms are current when skiers Tick.
     /// Attached automatically by <see cref="LiftPrefabBuilder.BuildLift"/>.
     /// </summary>
+    [DefaultExecutionOrder(-100)]
     public class LiftChairMover : MonoBehaviour
     {
         [Header("Speed")]
@@ -166,6 +168,36 @@ namespace SkiResortTycoon.UnityBridge
             
             float baseT = (float)index / _chairCount;
             return (baseT + _phase) % 1f;
+        }
+
+        /// <summary>Up-lane chair transform (rotation is piecewise-constant between cable anchors).</summary>
+        public Transform GetUpChairTransform(int index)
+        {
+            if (!_initialised || index < 0 || index >= _chairCount)
+                return null;
+            return _chairsUp[index] != null ? _chairsUp[index].transform : null;
+        }
+
+        /// <summary>
+        /// Index of the polyline segment (0 .. anchorCount-2) the given up-lane chair is on.
+        /// Changes when the chair passes a cable anchor / pillar.
+        /// </summary>
+        public int GetUpChairPolylineSegmentIndex(int index)
+        {
+            if (!_initialised || index < 0 || index >= _chairCount ||
+                _anchors == null || _anchors.Length < 2 || _segStartT == null)
+                return 0;
+
+            float t = Mathf.Clamp01(GetUpChairProgress(index));
+
+            for (int i = 0; i < _anchors.Length - 1; i++)
+            {
+                float tEnd = _segStartT[i + 1];
+                if (t <= tEnd || i == _anchors.Length - 2)
+                    return i;
+            }
+
+            return _anchors.Length - 2;
         }
 
         /// <summary>

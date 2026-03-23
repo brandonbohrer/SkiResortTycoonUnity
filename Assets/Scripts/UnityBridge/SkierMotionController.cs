@@ -23,9 +23,9 @@ namespace SkiResortTycoon.UnityBridge
     /// * Distance-based trail following (float metres along polyline)
     ///   instead of 0-1 progress.  This decouples speed from trail length
     ///   and makes slope-speed trivial.
-    /// * Anti-teleport: every frame, the final world position is capped via
-    ///   Vector3.MoveTowards so the model can never jump more than
-    ///   maxSpeed * 1.5 * dt in a single frame.
+    /// * Anti-teleport: most phases cap movement via Vector3.MoveTowards.
+    ///   Chair-attached lift riding skips that cap (see Tick) so the skier
+    ///   stays locked to the chair instead of lagging and “scooting”.
     /// * Rotation is computed from the trail tangent (or lift direction),
     ///   never from position-delta, eliminating wrong-facing on transitions.
     /// * Lateral offset uses multi-octave Perlin noise for natural S-curves
@@ -62,6 +62,12 @@ namespace SkiResortTycoon.UnityBridge
         private LiftChairMover _chairMover;
         private int _assignedChairIndex = -1;
         private LiftChairSeatLayout _chairSeatLayout = LiftChairSeatLayout.SingleChairSolo;
+
+        /// <summary>Cable polyline segment index while on a chair; refreshed when crossing an anchor.</summary>
+        private int _liftChairCableSegment = -1;
+
+        /// <summary>Chair rotation when the cable segment last changed (constant between pillars).</summary>
+        private Quaternion _liftSeatBasisRotation = Quaternion.identity;
 
         // ── Walk-to-lift target ─────────────────────────────────────────
         private Vector3 _walkTarget;
@@ -237,6 +243,7 @@ namespace SkiResortTycoon.UnityBridge
             _chairMover = null;
             _assignedChairIndex = -1;
             _chairSeatLayout = LiftChairSeatLayout.SingleChairSolo;
+            _liftChairCableSegment = -1;
         }
 
         /// <summary>
@@ -252,6 +259,7 @@ namespace SkiResortTycoon.UnityBridge
             _chairMover = mover;
             _assignedChairIndex = chairIndex;
             _chairSeatLayout = seatLayout;
+            _liftChairCableSegment = -1;
         }
 
         /// <summary>Set the position the skier should walk toward (lift bottom).</summary>
@@ -369,6 +377,12 @@ namespace SkiResortTycoon.UnityBridge
             {
                 _smoothedPosition = targetPos;
             }
+            // Riding on a claimed chair: target already follows the polyline; MoveTowards
+            // lags behind and fights sudden target shifts at cable anchors → visible scoot.
+            else if (phase == 1 && _chairMover != null && _assignedChairIndex >= 0)
+            {
+                _smoothedPosition = targetPos;
+            }
             else
             {
                 float maxSpeed = Mathf.Max(BaseSkiSpeed, LiftSpeed, WalkSpeed) * 2f;
@@ -414,34 +428,65 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (_currentLift == null) return _smoothedPosition;
 
-            // Offset to lower skier from chair pivot into the seat
-            const float SKIER_SEAT_Y_OFFSET = -3.25f;
-            const float SKIER_SEAT_FORWARD_OFFSET = 0.5f;
+            // Seat offset in chair-local space (pivot → seat). Refreshed with cable segment.
+            const float SKIER_SEAT_LOCAL_Y = -3.25f;
+            const float SKIER_SEAT_LOCAL_Z = 0.5f;
+            const float PAIR_HALF_WIDTH = 0.75f;
 
-            // ── Chair-attached mode: snap to chair position ──────────
+            // ── Chair-attached mode: seat in chair frame; basis updates at each anchor ──
             if (_chairMover != null && _assignedChairIndex >= 0)
             {
-                Vector3 chairPos = _chairMover.GetUpChairPosition(_assignedChairIndex);
+                Transform chairTr = _chairMover.GetUpChairTransform(_assignedChairIndex);
+                Vector3 chairPivot = _chairMover.GetUpChairPosition(_assignedChairIndex);
                 float progress = _chairMover.GetUpChairProgress(_assignedChairIndex);
-                Vector3 benchRight = _chairMover.GetBenchRightWorld();
 
-                // Tangent is lift direction
-                Vector3 start = V3f(_currentLift.StartPosition);
-                Vector3 end = V3f(_currentLift.EndPosition);
-                Vector3 liftDir = (end - start);
-                liftDir.y = 0;
-                if (liftDir.sqrMagnitude > 0.001f) _currentTangent = liftDir.normalized;
+                if (chairTr == null)
+                {
+                    Vector3 benchRight = _chairMover.GetBenchRightWorld();
+                    Vector3 start = V3f(_currentLift.StartPosition);
+                    Vector3 end = V3f(_currentLift.EndPosition);
+                    Vector3 liftDir = (end - start);
+                    liftDir.y = 0;
+                    if (liftDir.sqrMagnitude > 0.001f) _currentTangent = liftDir.normalized;
+                    chairPivot.y += SKIER_SEAT_LOCAL_Y;
+                    chairPivot += _currentTangent * SKIER_SEAT_LOCAL_Z;
+                    if (_chairSeatLayout == LiftChairSeatLayout.DoubleChairPairLeft)
+                        chairPivot -= benchRight * PAIR_HALF_WIDTH;
+                    else if (_chairSeatLayout == LiftChairSeatLayout.DoubleChairPairRight)
+                        chairPivot += benchRight * PAIR_HALF_WIDTH;
 
-                // Sit in the chair: lower Y and nudge forward
-                chairPos.y += SKIER_SEAT_Y_OFFSET;
-                chairPos += _currentTangent * SKIER_SEAT_FORWARD_OFFSET;
+                    if (progress >= 0.95f)
+                    {
+                        ReachedLiftTop = true;
+                        _chairMover.ReleaseChair(_assignedChairIndex);
+                        _chairMover = null;
+                        _assignedChairIndex = -1;
+                        _chairSeatLayout = LiftChairSeatLayout.SingleChairSolo;
+                        _liftChairCableSegment = -1;
+                    }
 
-                // Side-by-side on doubles, centered when riding alone
-                const float PAIR_HALF_WIDTH = 0.75f;
+                    return chairPivot;
+                }
+
+                int seg = _chairMover.GetUpChairPolylineSegmentIndex(_assignedChairIndex);
+                if (seg != _liftChairCableSegment)
+                {
+                    _liftChairCableSegment = seg;
+                    _liftSeatBasisRotation = chairTr.rotation;
+                    Vector3 f = chairTr.forward;
+                    f.y = 0f;
+                    if (f.sqrMagnitude > 0.0001f)
+                        _currentTangent = f.normalized;
+                }
+
+                float pairX = 0f;
                 if (_chairSeatLayout == LiftChairSeatLayout.DoubleChairPairLeft)
-                    chairPos -= benchRight * PAIR_HALF_WIDTH;
+                    pairX = -PAIR_HALF_WIDTH;
                 else if (_chairSeatLayout == LiftChairSeatLayout.DoubleChairPairRight)
-                    chairPos += benchRight * PAIR_HALF_WIDTH;
+                    pairX = PAIR_HALF_WIDTH;
+
+                Vector3 localSeat = new Vector3(pairX, SKIER_SEAT_LOCAL_Y, SKIER_SEAT_LOCAL_Z);
+                Vector3 seatWorld = chairPivot + _liftSeatBasisRotation * localSeat;
 
                 if (progress >= 0.95f)
                 {
@@ -450,9 +495,10 @@ namespace SkiResortTycoon.UnityBridge
                     _chairMover = null;
                     _assignedChairIndex = -1;
                     _chairSeatLayout = LiftChairSeatLayout.SingleChairSolo;
+                    _liftChairCableSegment = -1;
                 }
 
-                return chairPos;
+                return seatWorld;
             }
 
             // ── Fallback: independent movement (no chair available) ──
@@ -475,7 +521,8 @@ namespace SkiResortTycoon.UnityBridge
             
             // Add chair height so skier rides at chair level
             const float CHAIR_HEIGHT = 7.825f;
-            pos.y += CHAIR_HEIGHT + SKIER_SEAT_Y_OFFSET;
+            const float SKIER_SEAT_FALLBACK_Y = -3.25f;
+            pos.y += CHAIR_HEIGHT + SKIER_SEAT_FALLBACK_Y;
 
             // Tangent is lift direction
             Vector3 liftDirFb = (endFb - startFb);

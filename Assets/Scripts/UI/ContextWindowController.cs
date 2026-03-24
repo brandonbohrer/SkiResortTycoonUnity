@@ -1221,19 +1221,38 @@ namespace SkiResortTycoon.UI
 
         private void OnLiftBuildConfirm()
         {
+            bool closeDock = IsLiftOrTrailBuildContextActive();
             var cb = _liftBuildOnConfirm;
             _liftBuildOnConfirm = null;
             _liftBuildOnCancel  = null;
             cb?.Invoke();
+            if (closeDock)
+                CloseDockIfLiftOrTrailBuild();
             // Context window will be updated by LiftBuildTool.HandleLiftPlaced → ShowStructure
         }
 
         private void OnLiftBuildCancel()
         {
+            bool closeDock = IsLiftOrTrailBuildContextActive();
             var cb = _liftBuildOnCancel;
             _liftBuildOnConfirm = null;
             _liftBuildOnCancel  = null;
             cb?.Invoke();
+            if (closeDock)
+                CloseDockIfLiftOrTrailBuild();
+        }
+
+        private bool IsLiftOrTrailBuildContextActive()
+        {
+            return (_trailBuildSection != null && _trailBuildSection.activeSelf)
+                || (_liftBuildSection != null && _liftBuildSection.activeSelf);
+        }
+
+        private static void CloseDockIfLiftOrTrailBuild()
+        {
+            var dock = UnityEngine.Object.FindFirstObjectByType<DockController>();
+            if (dock != null)
+                dock.CloseDock();
         }
 
         // ── Action button callbacks ───────────────────────────────────────

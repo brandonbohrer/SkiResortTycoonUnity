@@ -55,8 +55,12 @@ namespace SkiResortTycoon.UI
         private Color[] _originalColors;
         private TrailDrawMode _activeTrailMode = TrailDrawMode.Paint;
         private Color _paintOriginal, _lineOriginal, _penOriginal;
+        /// <summary>Orange sub-button tint only after the user picks a mode in this dock session.</summary>
+        private bool _trailSubOptionChosen;
         private LiftType _selectedLiftType = LiftType.OneSeatLowSpeed;
         private Color _oneSeatLowOriginal, _oneSeatHighOriginal, _twoSeatLowOriginal, _twoSeatHighOriginal;
+        /// <summary>Orange sub-button tint only after the user picks a lift type in this dock session.</summary>
+        private bool _liftSubOptionChosen;
         private bool _skipNextToolClose;
 
         private const float WidthMin = 10f;
@@ -205,6 +209,28 @@ namespace SkiResortTycoon.UI
 
                 SetButtonColor(_categories[i].button, i == index, _originalColors[i]);
             }
+
+            GameObject opened = index >= 0 && index < _categories.Length ? _categories[index].subRow : null;
+            if (opened != null)
+            {
+                var root = opened.transform;
+                if (SubRowContains(root, _paintModeButton))
+                {
+                    _trailSubOptionChosen = false;
+                    RefreshTrailModeButtons();
+                }
+                if (SubRowContains(root, _oneSeatLowSpeedButton))
+                {
+                    _liftSubOptionChosen = false;
+                    RefreshLiftTypeButtons();
+                }
+            }
+        }
+
+        private static bool SubRowContains(Transform subRowRoot, Component control)
+        {
+            if (subRowRoot == null || control == null) return false;
+            return control.transform.IsChildOf(subRowRoot);
         }
 
         private void OnToolChanged(BaseTool tool)
@@ -254,6 +280,7 @@ namespace SkiResortTycoon.UI
 
         private void SetTrailMode(TrailDrawMode mode)
         {
+            _trailSubOptionChosen = true;
             _activeTrailMode = mode;
             RefreshTrailModeButtons();
 
@@ -286,17 +313,17 @@ namespace SkiResortTycoon.UI
 
         private void RefreshTrailModeButtons()
         {
-            SetModeButtonColor(_paintModeButton, _paintOriginal, _activeTrailMode == TrailDrawMode.Paint);
-            SetModeButtonColor(_lineModeButton,  _lineOriginal,  _activeTrailMode == TrailDrawMode.Line);
-            SetModeButtonColor(_penModeButton,   _penOriginal,   _activeTrailMode == TrailDrawMode.Pen);
+            SetModeButtonColor(_paintModeButton, _paintOriginal, _trailSubOptionChosen && _activeTrailMode == TrailDrawMode.Paint);
+            SetModeButtonColor(_lineModeButton,  _lineOriginal,  _trailSubOptionChosen && _activeTrailMode == TrailDrawMode.Line);
+            SetModeButtonColor(_penModeButton,   _penOriginal,   _trailSubOptionChosen && _activeTrailMode == TrailDrawMode.Pen);
         }
 
         private void RefreshLiftTypeButtons()
         {
-            SetModeButtonColor(_oneSeatLowSpeedButton,  _oneSeatLowOriginal,  _selectedLiftType == LiftType.OneSeatLowSpeed);
-            SetModeButtonColor(_oneSeatHighSpeedButton, _oneSeatHighOriginal, _selectedLiftType == LiftType.OneSeatHighSpeed);
-            SetModeButtonColor(_twoSeatLowSpeedButton,  _twoSeatLowOriginal,  _selectedLiftType == LiftType.TwoSeatLowSpeed);
-            SetModeButtonColor(_twoSeatHighSpeedButton, _twoSeatHighOriginal, _selectedLiftType == LiftType.TwoSeatHighSpeed);
+            SetModeButtonColor(_oneSeatLowSpeedButton,  _oneSeatLowOriginal,  _liftSubOptionChosen && _selectedLiftType == LiftType.OneSeatLowSpeed);
+            SetModeButtonColor(_oneSeatHighSpeedButton, _oneSeatHighOriginal, _liftSubOptionChosen && _selectedLiftType == LiftType.OneSeatHighSpeed);
+            SetModeButtonColor(_twoSeatLowSpeedButton,  _twoSeatLowOriginal,  _liftSubOptionChosen && _selectedLiftType == LiftType.TwoSeatLowSpeed);
+            SetModeButtonColor(_twoSeatHighSpeedButton, _twoSeatHighOriginal, _liftSubOptionChosen && _selectedLiftType == LiftType.TwoSeatHighSpeed);
         }
 
         private static void SetModeButtonColor(Button btn, Color original, bool active)
@@ -318,7 +345,7 @@ namespace SkiResortTycoon.UI
         
         private void OnLiftTypeClicked(LiftType liftType)
         {
-            // Set selected type and refresh button highlights
+            _liftSubOptionChosen = true;
             _selectedLiftType = liftType;
             RefreshLiftTypeButtons();
 

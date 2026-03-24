@@ -81166,7 +81166,8 @@ MonoBehaviour:
   _contextWindow: {fileID: 0}
   _pointerCursor: {fileID: 2800000, guid: 5f1a697ab164d4cf49ad50100f3ecea9, type: 3}
   _pointerHotspot: {x: 50, y: 0}
-  _cursorScale: 0.15
+  _cursorMaxScreenPixels: 28
+  _cursorScale: 0.7
   _raycastDistance: 1000
   _selectableLayers:
     serializedVersion: 2

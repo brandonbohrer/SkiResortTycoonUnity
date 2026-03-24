@@ -253,6 +253,8 @@ namespace SkiResortTycoon.UI
                 _gameUICanvasGroup.interactable   = true;
                 _gameUICanvasGroup.blocksRaycasts = true;
             }
+
+            ClearUISelection();
         }
 
         // ── Game Menu ────────────────────────────────────────────────────
@@ -295,7 +297,19 @@ namespace SkiResortTycoon.UI
                 _gameUICanvasGroup.blocksRaycasts = true;
             }
 
+            ClearUISelection();
             OnMenuClosed?.Invoke();
+        }
+
+        /// <summary>
+        /// Clears the EventSystem's selected game object so residual UI focus
+        /// doesn't consume scroll/keyboard input after overlays close.
+        /// </summary>
+        private static void ClearUISelection()
+        {
+            var es = UnityEngine.EventSystems.EventSystem.current;
+            if (es != null && es.currentSelectedGameObject != null)
+                es.SetSelectedGameObject(null);
         }
 
         private void QuitGame()

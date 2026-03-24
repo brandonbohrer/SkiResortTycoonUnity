@@ -139,7 +139,7 @@ namespace SkiResortTycoon.UI
             _sharedPointerData.position = Input.mousePosition;
             _sharedRaycastResults.Clear();
             es.RaycastAll(_sharedPointerData, _sharedRaycastResults);
-            return _sharedRaycastResults.Count > 0;
+            return UIWorldPassthrough.HasBlockingHit(_sharedRaycastResults);
         }
         
         void Update()

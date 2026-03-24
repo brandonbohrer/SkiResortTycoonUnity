@@ -74,6 +74,10 @@ namespace SkiResortTycoon.UnityBridge
         private readonly List<GameObject> _anchorMarkers = new List<GameObject>();
         private Material _anchorMarkerMat;
 
+        // Throttle tree clearing during drags so it stays responsive
+        private float _lastTreeClearTime;
+        private const float TreeClearDragInterval = 0.12f;
+
         // ── Events ───────────────────────────────────────────────────────
         public event Action OnTrailCancelled;
         public event Action<TrailBuildState> OnStateChanged;
@@ -550,10 +554,25 @@ namespace SkiResortTycoon.UnityBridge
             EvaluateAnchorsToUnityList(_anchors, _committedPathCache);
             _previewRenderer.SetCommittedPath(_committedPathCache, _trailWidth);
 
-            if (_committedPathCache.Count >= 2)
-                TreeClearer.ClearTreesForPreview(_committedPathCache, _trailWidth * 0.5f);
+            bool isDragging = _isDraggingSegment || _isDraggingAnchor;
 
-            RebuildAnchorMarkers();
+            if (_committedPathCache.Count >= 2)
+            {
+                // During drags, run tree clearing on a throttle so we don't
+                // restore+re-scan all trees every single frame.
+                if (!isDragging || Time.time - _lastTreeClearTime >= TreeClearDragInterval)
+                {
+                    TreeClearer.ClearTreesForPreview(_committedPathCache, _trailWidth * 0.5f);
+                    _lastTreeClearTime = Time.time;
+                }
+            }
+
+            // During drags just reposition existing markers (cheap) instead of
+            // destroying and recreating every sphere primitive each frame.
+            if (isDragging)
+                UpdateAnchorMarkerPositions();
+            else
+                RebuildAnchorMarkers();
 
             if (_state == TrailBuildState.Placing)
                 RebuildPreviewSegment();
@@ -713,6 +732,31 @@ namespace SkiResortTycoon.UnityBridge
             _anchorMarkers.Clear();
         }
 
+        /// <summary>
+        /// Fast path for drag operations: repositions existing markers without
+        /// destroying / recreating GameObjects every frame.
+        /// </summary>
+        private void UpdateAnchorMarkerPositions()
+        {
+            int markerIdx = 0;
+            foreach (var a in _anchors)
+            {
+                if (a.IsCurveControl) continue;
+                if (markerIdx < _anchorMarkers.Count && _anchorMarkers[markerIdx] != null)
+                {
+                    Vector3 pos = ProjectOntoTerrain(MountainManager.ToUnityVector3(a.Position));
+                    pos.y += 0.2f;
+                    _anchorMarkers[markerIdx].transform.position = pos;
+                }
+                markerIdx++;
+            }
+
+            // If anchor count changed (e.g. segment drag inserted a hidden CC anchor),
+            // fall back to full rebuild once.
+            if (markerIdx != _anchorMarkers.Count)
+                RebuildAnchorMarkers();
+        }
+
         // ── Segment drag ─────────────────────────────────────────────
 
         /// <summary>
@@ -730,6 +774,8 @@ namespace SkiResortTycoon.UnityBridge
             float bestDist = maxDist;
             float bestT = 0f;
 
+            Vector2 clickXZ = new Vector2(worldPos.x, worldPos.z);
+
             for (int seg = 0; seg < _anchors.Count - 1; seg++)
             {
                 const int steps = 20;
@@ -737,7 +783,9 @@ namespace SkiResortTycoon.UnityBridge
                 {
                     float t = step / (float)steps;
                     Vector3 pt = EvaluateSegmentAt(_anchors[seg], _anchors[seg + 1], t);
-                    float dist = Vector3.Distance(pt, worldPos);
+                    // XZ distance only — Y offset on slopes inflates 3D distance
+                    // and makes segments nearly impossible to click on steep terrain.
+                    float dist = Vector2.Distance(new Vector2(pt.x, pt.z), clickXZ);
                     if (dist < bestDist)
                     {
                         bestDist = dist;
@@ -818,6 +866,7 @@ namespace SkiResortTycoon.UnityBridge
             _isDraggingSegment = false;
             _dragSegmentIndex = -1;
             _segDragTargetIdx = -1;
+            RebuildPreview();
         }
 
         /// <summary>
@@ -860,13 +909,14 @@ namespace SkiResortTycoon.UnityBridge
         {
             int bestIdx = -1;
             float bestDist = maxDist;
+            Vector2 clickXZ = new Vector2(worldPos.x, worldPos.z);
 
             for (int i = 0; i < _anchors.Count; i++)
             {
-                if (_anchors[i].IsCurveControl) continue; // hidden — not selectable
+                if (_anchors[i].IsCurveControl) continue;
 
                 Vector3 anchorPos = MountainManager.ToUnityVector3(_anchors[i].Position);
-                float dist = Vector3.Distance(anchorPos, worldPos);
+                float dist = Vector2.Distance(new Vector2(anchorPos.x, anchorPos.z), clickXZ);
                 if (dist < bestDist)
                 {
                     bestDist = dist;
@@ -917,6 +967,7 @@ namespace SkiResortTycoon.UnityBridge
         {
             _isDraggingAnchor = false;
             _dragAnchorIndex = -1;
+            RebuildPreview();
         }
 
         // ── Trail validation ─────────────────────────────────────────
@@ -1109,7 +1160,25 @@ namespace SkiResortTycoon.UnityBridge
         public Vector3? GetMountainPositionUnderMouse()
         {
             if (_camera == null || _mountainManager == null) return null;
-            return _mountainManager.RaycastMountain(_camera, Input.mousePosition);
+
+            Vector3? hit = _mountainManager.RaycastMountain(_camera, Input.mousePosition);
+            if (hit.HasValue) return hit;
+
+            // Fallback: project the mouse ray onto a horizontal plane at the last
+            // known cursor height. This covers mesh gaps and base-area edges where
+            // the mountain collider doesn't extend.
+            Ray ray = _camera.ScreenPointToRay(Input.mousePosition);
+            float fallbackY = _cursorWorldPos.y;
+            Plane ground = new Plane(Vector3.up, new Vector3(0f, fallbackY, 0f));
+            if (ground.Raycast(ray, out float dist))
+            {
+                Vector3 pt = ray.GetPoint(dist);
+                float? terrainY = _mountainManager.GetHeightAtWorldPos(pt);
+                if (terrainY.HasValue)
+                    pt.y = terrainY.Value;
+                return pt;
+            }
+            return null;
         }
 
         // ── State machine ────────────────────────────────────────────────

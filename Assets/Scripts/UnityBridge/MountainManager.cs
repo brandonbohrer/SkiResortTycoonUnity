@@ -19,7 +19,8 @@ namespace SkiResortTycoon.UnityBridge
 
         // Cached layer mask built from the mountain mesh's layer for fast single-hit raycasts
         private int _mountainLayerMask = -1;
-        private readonly RaycastHit[] _mouseRayHits = new RaycastHit[128];
+        private bool _hasDedicatedLayer;
+        private readonly RaycastHit[] _mouseRayHits = new RaycastHit[256];
         private readonly RaycastHit[] _heightRayHits = new RaycastHit[128];
         
         private Core.TerrainData _terrainData;
@@ -32,9 +33,15 @@ namespace SkiResortTycoon.UnityBridge
             _terrainData = new Core.TerrainData(_gridWidth, _gridHeight, seed: 0);
             
             if (_mountainMesh != null)
+            {
                 _mountainLayerMask = 1 << _mountainMesh.layer;
+                _hasDedicatedLayer = _mountainMesh.layer != 0;
+            }
             
-            Debug.Log($"[MountainManager] Grid initialized: {_gridWidth}x{_gridHeight}");
+            Debug.Log($"[MountainManager] Grid initialized: {_gridWidth}x{_gridHeight}" +
+                      (_mountainMesh != null
+                          ? $", mountain layer={_mountainMesh.layer} ({LayerMask.LayerToName(_mountainMesh.layer)}), dedicatedLayer={_hasDedicatedLayer}"
+                          : ", NO mountain mesh assigned"));
         }
         
         /// <summary>
@@ -76,8 +83,19 @@ namespace SkiResortTycoon.UnityBridge
             }
             
             Ray ray = camera.ScreenPointToRay(screenPosition);
+
+            // Fast path: when the mountain has a dedicated layer, a single layer-masked
+            // raycast avoids the buffer-overflow problem that occurs near the base where
+            // many structure colliders share the ray path.
+            if (_hasDedicatedLayer)
+            {
+                RaycastHit hit;
+                if (Physics.Raycast(ray, out hit, 10000f, _mountainLayerMask))
+                    return hit.point;
+                return null;
+            }
             
-            // Raycast against mountain - check the mountain itself or any of its children
+            // Fallback: multi-hit raycast when mountain is on default layer
             int hitCount = Physics.RaycastNonAlloc(ray, _mouseRayHits, 10000f);
             if (TryGetNearestMountainHit(_mouseRayHits, hitCount, out RaycastHit nearest))
                 return nearest.point;

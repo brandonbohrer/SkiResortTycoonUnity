@@ -889,7 +889,7 @@ namespace SkiResortTycoon.UnityBridge
             _uiPointerData.position = Input.mousePosition;
             _uiRaycastResults.Clear();
             es.RaycastAll(_uiPointerData, _uiRaycastResults);
-            return _uiRaycastResults.Count > 0;
+            return UIWorldPassthrough.HasBlockingHit(_uiRaycastResults);
         }
 
         /// <summary>

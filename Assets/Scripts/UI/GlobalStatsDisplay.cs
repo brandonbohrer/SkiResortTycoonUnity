@@ -102,13 +102,16 @@ namespace SkiResortTycoon.UI
                         parentImage.raycastTarget = true;
                         parentTrigger = parent.gameObject.AddComponent<TooltipTrigger>();
                         parentTrigger.SetContent(header, content);
-                        return; // Successfully added to parent, we're done
+                        if (parent.GetComponent<UIWorldPassthrough>() == null)
+                            parent.gameObject.AddComponent<UIWorldPassthrough>();
+                        return;
                     }
                 }
                 else
                 {
-                    // Parent already has tooltip, use it
                     parentTrigger.SetContent(header, content);
+                    if (parent.GetComponent<UIWorldPassthrough>() == null)
+                        parent.gameObject.AddComponent<UIWorldPassthrough>();
                     return;
                 }
             }
@@ -120,6 +123,8 @@ namespace SkiResortTycoon.UI
                 tooltipTrigger = text.gameObject.AddComponent<TooltipTrigger>();
             }
             tooltipTrigger.SetContent(header, content);
+            if (text.GetComponent<UIWorldPassthrough>() == null)
+                text.gameObject.AddComponent<UIWorldPassthrough>();
         }
 
         void Update()

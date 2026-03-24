@@ -225,8 +225,20 @@ namespace SkiResortTycoon.UI
 
                 if (_trailDrawer.State == TrailBuildState.Settled)
                 {
+                    // Scale detection radii with camera distance so segments and
+                    // anchors remain clickable at every zoom level.
+                    float anchorRadius = _trailDrawer.SnapRadius;
+                    float segRadius = _trailDrawer.TrailWidth * 0.75f;
+                    if (_cam != null)
+                    {
+                        float camDist = Vector3.Distance(_cam.transform.position, pos.Value);
+                        float minRadius = camDist * 0.035f;
+                        anchorRadius = Mathf.Max(anchorRadius, minRadius);
+                        segRadius = Mathf.Max(segRadius, minRadius);
+                    }
+
                     int anchorIdx = _trailDrawer.FindAnchorUnderPoint(
-                        pos.Value, _trailDrawer.SnapRadius);
+                        pos.Value, anchorRadius);
 
                     if (anchorIdx >= 0)
                     {
@@ -244,7 +256,7 @@ namespace SkiResortTycoon.UI
 
                     float paramT;
                     int segIdx = _trailDrawer.FindSegmentUnderPoint(
-                        pos.Value, _trailDrawer.TrailWidth * 0.75f, out paramT);
+                        pos.Value, segRadius, out paramT);
 
                     if (segIdx >= 0)
                     {
@@ -270,6 +282,9 @@ namespace SkiResortTycoon.UI
             if (Input.GetMouseButton(0))
             {
                 Vector3? pos = GetClickPosition();
+                // Fall back to last known position so drags never skip frames
+                // when the mountain raycast intermittently misses.
+                if (!pos.HasValue) pos = _lastValidWorldPos;
                 if (!pos.HasValue) return;
 
                 if (_trailDrawer.IsDraggingSegment)
@@ -282,7 +297,11 @@ namespace SkiResortTycoon.UI
                 {
                     if (!_penDragStarted)
                     {
-                        float dist = Vector3.Distance(pos.Value, _penMouseDownPos);
+                        // XZ distance so slope-induced Y offset doesn't inflate the
+                        // threshold and create a dead zone at the start of the drag.
+                        float dx = pos.Value.x - _penMouseDownPos.x;
+                        float dz = pos.Value.z - _penMouseDownPos.z;
+                        float dist = Mathf.Sqrt(dx * dx + dz * dz);
                         if (dist > PenDragThreshold)
                             _penDragStarted = true;
                     }

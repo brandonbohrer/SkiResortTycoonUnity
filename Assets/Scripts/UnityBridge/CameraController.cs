@@ -221,7 +221,7 @@ namespace SkiResortTycoon.UnityBridge
             _pointerEventData.position = Input.mousePosition;
             _uiRaycastHits.Clear();
             es.RaycastAll(_pointerEventData, _uiRaycastHits);
-            _pointerOverUI = _uiRaycastHits.Count > 0;
+            _pointerOverUI = SkiResortTycoon.UI.UIWorldPassthrough.HasBlockingHit(_uiRaycastHits);
         }
 
         // ─── Orbit (right-click drag) ───────────────────────────────────
@@ -549,12 +549,18 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
 
-            // Exit on WASD / arrow pan keys
+            // Exit on WASD / arrow pan keys or scroll wheel
             if (!IsTypingInInputField &&
                 (Input.GetKeyDown(KeyCode.W) || Input.GetKeyDown(KeyCode.A) ||
                  Input.GetKeyDown(KeyCode.S) || Input.GetKeyDown(KeyCode.D) ||
                  Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow) ||
                  Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.RightArrow)))
+            {
+                StopFollowing();
+                return;
+            }
+
+            if (Input.mouseScrollDelta.y != 0f)
             {
                 StopFollowing();
                 return;

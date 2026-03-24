@@ -80,6 +80,12 @@ namespace SkiResortTycoon.UI
 
                 SetButtonColor(_tabs[i].button, active, _originalColors[i]);
             }
+
+            // Clear EventSystem selection so the clicked tab button doesn't stay
+            // in the highlighted/selected visual state until something else is clicked.
+            var es = UnityEngine.EventSystems.EventSystem.current;
+            if (es != null)
+                es.SetSelectedGameObject(null);
         }
 
         private static void SetButtonColor(Button button, bool active, Color originalColor)

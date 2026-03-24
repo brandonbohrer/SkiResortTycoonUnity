@@ -81164,7 +81164,7 @@ MonoBehaviour:
   _camera: {fileID: 1543875374}
   _detailsPanel: {fileID: 0}
   _contextWindow: {fileID: 0}
-  _pointerCursor: {fileID: 2800000, guid: d107f443ff7d144e1a5f073ce28dc5cd, type: 3}
+  _pointerCursor: {fileID: 2800000, guid: 5f1a697ab164d4cf49ad50100f3ecea9, type: 3}
   _pointerHotspot: {x: 50, y: 0}
   _cursorScale: 0.15
   _raycastDistance: 1000
@@ -323782,6 +323782,7 @@ MonoBehaviour:
   _lowSpeedChairSpeed: 3
   _highSpeedMultiplier: 1.5
   _oneSeatSpacingMultiplier: 2
+  _oneSeatChairWidthScale: 0.75
   _twoSeatChairWidthScale: 1.25
   _cableUpX: 1.5
   _cableDownX: -1.5

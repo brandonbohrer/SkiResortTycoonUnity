@@ -22,9 +22,13 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private SkiResortTycoon.UI.ContextWindowController _contextWindow;
         
         [Header("Cursor Textures")]
+        [Tooltip("High-res art is shrunk to fit Max Screen Pixels (OS cursors are usually ~24–32 px on the longest side). Read/Write not required.")]
         [SerializeField] private Texture2D _pointerCursor;
         [SerializeField] private Vector2 _pointerHotspot = new Vector2(0, 0);
-        [SerializeField] [Range(0.1f, 2f)] private float _cursorScale = 1f;
+        [Tooltip("Longest side of the cursor in screen pixels after scaling (typical 24–32).")]
+        [SerializeField] [Range(8, 128)] private int _cursorMaxScreenPixels = 28;
+        [Tooltip("Extra multiplier on max size (< 1 = smaller, > 1 = larger).")]
+        [SerializeField] [Range(0.05f, 3f)] private float _cursorScale = 1f;
         
         [Header("Settings")]
         [SerializeField] private float _raycastDistance = 1000f;
@@ -41,9 +45,13 @@ namespace SkiResortTycoon.UnityBridge
         private const int MAX_ERRORS = 5; // Disable after too many errors
         private bool _handlingClick; // Re-entrancy guard for click handling
         
-        // Cached scaled cursor texture
+        // Cached runtime cursor (always sized for screen; source may be huge)
         private Texture2D _scaledCursorTexture;
-        private float _lastCursorScale = -1f;
+        private Texture2D _scaledTextureSourceRef;
+        private int _cachedMaxScreenPx = -1;
+        private float _cachedScaleMul = -1f;
+        private Vector2 _cachedHotspot = new Vector2(-1f, -1f);
+        private bool _cursorRebuildFailed;
         
         // Cached selectables (to avoid expensive FindObjectsOfType every frame)
         private System.Collections.Generic.List<SelectableStructure> _cachedSelectables = new System.Collections.Generic.List<SelectableStructure>();
@@ -89,6 +97,7 @@ namespace SkiResortTycoon.UnityBridge
             }
             
             Debug.Log($"[Selection] StructureSelectionManager started (enabled: {_enableSelection})");
+
         }
         
         /// <summary>
@@ -375,6 +384,52 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
         }
+
+        /// <summary>
+        /// Runs after <see cref="Update"/> so we can show the hand cursor over uGUI <see cref="Button"/>s.
+        /// <see cref="Update"/> calls <see cref="ResetCursor"/> whenever <see cref="IsPointerOverUIFresh"/> is true,
+        /// which includes buttons — this pass restores the same pointer texture used for selectable structures.
+        /// </summary>
+        private void LateUpdate()
+        {
+            if (_hasError) return;
+
+            try
+            {
+                if (IsPointerOverInteractableButton())
+                {
+                    SetPointerCursor();
+                    return;
+                }
+
+                if (!_enableSelection)
+                {
+                    ResetCursor();
+                    return;
+                }
+
+                if (UIManager.Instance != null && UIManager.Instance.HasActiveTool())
+                {
+                    ResetCursor();
+                    return;
+                }
+
+                if (IsPointerOverUIFresh())
+                {
+                    ResetCursor();
+                    return;
+                }
+
+                if (_hoveredStructure != null)
+                    SetPointerCursor();
+                else
+                    ResetCursor();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[Selection] Error in LateUpdate (cursor): {e.Message}");
+            }
+        }
         
         private void UpdateHover()
         {
@@ -658,19 +713,11 @@ namespace SkiResortTycoon.UnityBridge
         
         private void SetPointerCursor()
         {
-            // Use custom cursor texture if assigned, otherwise use default system cursor
             if (_pointerCursor != null)
             {
-                // Create scaled version if scale changed or doesn't exist
-                if (_scaledCursorTexture == null || Mathf.Abs(_lastCursorScale - _cursorScale) > 0.01f)
-                {
-                    CreateScaledCursorTexture();
-                }
-                
-                // Use scaled texture if it exists, otherwise use original
+                EnsureRuntimeCursorTexture();
                 Texture2D cursorToUse = _scaledCursorTexture != null ? _scaledCursorTexture : _pointerCursor;
-                Vector2 hotspot = _scaledCursorTexture != null ? _pointerHotspot * _cursorScale : _pointerHotspot;
-                
+                Vector2 hotspot = ComputeCursorHotspotForTexture(cursorToUse.width, cursorToUse.height);
                 Cursor.SetCursor(cursorToUse, hotspot, CursorMode.Auto);
                 _isCustomCursorActive = true;
             }
@@ -680,58 +727,143 @@ namespace SkiResortTycoon.UnityBridge
                 _isCustomCursorActive = false;
             }
         }
-        
-        private void CreateScaledCursorTexture()
+
+        private Vector2 ComputeCursorHotspotForTexture(int texW, int texH)
+        {
+            int sw = Mathf.Max(1, _pointerCursor.width);
+            int sh = Mathf.Max(1, _pointerCursor.height);
+            var h = new Vector2(
+                _pointerHotspot.x / sw * texW,
+                _pointerHotspot.y / sh * texH);
+            return ClampCursorHotspot(h, texW, texH);
+        }
+
+        private bool CursorCacheValid()
+        {
+            if (_pointerCursor == null) return false;
+            if (_pointerCursor != _scaledTextureSourceRef) return false;
+            if (_cachedMaxScreenPx != _cursorMaxScreenPixels) return false;
+            if (Mathf.Abs(_cachedScaleMul - _cursorScale) > 0.0001f) return false;
+            if ((_cachedHotspot - _pointerHotspot).sqrMagnitude > 0.0001f) return false;
+
+            if (_cursorRebuildFailed)
+                return true;
+
+            bool wantUnscaled = ShouldUseSourceCursorUnscaled();
+            if (wantUnscaled)
+                return _scaledCursorTexture == null;
+            return _scaledCursorTexture != null;
+        }
+
+        /// <summary>
+        /// Source texture already smaller than target — no GPU downscale needed.
+        /// </summary>
+        private bool ShouldUseSourceCursorUnscaled()
+        {
+            int ow = _pointerCursor.width;
+            int oh = _pointerCursor.height;
+            float srcMax = Mathf.Max(ow, oh);
+            float effectiveMax = Mathf.Max(4f, _cursorMaxScreenPixels * _cursorScale);
+            return srcMax <= effectiveMax + 0.5f;
+        }
+
+        private void CommitCursorCache()
+        {
+            _scaledTextureSourceRef = _pointerCursor;
+            _cachedMaxScreenPx = _cursorMaxScreenPixels;
+            _cachedScaleMul = _cursorScale;
+            _cachedHotspot = _pointerHotspot;
+        }
+
+        private void EnsureRuntimeCursorTexture()
         {
             if (_pointerCursor == null) return;
-            
-            // Clean up old scaled texture
+            if (CursorCacheValid())
+                return;
+
+            _cursorRebuildFailed = false;
+
             if (_scaledCursorTexture != null)
             {
                 Destroy(_scaledCursorTexture);
-            }
-            
-            // If scale is 1.0, don't create a scaled version
-            if (Mathf.Abs(_cursorScale - 1f) < 0.01f)
-            {
                 _scaledCursorTexture = null;
-                _lastCursorScale = _cursorScale;
+            }
+
+            int ow = _pointerCursor.width;
+            int oh = _pointerCursor.height;
+            if (ow < 1 || oh < 1) return;
+
+            float srcMax = Mathf.Max(ow, oh);
+            float effectiveMax = Mathf.Max(4f, _cursorMaxScreenPixels * _cursorScale);
+            float fit = effectiveMax / srcMax;
+
+            if (fit >= 0.999f)
+            {
+                CommitCursorCache();
                 return;
             }
-            
-            // Calculate new dimensions
-            int newWidth = Mathf.Max(1, Mathf.RoundToInt(_pointerCursor.width * _cursorScale));
-            int newHeight = Mathf.Max(1, Mathf.RoundToInt(_pointerCursor.height * _cursorScale));
-            
-            // Create scaled texture
-            _scaledCursorTexture = new Texture2D(newWidth, newHeight, TextureFormat.RGBA32, false);
-            _scaledCursorTexture.filterMode = FilterMode.Bilinear;
-            
-            // Scale the pixels
-            Color[] originalPixels = _pointerCursor.GetPixels();
-            Color[] scaledPixels = new Color[newWidth * newHeight];
-            
-            for (int y = 0; y < newHeight; y++)
+
+            int newW = Mathf.Max(1, Mathf.RoundToInt(ow * fit));
+            int newH = Mathf.Max(1, Mathf.RoundToInt(oh * fit));
+
+            if (TryDownscaleCursorViaBlit(newW, newH, out Texture2D built) && built != null)
             {
-                for (int x = 0; x < newWidth; x++)
-                {
-                    // Sample from original texture using bilinear filtering
-                    float u = x / (float)(newWidth - 1);
-                    float v = y / (float)(newHeight - 1);
-                    
-                    int origX = Mathf.RoundToInt(u * (_pointerCursor.width - 1));
-                    int origY = Mathf.RoundToInt(v * (_pointerCursor.height - 1));
-                    
-                    origX = Mathf.Clamp(origX, 0, _pointerCursor.width - 1);
-                    origY = Mathf.Clamp(origY, 0, _pointerCursor.height - 1);
-                    
-                    scaledPixels[y * newWidth + x] = originalPixels[origY * _pointerCursor.width + origX];
-                }
+                _scaledCursorTexture = built;
+                CommitCursorCache();
+                return;
             }
-            
-            _scaledCursorTexture.SetPixels(scaledPixels);
-            _scaledCursorTexture.Apply();
-            _lastCursorScale = _cursorScale;
+
+            Debug.LogWarning($"[StructureSelectionManager] Could not downscale cursor '{_pointerCursor.name}' — using source at full size.");
+            _cursorRebuildFailed = true;
+            CommitCursorCache();
+        }
+
+        private static Vector2 ClampCursorHotspot(Vector2 hotspot, int width, int height)
+        {
+            int w = Mathf.Max(1, width);
+            int h = Mathf.Max(1, height);
+            return new Vector2(
+                Mathf.Clamp(hotspot.x, 0f, w - 1),
+                Mathf.Clamp(hotspot.y, 0f, h - 1));
+        }
+        
+        /// <summary>
+        /// Downscale on GPU so huge import textures work without Read/Write.
+        /// </summary>
+        private bool TryDownscaleCursorViaBlit(int newW, int newH, out Texture2D result)
+        {
+            result = null;
+            RenderTexture rt = null;
+            RenderTexture prevActive = RenderTexture.active;
+            try
+            {
+                rt = RenderTexture.GetTemporary(newW, newH, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+                rt.filterMode = FilterMode.Point;
+                RenderTexture.active = rt;
+                Graphics.Blit(_pointerCursor, rt);
+                var tex = new Texture2D(newW, newH, TextureFormat.RGBA32, false);
+                tex.filterMode = FilterMode.Point;
+                tex.ReadPixels(new Rect(0, 0, newW, newH), 0, 0);
+                tex.Apply(false, false);
+                result = tex;
+                return true;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[StructureSelectionManager] Blit cursor resize failed: {e.Message}");
+                if (result != null)
+                {
+                    Destroy(result);
+                    result = null;
+                }
+                return false;
+            }
+            finally
+            {
+                RenderTexture.active = prevActive;
+                if (rt != null)
+                    RenderTexture.ReleaseTemporary(rt);
+            }
         }
         
         private void ResetCursor()
@@ -758,6 +890,34 @@ namespace SkiResortTycoon.UnityBridge
             _uiRaycastResults.Clear();
             es.RaycastAll(_uiPointerData, _uiRaycastResults);
             return _uiRaycastResults.Count > 0;
+        }
+
+        /// <summary>
+        /// True if the topmost raycast hit (first in list) is part of an interactable Unity UI <see cref="Button"/>.
+        /// Uses the same raycast order as <see cref="IsPointerOverUIFresh"/> (sorted by sort order / distance).
+        /// </summary>
+        private static bool IsPointerOverInteractableButton()
+        {
+            var es = EventSystem.current;
+            if (es == null) return false;
+
+            if (_uiPointerData == null)
+                _uiPointerData = new PointerEventData(es);
+
+            _uiPointerData.position = Input.mousePosition;
+            _uiRaycastResults.Clear();
+            es.RaycastAll(_uiPointerData, _uiRaycastResults);
+            if (_uiRaycastResults.Count == 0)
+                return false;
+
+            for (int i = 0; i < _uiRaycastResults.Count; i++)
+            {
+                var btn = _uiRaycastResults[i].gameObject.GetComponentInParent<Button>();
+                if (btn != null && btn.IsInteractable())
+                    return true;
+            }
+
+            return false;
         }
         
         private void CreateDefaultPointerCursor()

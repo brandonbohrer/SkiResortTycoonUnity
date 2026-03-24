@@ -247,6 +247,7 @@ namespace SkiResortTycoon.UI
             var image = button.targetGraphic as Image;
             if (image != null)
                 image.color = active ? SelectedColor : originalColor;
+            ButtonHoverFeedback.Apply(button, UIManager.Instance?.Theme);
         }
 
         // ── Trail mode / width ───────────────────────────────────────────────
@@ -304,6 +305,7 @@ namespace SkiResortTycoon.UI
             var img = btn.targetGraphic as Image;
             if (img != null)
                 img.color = active ? SelectedColor : original;
+            ButtonHoverFeedback.Apply(btn, UIManager.Instance?.Theme);
         }
 
         private static void CacheButtonColor(Button btn, out Color color)

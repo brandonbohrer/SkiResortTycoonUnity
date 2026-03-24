@@ -35,6 +35,8 @@ namespace SkiResortTycoon.UI
             
             // Setup tooltip
             SetupTooltip();
+
+            ButtonHoverFeedback.Apply(_button, UIManager.Instance?.Theme);
         }
         
         private void SetupTooltip()
@@ -76,6 +78,7 @@ namespace SkiResortTycoon.UI
         {
             if (_buttonImage == null) return;
             _buttonImage.color = (activeTool == _tool) ? ActiveColor : _originalColor;
+            ButtonHoverFeedback.Apply(_button, UIManager.Instance?.Theme);
         }
     }
 }

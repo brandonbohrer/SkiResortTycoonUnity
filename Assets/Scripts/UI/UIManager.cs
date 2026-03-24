@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Events;
@@ -115,6 +116,14 @@ namespace SkiResortTycoon.UI
             if (_managerScreen   != null) _managerScreen.SetActive(false);
             _menuOpen    = false;
             _managerOpen = false;
+
+            StartCoroutine(ApplyButtonHoverAfterFirstFrame());
+        }
+
+        private IEnumerator ApplyButtonHoverAfterFirstFrame()
+        {
+            yield return null;
+            ButtonHoverFeedback.ApplyAllInScene(_theme);
         }
         
         void Update()

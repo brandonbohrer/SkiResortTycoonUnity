@@ -98,6 +98,8 @@ namespace SkiResortTycoon.UI
                 if (entry != null)
                     entry.Setup(slot, OnPlaySlotClicked, OnRenameSlotClicked, OnDeleteSlotClicked);
             }
+
+            ButtonHoverFeedback.ApplyUnder(_slotContent, null);
         }
 
         private void ShowInputRow()

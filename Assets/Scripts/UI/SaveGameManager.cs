@@ -122,6 +122,8 @@ namespace SkiResortTycoon.UI
                 if (entry != null)
                     entry.Setup(slot, OnSaveSlotClicked, OnRenameSlotClicked, OnDeleteSlotClicked);
             }
+
+            ButtonHoverFeedback.ApplyUnder(_slotContent, UIManager.Instance?.Theme);
         }
 
         /// <summary>

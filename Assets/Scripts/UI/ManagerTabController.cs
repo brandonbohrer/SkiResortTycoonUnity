@@ -5,8 +5,8 @@ namespace SkiResortTycoon.UI
 {
     /// <summary>
     /// Manages the tab bar in the Manager screen.
-    /// Attach to the ManagerPanel (or any parent that has access to all tab buttons and panels).
-    /// When the manager opens, call SelectTab(0) to auto-select Overview.
+    /// Tab visuals use the same rule as <see cref="DockController"/> / dock subrows: tint <see cref="Image.color"/>,
+    /// then <see cref="ButtonHoverFeedback.Apply"/> — no separate ColorBlock hacks (those prefabs keep normalColor white).
     /// </summary>
     public class ManagerTabController : MonoBehaviour
     {
@@ -88,6 +88,7 @@ namespace SkiResortTycoon.UI
             var image = button.targetGraphic as Image;
             if (image != null)
                 image.color = active ? SelectedColor : originalColor;
+            ButtonHoverFeedback.Apply(button, UIManager.Instance?.Theme);
         }
 
         public int ActiveTab => _activeTab;

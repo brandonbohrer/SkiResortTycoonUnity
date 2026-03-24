@@ -150,6 +150,7 @@ namespace SkiResortTycoon.UI
             var image = button.targetGraphic as Image;
             if (image != null)
                 image.color = active ? SelectedColor : originalColor;
+            ButtonHoverFeedback.Apply(button, UIManager.Instance?.Theme);
         }
     }
 }

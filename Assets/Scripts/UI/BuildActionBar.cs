@@ -134,6 +134,7 @@ namespace SkiResortTycoon.UI
                 var colors = _tabButtons[i].colors;
                 colors.normalColor = i == _activeTabIndex ? _tabActiveColor : _tabInactiveColor;
                 _tabButtons[i].colors = colors;
+                ButtonHoverFeedback.Apply(_tabButtons[i], UIManager.Instance?.Theme);
             }
         }
         
@@ -229,6 +230,7 @@ namespace SkiResortTycoon.UI
                 var colors = _toolButtons[i].colors;
                 colors.normalColor = isActive ? _toolActiveColor : _toolNormalColor;
                 _toolButtons[i].colors = colors;
+                ButtonHoverFeedback.Apply(_toolButtons[i], UIManager.Instance?.Theme);
             }
         }
     }

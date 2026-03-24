@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
@@ -42,6 +43,17 @@ namespace SkiResortTycoon.UI
                 _quitButton.onClick.AddListener(OnQuitClicked);
             if (_loadGameBackButton != null)
                 _loadGameBackButton.onClick.AddListener(OnLoadGameBackClicked);
+        }
+
+        private void Start()
+        {
+            StartCoroutine(ApplyButtonHoverAfterFirstFrame());
+        }
+
+        private IEnumerator ApplyButtonHoverAfterFirstFrame()
+        {
+            yield return null;
+            ButtonHoverFeedback.ApplyAllInScene(null);
         }
 
         private void OnQuitClicked()

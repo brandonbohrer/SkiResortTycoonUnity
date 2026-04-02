@@ -26,6 +26,8 @@ MonoBehaviour:
   PanelBorder: {r: 1, g: 1, b: 1, a: 0.1}
   ButtonNormal: {r: 0.2, g: 0.24, b: 0.28, a: 1}
   ButtonHover: {r: 0.28, g: 0.32, b: 0.36, a: 1}
+  ButtonHoverNavBlueLightenTarget: {r: 0.88, g: 0.95, b: 1, a: 1}
+  ButtonHoverNavBlueLightenBlend: 0.6
   ButtonPressed: {r: 0.16, g: 0.19, b: 0.22, a: 1}
   ButtonDisabled: {r: 0.15, g: 0.17, b: 0.19, a: 0.5}
   ButtonSelected: {r: 0, g: 0.737, b: 0.831, a: 1}

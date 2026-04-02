@@ -47,7 +47,13 @@ namespace SkiResortTycoon.UI
         
         [Header("Button Colors")]
         public Color ButtonNormal = Color.white; // White by default
+        [Tooltip("Hover tint lerp target for most buttons (not the navy pause/speed style).")]
         public Color ButtonHover = new Color(0.678f, 0.847f, 0.902f, 1f); // Light blue (#ADD8E6)
+        [Tooltip("Hover lighten target for navy pause/speed controls (auto-detected from idle color). Alpha is applied from the button baseline.")]
+        public Color ButtonHoverNavBlueLightenTarget = new Color(0.88f, 0.95f, 1f, 1f);
+        [Range(0f, 1f)]
+        [Tooltip("How strongly idle color lerps toward the nav-blue hover target.")]
+        public float ButtonHoverNavBlueLightenBlend = 0.4f;
         public Color ButtonPressed = new Color(0.529f, 0.808f, 0.922f, 1f); // Slightly darker blue
         public Color ButtonDisabled = new Color(0.7f, 0.7f, 0.7f, 0.5f); // Light grey, transparent
         public Color ButtonSelected = new Color(0f, 0.737f, 0.831f, 1f); // AccentColor (cyan)

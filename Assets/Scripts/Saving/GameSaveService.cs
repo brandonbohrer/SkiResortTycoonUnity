@@ -36,6 +36,7 @@ namespace SkiResortTycoon.Saving
 
         /// <summary>
         /// Returns all save slots (path, display name, day, money). Reads each file to get meta.
+        /// Ordered by file last-write time, most recent first.
         /// </summary>
         public static List<SaveSlotInfo> ListSaves()
         {
@@ -65,6 +66,9 @@ namespace SkiResortTycoon.Saving
                     Debug.LogWarning($"[GameSaveService] Could not read save: {path}. {e.Message}");
                 }
             }
+
+            list.Sort((a, b) =>
+                File.GetLastWriteTimeUtc(b.Path).CompareTo(File.GetLastWriteTimeUtc(a.Path)));
 
             return list;
         }
@@ -175,7 +179,7 @@ namespace SkiResortTycoon.Saving
                     dayIndex = 1,
                     timeMinutes = 540f,
                     visitorsToday = 0,
-                    money = 1000000,
+                    money = SimulationState.DefaultStartingMoney,
                     liftsBuilt = 0,
                     trailsBuilt = 0,
                     lodgesBuilt = 0,

@@ -358208,11 +358208,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SkiResortTycoon.UnityBridge.GameLoadApplier
   _simulationRunner: {fileID: 1670639974}
-  _liftBuilder: {fileID: 0}
-  _trailDrawer: {fileID: 0}
-  _lodgeBuilder: {fileID: 0}
-  _lodgeManager: {fileID: 0}
-  _skierVisualizer: {fileID: 0}
+  _liftBuilder: {fileID: 1504220261}
+  _trailDrawer: {fileID: 1091263535}
+  _lodgeBuilder: {fileID: 187455605}
+  _lodgeManager: {fileID: 143138647}
+  _skierVisualizer: {fileID: 1971900455}
   _maxWaitFrames: 30
 --- !u!1001 &1671222272
 PrefabInstance:

@@ -6,12 +6,15 @@ namespace SkiResortTycoon.Core
     /// </summary>
     public class SimulationState
     {
+        /// <summary>Starting cash for a new game (must match empty save creation).</summary>
+        public const int DefaultStartingMoney = 250000;
+
         // Core state
         public int DayIndex { get; set; } = 1;
         public float TimeMinutes { get; set; } = 540f; // Start at 9:00 AM
         public int VisitorsToday { get; set; } = 0;   // Cumulative arrivals today (for economy / end-of-day)
         public int ActiveSkierCount { get; set; } = 0; // Current skiers on mountain (set by Unity bridge for display)
-        public int Money { get; set; } = 250000;
+        public int Money { get; set; } = DefaultStartingMoney;
         
         // Infrastructure counts (updated by systems)
         public int LiftsBuilt { get; set; } = 0;

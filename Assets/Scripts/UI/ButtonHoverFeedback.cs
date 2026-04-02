@@ -16,9 +16,9 @@ namespace SkiResortTycoon.UI
         private const float HoverBlendLight = 0.11f;
         private const float LumDarkThreshold = 0.42f;
 
-        // TopHUD pause/speed (idle): strong brighten on hover (still same hue family).
-        private static readonly Color BlueIdleHoverLightenTarget = new Color(0.88f, 0.95f, 1f, 1f);
-        private const float HoverBlueIdleLightenBlend = 0.4f;
+        // Defaults when no UITheme (e.g. main menu) — match UITheme field initializers.
+        private static readonly Color DefaultNavBlueHoverLightenTarget = new Color(0.88f, 0.95f, 1f, 1f);
+        private const float DefaultNavBlueHoverLightenBlend = 0.4f;
 
         // Press = darken toward black only (no lerp into theme blues — that skews hue to green on orange/blue buttons).
         private const float PressDarkenAmount = 0.12f;
@@ -40,10 +40,14 @@ namespace SkiResortTycoon.UI
             Color hoverRef = theme != null ? theme.ButtonHover : new Color(0.678f, 0.847f, 0.902f, baseline.a);
             bool blueIdle = IsUnselectedBlueNavStyle(baseline);
 
+            Color navBlueTarget = theme != null ? theme.ButtonHoverNavBlueLightenTarget : DefaultNavBlueHoverLightenTarget;
+            float navBlueBlend = theme != null ? theme.ButtonHoverNavBlueLightenBlend : DefaultNavBlueHoverLightenBlend;
+
             Color highlighted;
             if (blueIdle)
             {
-                highlighted = Color.Lerp(baseline, BlueIdleHoverLightenTarget, HoverBlueIdleLightenBlend);
+                navBlueTarget.a = baseline.a;
+                highlighted = Color.Lerp(baseline, navBlueTarget, navBlueBlend);
                 highlighted.a = baseline.a;
             }
             else

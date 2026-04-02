@@ -14,6 +14,9 @@ namespace SkiResortTycoon.UnityBridge
         private Transform[] _cachedTreeTransforms;
         private int _cachedTreeTransformCount = -1;
 
+        private readonly List<GameObject> _powderHiddenTrees = new List<GameObject>();
+        private readonly List<GameObject> _powderOverlayTrees = new List<GameObject>();
+
         // ── Preview tree management (for interactive placement) ────────
         private readonly HashSet<GameObject> _previewClearedTrees = new HashSet<GameObject>();
         private readonly List<TreeState> _previewTreeStates = new List<TreeState>();
@@ -80,6 +83,66 @@ namespace SkiResortTycoon.UnityBridge
             {
                 Debug.Log($"[TreeClearer] Cleared {cleared} trees within {radius}m of {worldPosition}");
             }
+        }
+
+        /// <summary>
+        /// Temporarily replaces visible terrain trees with snowy variants (Powder Day).
+        /// Call <see cref="EndPowderTreeOverlay"/> to restore.
+        /// </summary>
+        public void BeginPowderTreeOverlay(GameObject snowyTreePrefab)
+        {
+            EndPowderTreeOverlay();
+            if (snowyTreePrefab == null || !TryEnsureTreesContainer()) return;
+
+            Transform[] transforms = GetTreeTransforms();
+            for (int i = 0; i < transforms.Length; i++)
+            {
+                Transform t = transforms[i];
+                if (t == null || t == _treesContainer.transform) continue;
+
+                GameObject original = t.gameObject;
+                if (!original.activeInHierarchy) continue;
+
+                GameObject overlay = Instantiate(
+                    snowyTreePrefab,
+                    original.transform.position,
+                    original.transform.rotation,
+                    original.transform.parent);
+                overlay.transform.localScale = original.transform.localScale;
+                original.SetActive(false);
+                _powderHiddenTrees.Add(original);
+                _powderOverlayTrees.Add(overlay);
+            }
+
+            InvalidateTreeCache();
+        }
+
+        /// <summary>
+        /// Removes snowy overlays and re-enables the original trees.
+        /// </summary>
+        public void EndPowderTreeOverlay()
+        {
+            for (int i = 0; i < _powderOverlayTrees.Count; i++)
+            {
+                if (_powderOverlayTrees[i] != null)
+                    Destroy(_powderOverlayTrees[i]);
+            }
+            _powderOverlayTrees.Clear();
+
+            for (int i = 0; i < _powderHiddenTrees.Count; i++)
+            {
+                if (_powderHiddenTrees[i] != null)
+                    _powderHiddenTrees[i].SetActive(true);
+            }
+            _powderHiddenTrees.Clear();
+
+            InvalidateTreeCache();
+        }
+
+        private void InvalidateTreeCache()
+        {
+            _cachedTreeTransforms = null;
+            _cachedTreeTransformCount = -1;
         }
 
         /// <summary>

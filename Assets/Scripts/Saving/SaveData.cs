@@ -310,6 +310,11 @@ namespace SkiResortTycoon.Saving
         public float demandMomentum;
         public int consecutiveStrongServiceDays;
         public float smoothedTargetActiveSkiers;
+        public int powderDayTargetDay;
+        public bool powderDayModalDone;
+        public int activePowderChoice;
+        public float powderDemandEventMultiplier;
+        public float powderSatisfactionEventMultiplier;
     }
 
     [Serializable]

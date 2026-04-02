@@ -31,6 +31,18 @@ namespace SkiResortTycoon.Core
         public float DemandMomentum { get; set; } = 0f;              // 0..1, grows with consistent good operations
         public int ConsecutiveStrongServiceDays { get; set; } = 0;   // streak of high quality days
         public float SmoothedTargetActiveSkiers { get; set; } = 0f;  // persisted target smoothing anchor
+
+        // ── Powder Day (one random morning between days 3–6) ─────────────────
+        /// <summary>Which calendar day gets the event; 0 = not scheduled yet (roll at runtime).</summary>
+        public int PowderDayTargetDay { get; set; } = 0;
+        /// <summary>True after the morning modal was dismissed (choice may still be active that day).</summary>
+        public bool PowderDayModalDone { get; set; }
+        public PowderDayChoice ActivePowderChoice { get; set; } = PowderDayChoice.None;
+        /// <summary>Extra demand multiplier from ticket pricing / buzz (applied on top of economy demand).</summary>
+        public float PowderDemandEventMultiplier { get; set; } = 1f;
+        /// <summary>Multiplier on resort satisfaction-driven visitor draw (crowding stress).</summary>
+        public float PowderSatisfactionEventMultiplier { get; set; } = 1f;
     }
 }
+
 

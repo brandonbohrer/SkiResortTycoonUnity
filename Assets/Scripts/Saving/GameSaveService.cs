@@ -185,7 +185,12 @@ namespace SkiResortTycoon.Saving
                     lodgesBuilt = 0,
                     todayRevenue = 0f,
                     todayExpenses = 0f,
-                    todayLodgeRevenue = 0f
+                    todayLodgeRevenue = 0f,
+                    powderDayTargetDay = 0,
+                    powderDayModalDone = false,
+                    activePowderChoice = 0,
+                    powderDemandEventMultiplier = 1f,
+                    powderSatisfactionEventMultiplier = 1f
                 },
                 timeController = new TimeControllerDto { isPaused = false, speedMultiplier = 1f },
                 economy = new EconomyDto
@@ -238,7 +243,12 @@ namespace SkiResortTycoon.Saving
                 todayLodgeRevenue = state.TodayLodgeRevenue,
                 demandMomentum = state.DemandMomentum,
                 consecutiveStrongServiceDays = state.ConsecutiveStrongServiceDays,
-                smoothedTargetActiveSkiers = state.SmoothedTargetActiveSkiers
+                smoothedTargetActiveSkiers = state.SmoothedTargetActiveSkiers,
+                powderDayTargetDay = state.PowderDayTargetDay,
+                powderDayModalDone = state.PowderDayModalDone,
+                activePowderChoice = (int)state.ActivePowderChoice,
+                powderDemandEventMultiplier = state.PowderDemandEventMultiplier,
+                powderSatisfactionEventMultiplier = state.PowderSatisfactionEventMultiplier
             };
 
             if (runner.Sim.TimeController != null)
@@ -361,6 +371,15 @@ namespace SkiResortTycoon.Saving
                 state.DemandMomentum = data.simulationState.demandMomentum;
                 state.ConsecutiveStrongServiceDays = data.simulationState.consecutiveStrongServiceDays;
                 state.SmoothedTargetActiveSkiers = data.simulationState.smoothedTargetActiveSkiers;
+                state.PowderDayTargetDay = data.simulationState.powderDayTargetDay;
+                state.PowderDayModalDone = data.simulationState.powderDayModalDone;
+                state.ActivePowderChoice = (PowderDayChoice)data.simulationState.activePowderChoice;
+                state.PowderDemandEventMultiplier = data.simulationState.powderDemandEventMultiplier > 0f
+                    ? data.simulationState.powderDemandEventMultiplier
+                    : 1f;
+                state.PowderSatisfactionEventMultiplier = data.simulationState.powderSatisfactionEventMultiplier > 0f
+                    ? data.simulationState.powderSatisfactionEventMultiplier
+                    : 1f;
             }
 
             if (data.timeController != null && runner.Sim.TimeController != null)
@@ -371,6 +390,9 @@ namespace SkiResortTycoon.Saving
 
             if (data.economy != null && runner.Sim.EconomySystem != null)
                 runner.Sim.EconomySystem.TicketPricing.TicketPrice = data.economy.ticketPrice;
+
+            var powder = UnityEngine.Object.FindObjectOfType<PowderDayController>();
+            powder?.SyncPowderDayUi();
 
             Debug.Log($"[GameSaveService] Applied save. Day {runner.Sim.State.DayIndex}, Money: ${runner.Sim.State.Money:N0}");
         }

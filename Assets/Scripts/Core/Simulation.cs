@@ -71,8 +71,16 @@ namespace SkiResortTycoon.Core
             }
             
             // Update visitor system multipliers and lodge count
-            _visitorSystem.SatisfactionMultiplier = _satisfaction.GetVisitorMultiplier();
-            _visitorSystem.PriceMultiplier = _economySystem.GetDemandMultiplier();
+            float satMult = _satisfaction.GetVisitorMultiplier();
+            float priceMult = _economySystem.GetDemandMultiplier();
+            if (_state.ActivePowderChoice == PowderDayChoice.Accepted &&
+                _state.DayIndex == _state.PowderDayTargetDay)
+            {
+                satMult *= _state.PowderSatisfactionEventMultiplier;
+                priceMult *= _state.PowderDemandEventMultiplier;
+            }
+            _visitorSystem.SatisfactionMultiplier = satMult;
+            _visitorSystem.PriceMultiplier = priceMult;
             _visitorSystem.LodgeCount = _state.LodgesBuilt;
             
             // Only advance time and visitors if the day is still active
@@ -133,6 +141,8 @@ namespace SkiResortTycoon.Core
 
             UpdateDemandMomentum(dayStats);
             
+            int dayBeingEnded = _state.DayIndex;
+
             // Process all financials via EconomySystem
             var record = _economySystem.ProcessEndOfDay(
                 _state, liftCount, trailCount, lodgeCount, lodgeRevenue);
@@ -149,6 +159,13 @@ namespace SkiResortTycoon.Core
             
             // Increment day counter
             _state.DayIndex++;
+
+            if (dayBeingEnded == _state.PowderDayTargetDay)
+            {
+                _state.ActivePowderChoice = PowderDayChoice.None;
+                _state.PowderDemandEventMultiplier = 1f;
+                _state.PowderSatisfactionEventMultiplier = 1f;
+            }
 
             // Reset for next day
             _state.VisitorsToday    = 0;

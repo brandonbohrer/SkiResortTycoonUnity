@@ -106,6 +106,11 @@ namespace SkiResortTycoon.UnityBridge
         
         private void HandleEndOfDay()
         {
+            int dayEnding = _sim.State.DayIndex;
+            var powder = FindObjectOfType<PowderDayController>();
+            if (powder != null)
+                powder.OnPowderDayEnded(dayEnding);
+
             int visitorsToday = _sim.State.VisitorsToday;
             
             // Collect lodge data from the Unity layer
@@ -172,6 +177,9 @@ namespace SkiResortTycoon.UnityBridge
             
             // Update fair price for next day (infrastructure may have changed)
             UpdateFairPrice();
+
+            if (powder != null)
+                powder.SyncPowderDayUi();
         }
 
         private void ApplyPerformanceTestModeIfEnabled()

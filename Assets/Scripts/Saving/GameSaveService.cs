@@ -190,7 +190,10 @@ namespace SkiResortTycoon.Saving
                     powderDayModalDone = false,
                     activePowderChoice = 0,
                     powderDemandEventMultiplier = 1f,
-                    powderSatisfactionEventMultiplier = 1f
+                    powderSatisfactionEventMultiplier = 1f,
+                    powderDayActiveSkierTargetMultiplier = 1f,
+                    powderIntroCompleted = false,
+                    visualPowderDayActive = false
                 },
                 timeController = new TimeControllerDto { isPaused = false, speedMultiplier = 1f },
                 economy = new EconomyDto
@@ -248,7 +251,10 @@ namespace SkiResortTycoon.Saving
                 powderDayModalDone = state.PowderDayModalDone,
                 activePowderChoice = (int)state.ActivePowderChoice,
                 powderDemandEventMultiplier = state.PowderDemandEventMultiplier,
-                powderSatisfactionEventMultiplier = state.PowderSatisfactionEventMultiplier
+                powderSatisfactionEventMultiplier = state.PowderSatisfactionEventMultiplier,
+                powderDayActiveSkierTargetMultiplier = state.PowderDayActiveSkierTargetMultiplier,
+                powderIntroCompleted = state.PowderIntroCompleted,
+                visualPowderDayActive = state.VisualPowderDayActive
             };
 
             if (runner.Sim.TimeController != null)
@@ -380,6 +386,12 @@ namespace SkiResortTycoon.Saving
                 state.PowderSatisfactionEventMultiplier = data.simulationState.powderSatisfactionEventMultiplier > 0f
                     ? data.simulationState.powderSatisfactionEventMultiplier
                     : 1f;
+                state.PowderDayActiveSkierTargetMultiplier = data.simulationState.powderDayActiveSkierTargetMultiplier > 0f
+                    ? data.simulationState.powderDayActiveSkierTargetMultiplier
+                    : 1f;
+                state.PowderIntroCompleted = data.simulationState.powderIntroCompleted;
+                state.VisualPowderDayActive = data.simulationState.visualPowderDayActive;
+                MigratePowderIntroIfOldSave(state);
             }
 
             if (data.timeController != null && runner.Sim.TimeController != null)
@@ -456,6 +468,16 @@ namespace SkiResortTycoon.Saving
                 skierVisualizer.InvalidateAllSkierGoals();
 
             Debug.Log($"[GameSaveService] Full apply done: lifts, trails, lodges, skiers restored.");
+        }
+
+        private static void MigratePowderIntroIfOldSave(SimulationState state)
+        {
+            if (state.PowderIntroCompleted) return;
+            if (state.PowderDayTargetDay <= 0) return;
+            if (state.PowderDayModalDone && state.DayIndex > state.PowderDayTargetDay)
+                state.PowderIntroCompleted = true;
+            else if (state.DayIndex > 6)
+                state.PowderIntroCompleted = true;
         }
     }
 }

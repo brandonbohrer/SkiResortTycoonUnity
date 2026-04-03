@@ -179,7 +179,7 @@ namespace SkiResortTycoon.UnityBridge
             UpdateFairPrice();
 
             if (powder != null)
-                powder.SyncPowderDayUi();
+                powder.AfterEndOfDayRollAndSync();
         }
 
         private void ApplyPerformanceTestModeIfEnabled()

@@ -7,8 +7,9 @@ using SkiResortTycoon.Core;
 namespace SkiResortTycoon.UnityBridge
 {
     /// <summary>
-    /// One-time "Powder Day" morning modal (random calendar day 3–6). Pauses; if the player accepts,
-    /// optional snow VFX, snowy trees, and combined "lower prices + extra capacity" day modifiers apply.
+    /// One-time intro: random morning day 3–6 with modal (Yes = economy boost, No = normal sim).
+    /// Snow + white trees always show when the modal opens. After intro completes, each new day has a
+    /// random chance of cosmetic powder only (no modal, no economy).
     /// </summary>
     public class PowderDayController : MonoBehaviour
     {
@@ -28,9 +29,15 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private GameObject _snowfallObject;
         [SerializeField] private GameObject _snowyTreePrefab;
 
-        [Header("Yes — lower prices + boost capacity (free)")]
+        [Header("Yes — lower prices + boost capacity (intro only)")]
         [SerializeField] private float _acceptedDemandMultiplier = 1.28f;
         [SerializeField] private float _acceptedSatisfactionMultiplier = 0.91f;
+        [Tooltip("Applied to target on-mountain skiers and visitor arrivals when intro Yes is chosen.")]
+        [SerializeField] private float _powderActiveSkierTargetMultiplier = 2.35f;
+
+        [Header("After intro — random cosmetic powder days")]
+        [Tooltip("Chance each morning (after intro is done) for white trees + snow only; no modal or economy.")]
+        [SerializeField] private float _dailyVisualPowderChance = 0.1f;
 
         private bool _wasPausedByPowder;
 
@@ -57,7 +64,7 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         /// <summary>
-        /// Re-evaluate schedule, morning modal, and mid-day visuals (after load or day rollover).
+        /// Load / start-of-scene: no daily roll (preserves save state).
         /// </summary>
         public void SyncPowderDayUi()
         {
@@ -67,16 +74,30 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         /// <summary>
-        /// Call at the start of end-of-day processing when the powder day is finishing.
+        /// Call after <see cref="Simulation.EndDay"/> rolls to a new morning: daily cosmetic chance + intro modal.
+        /// </summary>
+        public void AfterEndOfDayRollAndSync()
+        {
+            EnsurePowderSchedule();
+            RollDailyVisualPowder();
+            if (!TryShowPowderMorningIfNeeded())
+                RestorePowderPresentationIfNeeded();
+        }
+
+        /// <summary>
+        /// Call at the start of end-of-day processing when the day that just ended may have had powder visuals.
         /// </summary>
         public void OnPowderDayEnded(int dayThatJustFinished)
         {
             SimulationState s = _simulationRunner != null ? _simulationRunner.Sim.State : null;
             if (s == null) return;
-            if (dayThatJustFinished != s.PowderDayTargetDay) return;
-            if (!s.PowderDayModalDone) return;
 
-            EndPowderPresentation();
+            bool introVisuals =
+                dayThatJustFinished == s.PowderDayTargetDay && s.PowderDayModalDone;
+            bool dailyVisuals = s.VisualPowderDayActive;
+
+            if (introVisuals || dailyVisuals)
+                EndPowderPresentation();
         }
 
         private void EnsurePowderSchedule()
@@ -88,10 +109,33 @@ namespace SkiResortTycoon.UnityBridge
 
             state.PowderDayTargetDay = Random.Range(PowderDayMin, PowderDayMax + 1);
             if (state.DayIndex > state.PowderDayTargetDay)
+            {
                 state.PowderDayModalDone = true;
+                state.PowderIntroCompleted = true;
+            }
         }
 
-        /// <returns>True if the modal was opened (caller should not restore visuals separately).</returns>
+        private void RollDailyVisualPowder()
+        {
+            if (_simulationRunner == null || _simulationRunner.Sim == null) return;
+            SimulationState state = _simulationRunner.Sim.State;
+
+            if (!state.PowderIntroCompleted)
+            {
+                state.VisualPowderDayActive = false;
+                return;
+            }
+
+            if (state.DayIndex == state.PowderDayTargetDay && !state.PowderDayModalDone)
+            {
+                state.VisualPowderDayActive = false;
+                return;
+            }
+
+            float p = Mathf.Clamp01(_dailyVisualPowderChance);
+            state.VisualPowderDayActive = Random.value < p;
+        }
+
         private bool TryShowPowderMorningIfNeeded()
         {
             if (_simulationRunner == null || _simulationRunner.Sim == null) return false;
@@ -110,11 +154,15 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (_simulationRunner == null || _simulationRunner.Sim == null) return;
             SimulationState state = _simulationRunner.Sim.State;
-            if (state.DayIndex != state.PowderDayTargetDay) return;
-            if (!state.PowderDayModalDone) return;
-            if (state.ActivePowderChoice != PowderDayChoice.Accepted) return;
 
-            BeginPowderPresentation();
+            if (state.VisualPowderDayActive && state.PowderIntroCompleted)
+            {
+                BeginPowderPresentation();
+                return;
+            }
+
+            if (state.DayIndex == state.PowderDayTargetDay && state.PowderDayModalDone)
+                BeginPowderPresentation();
         }
 
         private void ShowModal()
@@ -131,13 +179,15 @@ namespace SkiResortTycoon.UnityBridge
                     "Fresh snow overnight — word is out.\n\n" +
                     "<b>Yes</b> — cut ticket prices for the day and bring in extra staffing to boost capacity " +
                     "(bigger crowds, but you are trying to keep lines in check).\n\n" +
-                    "<b>No</b> — run a normal day. No special rush.";
+                    "<b>No</b> — run pricing and staffing as usual today (still a powder morning outside).";
             }
 
             TimeController tc = _simulationRunner.Sim.TimeController;
             _wasPausedByPowder = tc != null && !tc.IsPaused;
             if (tc != null)
                 tc.Pause();
+
+            BeginPowderPresentation();
         }
 
         private void BeginPowderPresentation()
@@ -173,7 +223,9 @@ namespace SkiResortTycoon.UnityBridge
             state.ActivePowderChoice = PowderDayChoice.Declined;
             state.PowderDemandEventMultiplier = 1f;
             state.PowderSatisfactionEventMultiplier = 1f;
+            state.PowderDayActiveSkierTargetMultiplier = 1f;
             state.PowderDayModalDone = true;
+            state.PowderIntroCompleted = true;
 
             if (_rootPanel != null)
                 _rootPanel.SetActive(false);
@@ -182,7 +234,7 @@ namespace SkiResortTycoon.UnityBridge
             if (tc != null && _wasPausedByPowder)
                 tc.Resume();
 
-            Debug.Log("[PowderDay] Declined — no rush modifiers.");
+            Debug.Log("[PowderDay] Declined — no rush modifiers (visuals stay until night).");
         }
 
         private void ApplyAccepted()
@@ -193,12 +245,12 @@ namespace SkiResortTycoon.UnityBridge
             state.ActivePowderChoice = PowderDayChoice.Accepted;
             state.PowderDemandEventMultiplier = _acceptedDemandMultiplier;
             state.PowderSatisfactionEventMultiplier = _acceptedSatisfactionMultiplier;
+            state.PowderDayActiveSkierTargetMultiplier = Mathf.Max(1f, _powderActiveSkierTargetMultiplier);
             state.PowderDayModalDone = true;
+            state.PowderIntroCompleted = true;
 
             if (_rootPanel != null)
                 _rootPanel.SetActive(false);
-
-            BeginPowderPresentation();
 
             TimeController tc = _simulationRunner.Sim.TimeController;
             if (tc != null && _wasPausedByPowder)
@@ -206,7 +258,8 @@ namespace SkiResortTycoon.UnityBridge
 
             Debug.Log(
                 $"[PowderDay] Accepted — lower prices + extra capacity " +
-                $"(demand x{_acceptedDemandMultiplier:F2}, sat x{_acceptedSatisfactionMultiplier:F2}).");
+                $"(demand x{_acceptedDemandMultiplier:F2}, sat x{_acceptedSatisfactionMultiplier:F2}, " +
+                $"skiers/visitors x{state.PowderDayActiveSkierTargetMultiplier:F2}).");
         }
     }
 }

@@ -42,6 +42,14 @@ namespace SkiResortTycoon.Core
         public float PowderDemandEventMultiplier { get; set; } = 1f;
         /// <summary>Multiplier on resort satisfaction-driven visitor draw (crowding stress).</summary>
         public float PowderSatisfactionEventMultiplier { get; set; } = 1f;
+        /// <summary>
+        /// Scales target on-mountain skiers and visitor arrival rate on powder day (Accepted only); 1 = normal.
+        /// </summary>
+        public float PowderDayActiveSkierTargetMultiplier { get; set; } = 1f;
+        /// <summary>True after the one-time intro modal (days 3–6) is resolved or skipped.</summary>
+        public bool PowderIntroCompleted { get; set; }
+        /// <summary>Random cosmetic powder (white trees + snow) for this day only; no modal or economy.</summary>
+        public bool VisualPowderDayActive { get; set; }
     }
 }
 

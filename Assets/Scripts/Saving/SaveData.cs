@@ -315,6 +315,9 @@ namespace SkiResortTycoon.Saving
         public int activePowderChoice;
         public float powderDemandEventMultiplier;
         public float powderSatisfactionEventMultiplier;
+        public float powderDayActiveSkierTargetMultiplier;
+        public bool powderIntroCompleted;
+        public bool visualPowderDayActive;
     }
 
     [Serializable]

@@ -165,6 +165,7 @@ namespace SkiResortTycoon.Core
                 _state.ActivePowderChoice = PowderDayChoice.None;
                 _state.PowderDemandEventMultiplier = 1f;
                 _state.PowderSatisfactionEventMultiplier = 1f;
+                _state.PowderDayActiveSkierTargetMultiplier = 1f;
             }
 
             // Reset for next day

@@ -74,6 +74,8 @@ namespace SkiResortTycoon.Core
                 + (LodgeCount * _visitorsPerLodge);
             
             EffectiveVisitorRate = BaseVisitorRate * SatisfactionMultiplier * PriceMultiplier;
+            if (state.PowderDayActiveSkierTargetMultiplier > 1.0001f)
+                EffectiveVisitorRate *= state.PowderDayActiveSkierTargetMultiplier;
             
             _fractionalVisitors += EffectiveVisitorRate * minutesPassed;
             
@@ -136,8 +138,16 @@ namespace SkiResortTycoon.Core
             }
 
             state.SmoothedTargetActiveSkiers = smoothed;
-            TargetActiveSkiers = System.Math.Max(MIN_SKIERS, 
-                System.Math.Min(HARD_CAP, (int)smoothed));
+
+            int target = System.Math.Max(MIN_SKIERS,
+                System.Math.Min(HARD_CAP, (int)System.Math.Round(smoothed)));
+            if (state.PowderDayActiveSkierTargetMultiplier > 1.0001f)
+            {
+                float boosted = smoothed * state.PowderDayActiveSkierTargetMultiplier;
+                target = System.Math.Max(MIN_SKIERS,
+                    System.Math.Min(HARD_CAP, (int)System.Math.Round(boosted)));
+            }
+            TargetActiveSkiers = target;
         }
 
         private float CalculateProgressionBoost(SimulationState state)

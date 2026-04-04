@@ -107,7 +107,7 @@ namespace SkiResortTycoon.UnityBridge
         private void HandleEndOfDay()
         {
             int dayEnding = _sim.State.DayIndex;
-            var powder = FindObjectOfType<PowderDayController>();
+            var powder = FindObjectOfType<RandomEventController>();
             if (powder != null)
                 powder.OnPowderDayEnded(dayEnding);
 

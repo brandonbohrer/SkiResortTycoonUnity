@@ -1899,6 +1899,8 @@ namespace SkiResortTycoon.UnityBridge
                 && vs.CurrentTrail.Difficulty < vs.CurrentTrail.SlopeDifficulty;
             vs.Skier.Needs.RecordFall(mislabeled);
 
+            RandomEventController.TryTriggerLawsuitFromFall(_simRunner, vs.Skier, vs.CurrentTrail);
+
             if (_enableDebugLogs)
                 Debug.Log($"[Skier {vs.Skier.SkierId}] Fell on trail {vs.CurrentTrail?.TrailId}" +
                     $" (slope={vs.CurrentTrail?.SlopeDifficulty}, label={vs.CurrentTrail?.Difficulty})" +

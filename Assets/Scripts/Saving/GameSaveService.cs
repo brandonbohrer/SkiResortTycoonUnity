@@ -403,7 +403,7 @@ namespace SkiResortTycoon.Saving
             if (data.economy != null && runner.Sim.EconomySystem != null)
                 runner.Sim.EconomySystem.TicketPricing.TicketPrice = data.economy.ticketPrice;
 
-            var powder = UnityEngine.Object.FindObjectOfType<PowderDayController>();
+            var powder = UnityEngine.Object.FindObjectOfType<RandomEventController>();
             powder?.SyncPowderDayUi();
 
             Debug.Log($"[GameSaveService] Applied save. Day {runner.Sim.State.DayIndex}, Money: ${runner.Sim.State.Money:N0}");

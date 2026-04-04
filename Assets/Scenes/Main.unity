@@ -130287,7 +130287,7 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 596148451}
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: 10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -130297,8 +130297,8 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
-  m_Pivot: {x: 0, y: 1}
+  m_SizeDelta: {x: -20, y: 0}
+  m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &596148453
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -139705,6 +139705,7 @@ GameObject:
   - component: {fileID: 637871980}
   - component: {fileID: 637871982}
   - component: {fileID: 637871981}
+  - component: {fileID: 637871983}
   m_Layer: 5
   m_Name: Text (TMP)
   m_TagString: Untagged
@@ -139729,7 +139730,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: -40, y: -40}
+  m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &637871981
 MonoBehaviour:
@@ -139751,7 +139752,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: asdfasdfasdfasdfasdfasdfasdfsdfasdfasdfasdfsadf
+  m_text: test
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -139831,6 +139832,32 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 637871979}
   m_CullTransparentMesh: 1
+--- !u!114 &637871983
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 637871979}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 59f8146938fff824cb5fd77236b75775, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.VerticalLayoutGroup
+  m_Padding:
+    m_Left: 0
+    m_Right: 0
+    m_Top: 0
+    m_Bottom: 0
+  m_ChildAlignment: 0
+  m_Spacing: 0
+  m_ChildForceExpandWidth: 1
+  m_ChildForceExpandHeight: 0
+  m_ChildControlWidth: 1
+  m_ChildControlHeight: 1
+  m_ChildScaleWidth: 0
+  m_ChildScaleHeight: 0
+  m_ReverseArrangement: 0
 --- !u!1001 &637904997
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -298569,7 +298596,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 471020389}
   m_HandleRect: {fileID: 471020388}
   m_Direction: 2
-  m_Value: 0
+  m_Value: 1
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -366792,8 +366819,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 10}
+  m_SizeDelta: {x: 0, y: -20}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1696839495
 MonoBehaviour:
@@ -366845,7 +366872,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 10907, guid: 0000000000000000f000000000000000, type: 0}
+  m_Sprite: {fileID: 21300000, guid: 5a24b673915354eec8208caa78833054, type: 3}
   m_Type: 1
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -469951,14 +469978,24 @@ MonoBehaviour:
   _rootPanel: {fileID: 126224132}
   _titleText: {fileID: 1549962522}
   _bodyText: {fileID: 637871981}
-  _yesButton: {fileID: 1576257089}
-  _noButton: {fileID: 1594082477}
+  _primaryButton: {fileID: 1576257089}
+  _secondaryButton: {fileID: 1594082477}
+  _primaryButtonCaption: {fileID: 970459212}
+  _secondaryButtonCaption: {fileID: 390170913}
+  _powderPrimaryCaptionTemplate: {fileID: 0}
+  _powderSecondaryCaptionTemplate: {fileID: 0}
+  _lawsuitPrimaryCaptionTemplate: {fileID: 0}
+  _lawsuitSecondaryCaptionTemplate: {fileID: 0}
   _treeClearer: {fileID: 1571617884}
   _snowfallObject: {fileID: 1159346134558512, guid: 597f1781b66807244b6ec15b6a2ab969, type: 3}
   _snowyTreePrefab: {fileID: 4309284210412344520, guid: da28bc72b2956f94099423d338bc1b57, type: 3}
   _acceptedDemandMultiplier: 1.28
   _acceptedSatisfactionMultiplier: 0.91
   _powderActiveSkierTargetMultiplier: 2.35
+  _dailyVisualPowderChance: 0.1
+  _lawsuitChancePerQualifyingFall: 0.001
+  _settlementCost: 28000
+  _courtSatisfactionPenalty: 10
 --- !u!4 &2145961614
 Transform:
   m_ObjectHideFlags: 0

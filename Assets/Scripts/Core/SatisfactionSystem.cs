@@ -110,6 +110,15 @@ namespace SkiResortTycoon.Core
         }
         
         /// <summary>
+        /// Applies a one-time change to resort satisfaction (e.g. random events). Clamped to min/max.
+        /// </summary>
+        public void ApplyResortDelta(float deltaOnHundredScale)
+        {
+            _satisfaction += deltaOnHundredScale;
+            _satisfaction = Math.Max(MinSatisfaction, Math.Min(MaxSatisfaction, _satisfaction));
+        }
+        
+        /// <summary>
         /// Resets satisfaction to baseline.
         /// </summary>
         public void Reset()

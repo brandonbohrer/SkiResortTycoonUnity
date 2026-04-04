@@ -30,6 +30,7 @@ namespace SkiResortTycoon.Core
             _visitorSystem = new VisitorSystem();
             _economySystem = new EconomySystem();
             _timeController = new TimeController();
+            _timeController.Pause(); // New sessions start paused until the player resumes
             _visitorFlow = new VisitorFlowSystem();
             _satisfaction = new SatisfactionSystem();
         }

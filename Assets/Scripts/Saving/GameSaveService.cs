@@ -212,7 +212,7 @@ namespace SkiResortTycoon.Saving
                     liftResearchSlot1PaidAmount = 0,
                     liftResearchSlot2PaidAmount = 0
                 },
-                timeController = new TimeControllerDto { isPaused = false, speedMultiplier = 1f },
+                timeController = new TimeControllerDto { isPaused = true, speedMultiplier = 1f },
                 economy = new EconomyDto
                 {
                     ticketPrice = 30f,
@@ -450,6 +450,11 @@ namespace SkiResortTycoon.Saving
             {
                 runner.Sim.TimeController.IsPaused = data.timeController.isPaused;
                 runner.Sim.TimeController.SpeedMultiplier = data.timeController.speedMultiplier;
+            }
+            else if (runner.Sim.TimeController != null)
+            {
+                // Legacy saves without persisted time control: simulation used to run from the first frame
+                runner.Sim.TimeController.Resume();
             }
 
             if (data.economy != null && runner.Sim.EconomySystem != null)

@@ -318,6 +318,8 @@ namespace SkiResortTycoon.Saving
         public float powderDayActiveSkierTargetMultiplier;
         public bool powderIntroCompleted;
         public bool visualPowderDayActive;
+        public bool lawsuitFirstEventCompleted;
+        public int lawsuitGuaranteedTargetDay;
     }
 
     [Serializable]

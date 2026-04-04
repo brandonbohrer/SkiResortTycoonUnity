@@ -193,7 +193,9 @@ namespace SkiResortTycoon.Saving
                     powderSatisfactionEventMultiplier = 1f,
                     powderDayActiveSkierTargetMultiplier = 1f,
                     powderIntroCompleted = false,
-                    visualPowderDayActive = false
+                    visualPowderDayActive = false,
+                    lawsuitFirstEventCompleted = false,
+                    lawsuitGuaranteedTargetDay = 0
                 },
                 timeController = new TimeControllerDto { isPaused = false, speedMultiplier = 1f },
                 economy = new EconomyDto
@@ -254,7 +256,9 @@ namespace SkiResortTycoon.Saving
                 powderSatisfactionEventMultiplier = state.PowderSatisfactionEventMultiplier,
                 powderDayActiveSkierTargetMultiplier = state.PowderDayActiveSkierTargetMultiplier,
                 powderIntroCompleted = state.PowderIntroCompleted,
-                visualPowderDayActive = state.VisualPowderDayActive
+                visualPowderDayActive = state.VisualPowderDayActive,
+                lawsuitFirstEventCompleted = state.LawsuitFirstEventCompleted,
+                lawsuitGuaranteedTargetDay = state.LawsuitGuaranteedTargetDay
             };
 
             if (runner.Sim.TimeController != null)
@@ -391,6 +395,8 @@ namespace SkiResortTycoon.Saving
                     : 1f;
                 state.PowderIntroCompleted = data.simulationState.powderIntroCompleted;
                 state.VisualPowderDayActive = data.simulationState.visualPowderDayActive;
+                state.LawsuitFirstEventCompleted = data.simulationState.lawsuitFirstEventCompleted;
+                state.LawsuitGuaranteedTargetDay = data.simulationState.lawsuitGuaranteedTargetDay;
                 MigratePowderIntroIfOldSave(state);
             }
 

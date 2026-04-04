@@ -59,7 +59,10 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private float _dailyVisualPowderChance = 0.1f;
 
         [Header("Lawsuit — beginner fall on black+ slope")]
-        [Tooltip("Rolled once per qualifying fall. 0.001 = 1/1000.")]
+        [Tooltip("First lawsuit: guaranteed on the first qualifying fall on or after a random day in this range (if not already completed).")]
+        [SerializeField] private int _lawsuitGuaranteeDayMin = 10;
+        [SerializeField] private int _lawsuitGuaranteeDayMax = 15;
+        [Tooltip("After the first lawsuit, rolled once per qualifying fall. 0.001 = 1/1000.")]
         [SerializeField] private float _lawsuitChancePerQualifyingFall = 0.001f;
         [SerializeField] private int _settlementCost = 28000;
         [Tooltip("Subtracted from resort satisfaction (0–100 scale).")]
@@ -106,6 +109,7 @@ namespace SkiResortTycoon.UnityBridge
         public void SyncPowderDayUi()
         {
             EnsurePowderSchedule();
+            EnsureLawsuitSchedule();
             if (!TryShowPowderMorningIfNeeded())
                 RestorePowderPresentationIfNeeded();
         }
@@ -116,6 +120,7 @@ namespace SkiResortTycoon.UnityBridge
         public void AfterEndOfDayRollAndSync()
         {
             EnsurePowderSchedule();
+            EnsureLawsuitSchedule();
             RollDailyVisualPowder();
             if (!TryShowPowderMorningIfNeeded())
                 RestorePowderPresentationIfNeeded();
@@ -155,10 +160,36 @@ namespace SkiResortTycoon.UnityBridge
             if (skier.Skill != SkillLevel.Beginner) return;
             if (trail.SlopeDifficulty < TrailDifficulty.Black) return;
 
-            float p = Mathf.Clamp01(_lawsuitChancePerQualifyingFall);
-            if (Random.value >= p) return;
+            EnsureLawsuitSchedule();
+            SimulationState state = _simulationRunner.Sim.State;
+
+            if (!state.LawsuitFirstEventCompleted)
+            {
+                if (state.DayIndex < state.LawsuitGuaranteedTargetDay)
+                    return;
+            }
+            else
+            {
+                float p = Mathf.Clamp01(_lawsuitChancePerQualifyingFall);
+                if (Random.value >= p) return;
+            }
 
             ShowLawsuitModal(skier, trail);
+        }
+
+        /// <summary>
+        /// Picks a random calendar day (inclusive) for the first guaranteed lawsuit, once per playthrough.
+        /// </summary>
+        private void EnsureLawsuitSchedule()
+        {
+            if (_simulationRunner == null || _simulationRunner.Sim == null) return;
+            SimulationState state = _simulationRunner.Sim.State;
+            if (state.LawsuitFirstEventCompleted) return;
+            if (state.LawsuitGuaranteedTargetDay != 0) return;
+
+            int lo = Mathf.Max(1, _lawsuitGuaranteeDayMin);
+            int hi = Mathf.Max(lo, _lawsuitGuaranteeDayMax);
+            state.LawsuitGuaranteedTargetDay = Random.Range(lo, hi + 1);
         }
 
         private void OnPrimaryClicked()
@@ -398,6 +429,7 @@ namespace SkiResortTycoon.UnityBridge
             if (_simulationRunner == null || _modalKind != ModalKind.Lawsuit) return;
             var state = _simulationRunner.Sim.State;
             state.Money = Mathf.Max(0, state.Money - _settlementCost);
+            state.LawsuitFirstEventCompleted = true;
             CloseModal();
             Debug.Log($"[Lawsuit] Settled for ${_settlementCost:N0}.");
         }
@@ -405,6 +437,7 @@ namespace SkiResortTycoon.UnityBridge
         private void OnLawsuitCourt()
         {
             if (_simulationRunner == null || _modalKind != ModalKind.Lawsuit) return;
+            _simulationRunner.Sim.State.LawsuitFirstEventCompleted = true;
             _simulationRunner.Sim.Satisfaction.ApplyResortDelta(-Mathf.Abs(_courtSatisfactionPenalty));
             CloseModal();
             Debug.Log($"[Lawsuit] Went to court — satisfaction -{_courtSatisfactionPenalty:F0}.");

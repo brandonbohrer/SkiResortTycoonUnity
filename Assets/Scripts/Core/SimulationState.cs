@@ -50,6 +50,15 @@ namespace SkiResortTycoon.Core
         public bool PowderIntroCompleted { get; set; }
         /// <summary>Random cosmetic powder (white trees + snow) for this day only; no modal or economy.</summary>
         public bool VisualPowderDayActive { get; set; }
+
+        // ── Injury lawsuit (RandomEventController) ─────────────────────────
+        /// <summary>True after the player resolves any lawsuit modal (settle or court).</summary>
+        public bool LawsuitFirstEventCompleted { get; set; }
+        /// <summary>
+        /// First lawsuit is guaranteed on the first qualifying fall on or after this day (rolled once, typically 10–15).
+        /// 0 = not scheduled yet.
+        /// </summary>
+        public int LawsuitGuaranteedTargetDay { get; set; }
     }
 }
 

@@ -20,7 +20,7 @@ namespace SkiResortTycoon.UI
         }
 
         [SerializeField] private Button _closeButton;
-        [SerializeField] private Tab[] _tabs; // Order: Overview, Finance, Pricing, Guests
+        [SerializeField] private Tab[] _tabs; // Order: Overview, Finance, Pricing, Guests, Research
 
         private Color[] _originalColors;
         private int _activeTab = -1;
@@ -43,8 +43,8 @@ namespace SkiResortTycoon.UI
             }
 
             // Wire click listeners and add tooltips
-            string[] tabHeaders = { TooltipTexts.ManagerTabs.OverviewHeader, TooltipTexts.ManagerTabs.FinancesHeader, TooltipTexts.ManagerTabs.PricingHeader, TooltipTexts.ManagerTabs.GuestsHeader };
-            string[] tabContents = { TooltipTexts.ManagerTabs.OverviewContent, TooltipTexts.ManagerTabs.FinancesContent, TooltipTexts.ManagerTabs.PricingContent, TooltipTexts.ManagerTabs.GuestsContent };
+            string[] tabHeaders = { TooltipTexts.ManagerTabs.OverviewHeader, TooltipTexts.ManagerTabs.FinancesHeader, TooltipTexts.ManagerTabs.PricingHeader, TooltipTexts.ManagerTabs.GuestsHeader, TooltipTexts.ManagerTabs.ResearchHeader };
+            string[] tabContents = { TooltipTexts.ManagerTabs.OverviewContent, TooltipTexts.ManagerTabs.FinancesContent, TooltipTexts.ManagerTabs.PricingContent, TooltipTexts.ManagerTabs.GuestsContent, TooltipTexts.ManagerTabs.ResearchContent };
             
             for (int i = 0; i < _tabs.Length; i++)
             {

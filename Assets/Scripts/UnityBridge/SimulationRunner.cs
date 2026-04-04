@@ -136,6 +136,9 @@ namespace SkiResortTycoon.UnityBridge
             // End day — EconomySystem handles all financial logic
             _lastFinancialRecord = _sim.EndDay(
                 lodgeCount, lodgeRevenue, lodgeAmenities, distinctDifficulties);
+
+            LiftResearchProgress.ProcessNewDay(_sim.State);
+            LiftResearchEvents.Raise();
             
             // Reset per-trail daily run counts for the new day
             if (ResortTrafficManager.Instance != null)

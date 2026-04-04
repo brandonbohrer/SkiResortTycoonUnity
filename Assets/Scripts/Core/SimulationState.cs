@@ -59,6 +59,84 @@ namespace SkiResortTycoon.Core
         /// 0 = not scheduled yet.
         /// </summary>
         public int LawsuitGuaranteedTargetDay { get; set; }
+
+        // ── Lift build research (Mountain Manager → Research tab) ─────────────
+        /// <summary>Unlocks beyond 1-seat low speed (always available).</summary>
+        public bool UnlockedLiftOneSeatHighSpeed { get; set; }
+        public bool UnlockedLiftTwoSeatLowSpeed { get; set; }
+        public bool UnlockedLiftTwoSeatHighSpeed { get; set; }
+
+        public bool LiftResearchSlot0Done { get; set; }
+        public bool LiftResearchSlot1Done { get; set; }
+        public bool LiftResearchSlot2Done { get; set; }
+
+        /// <summary>Calendar day index when the active project completes; -1 if idle.</summary>
+        public int LiftResearchSlot0CompletionDay { get; set; } = -1;
+        public int LiftResearchSlot1CompletionDay { get; set; } = -1;
+        public int LiftResearchSlot2CompletionDay { get; set; } = -1;
+
+        /// <summary><see cref="LiftType"/> as int while research runs; -1 if none.</summary>
+        public int LiftResearchSlot0PendingUnlockType { get; set; } = -1;
+        public int LiftResearchSlot1PendingUnlockType { get; set; } = -1;
+        public int LiftResearchSlot2PendingUnlockType { get; set; } = -1;
+
+        public int LiftResearchSlot0PaidAmount { get; set; }
+        public int LiftResearchSlot1PaidAmount { get; set; }
+        public int LiftResearchSlot2PaidAmount { get; set; }
+
+        public int GetLiftResearchCompletionDay(int slot)
+        {
+            switch (slot)
+            {
+                case 0: return LiftResearchSlot0CompletionDay;
+                case 1: return LiftResearchSlot1CompletionDay;
+                case 2: return LiftResearchSlot2CompletionDay;
+                default: return -1;
+            }
+        }
+
+        public int GetLiftResearchPendingUnlockType(int slot)
+        {
+            switch (slot)
+            {
+                case 0: return LiftResearchSlot0PendingUnlockType;
+                case 1: return LiftResearchSlot1PendingUnlockType;
+                case 2: return LiftResearchSlot2PendingUnlockType;
+                default: return -1;
+            }
+        }
+
+        public void ClearLiftResearchInProgress(int slot)
+        {
+            switch (slot)
+            {
+                case 0:
+                    LiftResearchSlot0CompletionDay = -1;
+                    LiftResearchSlot0PendingUnlockType = -1;
+                    LiftResearchSlot0PaidAmount = 0;
+                    break;
+                case 1:
+                    LiftResearchSlot1CompletionDay = -1;
+                    LiftResearchSlot1PendingUnlockType = -1;
+                    LiftResearchSlot1PaidAmount = 0;
+                    break;
+                case 2:
+                    LiftResearchSlot2CompletionDay = -1;
+                    LiftResearchSlot2PendingUnlockType = -1;
+                    LiftResearchSlot2PaidAmount = 0;
+                    break;
+            }
+        }
+
+        public void SetLiftResearchSlotDone(int slot, bool done)
+        {
+            switch (slot)
+            {
+                case 0: LiftResearchSlot0Done = done; break;
+                case 1: LiftResearchSlot1Done = done; break;
+                case 2: LiftResearchSlot2Done = done; break;
+            }
+        }
     }
 }
 

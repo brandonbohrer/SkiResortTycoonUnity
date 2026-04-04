@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using SkiResortTycoon.Core;
+using SkiResortTycoon.UnityBridge;
 
 namespace SkiResortTycoon.UI
 {
@@ -62,7 +63,9 @@ namespace SkiResortTycoon.UI
         /// <summary>Orange sub-button tint only after the user picks a lift type in this dock session.</summary>
         private bool _liftSubOptionChosen;
         private bool _skipNextToolClose;
+        private LiftBuilder _cachedLiftBuilder;
 
+        private const string LiftLockOverlayName = "LiftLockRaycast";
         private const float WidthMin = 10f;
         private const float WidthMax = 30f;
 
@@ -181,6 +184,21 @@ namespace SkiResortTycoon.UI
             }
 
             CloseDock();
+        }
+
+        private void OnEnable()
+        {
+            LiftResearchEvents.Changed += OnLiftResearchChanged;
+        }
+
+        private void OnDisable()
+        {
+            LiftResearchEvents.Changed -= OnLiftResearchChanged;
+        }
+
+        private void OnLiftResearchChanged()
+        {
+            RefreshLiftTypeButtons();
         }
 
         // ── Button handler ───────────────────────────────────────────────────
@@ -320,10 +338,119 @@ namespace SkiResortTycoon.UI
 
         private void RefreshLiftTypeButtons()
         {
-            SetModeButtonColor(_oneSeatLowSpeedButton,  _oneSeatLowOriginal,  _liftSubOptionChosen && _selectedLiftType == LiftType.OneSeatLowSpeed);
-            SetModeButtonColor(_oneSeatHighSpeedButton, _oneSeatHighOriginal, _liftSubOptionChosen && _selectedLiftType == LiftType.OneSeatHighSpeed);
-            SetModeButtonColor(_twoSeatLowSpeedButton,  _twoSeatLowOriginal,  _liftSubOptionChosen && _selectedLiftType == LiftType.TwoSeatLowSpeed);
-            SetModeButtonColor(_twoSeatHighSpeedButton, _twoSeatHighOriginal, _liftSubOptionChosen && _selectedLiftType == LiftType.TwoSeatHighSpeed);
+            var state = UIManager.Instance?.SimulationRunner?.Sim?.State;
+            if (state != null && !LiftBuildUnlocks.IsUnlocked(state, _selectedLiftType))
+            {
+                _selectedLiftType = LiftType.OneSeatLowSpeed;
+                _liftSubOptionChosen = true;
+                if (CachedLiftBuilder != null)
+                    CachedLiftBuilder.SetSelectedLiftType(_selectedLiftType);
+            }
+
+            bool u1h = state == null || LiftBuildUnlocks.IsUnlocked(state, LiftType.OneSeatHighSpeed);
+            bool u2l = state == null || LiftBuildUnlocks.IsUnlocked(state, LiftType.TwoSeatLowSpeed);
+            bool u2h = state == null || LiftBuildUnlocks.IsUnlocked(state, LiftType.TwoSeatHighSpeed);
+
+            SetLiftModeButtonColor(_oneSeatLowSpeedButton, _oneSeatLowOriginal, true,
+                _liftSubOptionChosen && _selectedLiftType == LiftType.OneSeatLowSpeed);
+            SetLiftModeButtonColor(_oneSeatHighSpeedButton, _oneSeatHighOriginal, u1h,
+                _liftSubOptionChosen && _selectedLiftType == LiftType.OneSeatHighSpeed);
+            SetLiftModeButtonColor(_twoSeatLowSpeedButton, _twoSeatLowOriginal, u2l,
+                _liftSubOptionChosen && _selectedLiftType == LiftType.TwoSeatLowSpeed);
+            SetLiftModeButtonColor(_twoSeatHighSpeedButton, _twoSeatHighOriginal, u2h,
+                _liftSubOptionChosen && _selectedLiftType == LiftType.TwoSeatHighSpeed);
+
+            ApplyLiftSubRowTooltipState(_oneSeatLowSpeedButton, true,
+                TooltipTexts.Dock.OneSeatLowSpeedHeader, TooltipTexts.Dock.OneSeatLowSpeedContent);
+            ApplyLiftSubRowTooltipState(_oneSeatHighSpeedButton, u1h,
+                TooltipTexts.Dock.OneSeatHighSpeedHeader, TooltipTexts.Dock.OneSeatHighSpeedContent);
+            ApplyLiftSubRowTooltipState(_twoSeatLowSpeedButton, u2l,
+                TooltipTexts.Dock.TwoSeatLowSpeedHeader, TooltipTexts.Dock.TwoSeatLowSpeedContent);
+            ApplyLiftSubRowTooltipState(_twoSeatHighSpeedButton, u2h,
+                TooltipTexts.Dock.TwoSeatHighSpeedHeader, TooltipTexts.Dock.TwoSeatHighSpeedContent);
+        }
+
+        /// <summary>
+        /// Locked lift types: disable the button's normal tooltip and show only "locked" on the hit overlay.
+        /// Unlocked: restore dock tooltip on the button and remove the overlay.
+        /// </summary>
+        private void ApplyLiftSubRowTooltipState(Button button, bool unlocked, string normalHeader, string normalContent)
+        {
+            if (button == null) return;
+
+            var tt = button.GetComponent<TooltipTrigger>();
+            if (tt == null)
+                tt = button.gameObject.AddComponent<TooltipTrigger>();
+
+            if (unlocked)
+            {
+                tt.enabled = true;
+                tt.SetContent(normalHeader, normalContent);
+                EnsureLiftLockOverlay(button, false);
+            }
+            else
+            {
+                tt.enabled = false;
+                EnsureLiftLockOverlay(button, true);
+            }
+        }
+
+        private LiftBuilder CachedLiftBuilder =>
+            _cachedLiftBuilder != null ? _cachedLiftBuilder : (_cachedLiftBuilder = FindObjectOfType<LiftBuilder>());
+
+        private void SetLiftModeButtonColor(Button btn, Color original, bool unlocked, bool selected)
+        {
+            if (btn == null) return;
+            btn.interactable = true;
+            var img = btn.targetGraphic as Image;
+            if (img == null) return;
+            if (!unlocked)
+            {
+                btn.transition = Selectable.Transition.None;
+                img.color = new Color(0.5f, 0.5f, 0.5f, 0.88f);
+                ButtonHoverFeedback.ApplyWithoutHoverTint(btn, UIManager.Instance?.Theme);
+            }
+            else
+            {
+                btn.transition = Selectable.Transition.ColorTint;
+                img.color = selected ? SelectedColor : original;
+                ButtonHoverFeedback.Apply(btn, UIManager.Instance?.Theme);
+            }
+        }
+
+        private void EnsureLiftLockOverlay(Button button, bool locked)
+        {
+            if (button == null) return;
+            var existing = button.transform.Find(LiftLockOverlayName);
+            if (!locked)
+            {
+                if (existing != null)
+                    Destroy(existing.gameObject);
+                return;
+            }
+
+            TooltipTrigger overlayTt;
+            if (existing != null)
+            {
+                overlayTt = existing.GetComponent<TooltipTrigger>();
+                if (overlayTt != null)
+                    overlayTt.SetContent(TooltipTexts.LiftBuild.LockedHeader, TooltipTexts.LiftBuild.LockedContent);
+                return;
+            }
+
+            var go = new GameObject(LiftLockOverlayName, typeof(RectTransform), typeof(Image), typeof(TooltipTrigger));
+            go.transform.SetParent(button.transform, false);
+            go.transform.SetAsLastSibling();
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+            var image = go.GetComponent<Image>();
+            image.color = new Color(1f, 1f, 1f, 0.02f);
+            image.raycastTarget = true;
+            overlayTt = go.GetComponent<TooltipTrigger>();
+            overlayTt.SetContent(TooltipTexts.LiftBuild.LockedHeader, TooltipTexts.LiftBuild.LockedContent);
         }
 
         private static void SetModeButtonColor(Button btn, Color original, bool active)
@@ -345,6 +472,13 @@ namespace SkiResortTycoon.UI
         
         private void OnLiftTypeClicked(LiftType liftType)
         {
+            var state = UIManager.Instance?.SimulationRunner?.Sim?.State;
+            if (state != null && !LiftBuildUnlocks.IsUnlocked(state, liftType))
+            {
+                NotificationManager.Instance?.ShowWarning(TooltipTexts.LiftBuild.LockedContent);
+                return;
+            }
+
             _liftSubOptionChosen = true;
             _selectedLiftType = liftType;
             RefreshLiftTypeButtons();

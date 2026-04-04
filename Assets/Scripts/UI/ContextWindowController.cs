@@ -332,12 +332,21 @@ namespace SkiResortTycoon.UI
 
             if (UIManager.Instance != null)
                 UIManager.Instance.OnToolChanged.AddListener(OnToolChanged);
+
+            LiftResearchEvents.Changed += OnLiftResearchChanged;
         }
 
         private void OnDestroy()
         {
             if (UIManager.Instance != null)
                 UIManager.Instance.OnToolChanged.RemoveListener(OnToolChanged);
+            LiftResearchEvents.Changed -= OnLiftResearchChanged;
+        }
+
+        private void OnLiftResearchChanged()
+        {
+            if (_current != null && _current.Type == StructureType.Lift)
+                RefreshLiftUpgradeButtonAppearance();
         }
 
         private void Update()
@@ -918,10 +927,20 @@ namespace SkiResortTycoon.UI
             string affordContent =
                 $"Upgrade to {nextName}.\nCost: ${cost:N0}.";
 
-            int money = -1;
             var sim = FindObjectOfType<SimulationRunner>()?.Sim;
+            int money = -1;
             if (sim?.State != null)
                 money = sim.State.Money;
+
+            if (sim?.State != null && !LiftBuildUnlocks.IsUnlocked(sim.State, next.Value))
+            {
+                _liftUpgradeButton.interactable = false;
+                ApplyLiftUpgradeTooltip(
+                    TooltipTexts.ContextWindow.LiftUpgradeResearchLockedHeader,
+                    TooltipTexts.ContextWindow.LiftUpgradeResearchLockedContent,
+                    useOverlayForTooltip: true);
+                return;
+            }
 
             bool canAfford = money < 0 || money >= cost;
 
@@ -958,6 +977,18 @@ namespace SkiResortTycoon.UI
             }
 
             liftBuilder.EnsureReady();
+
+            var nextUp = LiftTypeSpecs.GetNextUpgrade(lift.Type);
+            if (nextUp.HasValue)
+            {
+                var sim = FindObjectOfType<SimulationRunner>()?.Sim;
+                if (sim?.State != null && !LiftBuildUnlocks.IsUnlocked(sim.State, nextUp.Value))
+                {
+                    NotificationManager.Instance?.ShowWarning(
+                        TooltipTexts.ContextWindow.LiftUpgradeResearchLockedContent);
+                    return;
+                }
+            }
 
             if (!liftBuilder.TryUpgradeLift(lift, out SelectableStructure newRoot, out string err))
             {

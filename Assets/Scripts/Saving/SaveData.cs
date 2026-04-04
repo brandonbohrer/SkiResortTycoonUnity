@@ -320,6 +320,22 @@ namespace SkiResortTycoon.Saving
         public bool visualPowderDayActive;
         public bool lawsuitFirstEventCompleted;
         public int lawsuitGuaranteedTargetDay;
+
+        public bool unlockedLiftOneSeatHighSpeed;
+        public bool unlockedLiftTwoSeatLowSpeed;
+        public bool unlockedLiftTwoSeatHighSpeed;
+        public bool liftResearchSlot0Done;
+        public bool liftResearchSlot1Done;
+        public bool liftResearchSlot2Done;
+        public int liftResearchSlot0CompletionDay;
+        public int liftResearchSlot1CompletionDay;
+        public int liftResearchSlot2CompletionDay;
+        public int liftResearchSlot0PendingUnlockType;
+        public int liftResearchSlot1PendingUnlockType;
+        public int liftResearchSlot2PendingUnlockType;
+        public int liftResearchSlot0PaidAmount;
+        public int liftResearchSlot1PaidAmount;
+        public int liftResearchSlot2PaidAmount;
     }
 
     [Serializable]

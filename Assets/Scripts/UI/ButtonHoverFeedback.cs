@@ -73,6 +73,27 @@ namespace SkiResortTycoon.UI
         }
 
         /// <summary>
+        /// Sets highlighted/pressed/selected to the current visual baseline so the button does not
+        /// change tint on hover or press (e.g. locked dock options that stay greyed out).
+        /// Call after setting the target <see cref="Image.color"/> if the baseline comes from the image.
+        /// </summary>
+        public static void ApplyWithoutHoverTint(Button button, UITheme theme = null)
+        {
+            if (button == null) return;
+
+            ColorBlock cb = button.colors;
+            Color baseline = GetVisualBaseline(button, cb);
+            cb.highlightedColor = baseline;
+            cb.pressedColor = baseline;
+            cb.selectedColor = baseline;
+            if (theme != null)
+                cb.disabledColor = theme.ButtonDisabled;
+            cb.colorMultiplier = 1f;
+            cb.fadeDuration = 0f;
+            button.colors = cb;
+        }
+
+        /// <summary>
         /// When the color block normal is white, the visible tint usually lives on the <see cref="Image"/>.
         /// Otherwise the configured <see cref="ColorBlock.normalColor"/> is the baseline (e.g. build bar grays).
         /// </summary>

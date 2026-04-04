@@ -132,6 +132,10 @@ namespace SkiResortTycoon.UI
             public const string LiftUpgradeMaxHeader = "Cannot Upgrade";
             public const string LiftUpgradeMaxContent = "This lift is already at max level.";
             public const string LiftUpgradeCannotAffordHeader = "Cannot Upgrade";
+
+            public const string LiftUpgradeResearchLockedHeader = "Locked";
+            public const string LiftUpgradeResearchLockedContent =
+                "Research the next lift type in Mountain Manager before you can upgrade.";
             
             // Build Buttons
             public const string ConfirmHeader = "Confirm";
@@ -182,6 +186,24 @@ namespace SkiResortTycoon.UI
             
             public const string GuestsHeader = "Guests";
             public const string GuestsContent = "Monitor guest satisfaction and demographics.";
+            
+            public const string ResearchHeader = "Research";
+            public const string ResearchContent = "Unlock new lift technologies for the build menu.";
+        }
+        
+        public static class Research
+        {
+            public const string LockedHeader = "Locked";
+            public const string LockedContent = "Not researched yet.";
+            
+            public const string ResearchHeader = "Research";
+            public const string ResearchContent = "Start this research project.";
+        }
+        
+        public static class LiftBuild
+        {
+            public const string LockedHeader = "Locked";
+            public const string LockedContent = "Not yet researched.";
         }
         
         // ── Global Stats ─────────────────────────────────────────────────────

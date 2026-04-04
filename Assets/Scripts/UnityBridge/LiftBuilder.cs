@@ -412,6 +412,13 @@ namespace SkiResortTycoon.UnityBridge
                 return false;
             }
 
+            if (_simulationRunner?.Sim?.State != null &&
+                !LiftBuildUnlocks.IsUnlocked(_simulationRunner.Sim.State, next.Value))
+            {
+                errorMessage = TooltipTexts.ContextWindow.LiftUpgradeResearchLockedContent;
+                return false;
+            }
+
             int cost = LiftTypeSpecs.GetUpgradeCostToNext(lift.Type, lift, _liftSystem);
             if (_simulationRunner == null || _simulationRunner.Sim == null || _simulationRunner.Sim.State == null)
             {

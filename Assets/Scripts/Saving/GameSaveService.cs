@@ -195,7 +195,22 @@ namespace SkiResortTycoon.Saving
                     powderIntroCompleted = false,
                     visualPowderDayActive = false,
                     lawsuitFirstEventCompleted = false,
-                    lawsuitGuaranteedTargetDay = 0
+                    lawsuitGuaranteedTargetDay = 0,
+                    unlockedLiftOneSeatHighSpeed = false,
+                    unlockedLiftTwoSeatLowSpeed = false,
+                    unlockedLiftTwoSeatHighSpeed = false,
+                    liftResearchSlot0Done = false,
+                    liftResearchSlot1Done = false,
+                    liftResearchSlot2Done = false,
+                    liftResearchSlot0CompletionDay = -1,
+                    liftResearchSlot1CompletionDay = -1,
+                    liftResearchSlot2CompletionDay = -1,
+                    liftResearchSlot0PendingUnlockType = -1,
+                    liftResearchSlot1PendingUnlockType = -1,
+                    liftResearchSlot2PendingUnlockType = -1,
+                    liftResearchSlot0PaidAmount = 0,
+                    liftResearchSlot1PaidAmount = 0,
+                    liftResearchSlot2PaidAmount = 0
                 },
                 timeController = new TimeControllerDto { isPaused = false, speedMultiplier = 1f },
                 economy = new EconomyDto
@@ -258,7 +273,22 @@ namespace SkiResortTycoon.Saving
                 powderIntroCompleted = state.PowderIntroCompleted,
                 visualPowderDayActive = state.VisualPowderDayActive,
                 lawsuitFirstEventCompleted = state.LawsuitFirstEventCompleted,
-                lawsuitGuaranteedTargetDay = state.LawsuitGuaranteedTargetDay
+                lawsuitGuaranteedTargetDay = state.LawsuitGuaranteedTargetDay,
+                unlockedLiftOneSeatHighSpeed = state.UnlockedLiftOneSeatHighSpeed,
+                unlockedLiftTwoSeatLowSpeed = state.UnlockedLiftTwoSeatLowSpeed,
+                unlockedLiftTwoSeatHighSpeed = state.UnlockedLiftTwoSeatHighSpeed,
+                liftResearchSlot0Done = state.LiftResearchSlot0Done,
+                liftResearchSlot1Done = state.LiftResearchSlot1Done,
+                liftResearchSlot2Done = state.LiftResearchSlot2Done,
+                liftResearchSlot0CompletionDay = state.LiftResearchSlot0CompletionDay,
+                liftResearchSlot1CompletionDay = state.LiftResearchSlot1CompletionDay,
+                liftResearchSlot2CompletionDay = state.LiftResearchSlot2CompletionDay,
+                liftResearchSlot0PendingUnlockType = state.LiftResearchSlot0PendingUnlockType,
+                liftResearchSlot1PendingUnlockType = state.LiftResearchSlot1PendingUnlockType,
+                liftResearchSlot2PendingUnlockType = state.LiftResearchSlot2PendingUnlockType,
+                liftResearchSlot0PaidAmount = state.LiftResearchSlot0PaidAmount,
+                liftResearchSlot1PaidAmount = state.LiftResearchSlot1PaidAmount,
+                liftResearchSlot2PaidAmount = state.LiftResearchSlot2PaidAmount
             };
 
             if (runner.Sim.TimeController != null)
@@ -397,6 +427,22 @@ namespace SkiResortTycoon.Saving
                 state.VisualPowderDayActive = data.simulationState.visualPowderDayActive;
                 state.LawsuitFirstEventCompleted = data.simulationState.lawsuitFirstEventCompleted;
                 state.LawsuitGuaranteedTargetDay = data.simulationState.lawsuitGuaranteedTargetDay;
+                state.UnlockedLiftOneSeatHighSpeed = data.simulationState.unlockedLiftOneSeatHighSpeed;
+                state.UnlockedLiftTwoSeatLowSpeed = data.simulationState.unlockedLiftTwoSeatLowSpeed;
+                state.UnlockedLiftTwoSeatHighSpeed = data.simulationState.unlockedLiftTwoSeatHighSpeed;
+                state.LiftResearchSlot0Done = data.simulationState.liftResearchSlot0Done;
+                state.LiftResearchSlot1Done = data.simulationState.liftResearchSlot1Done;
+                state.LiftResearchSlot2Done = data.simulationState.liftResearchSlot2Done;
+                state.LiftResearchSlot0CompletionDay = data.simulationState.liftResearchSlot0CompletionDay;
+                state.LiftResearchSlot1CompletionDay = data.simulationState.liftResearchSlot1CompletionDay;
+                state.LiftResearchSlot2CompletionDay = data.simulationState.liftResearchSlot2CompletionDay;
+                state.LiftResearchSlot0PendingUnlockType = data.simulationState.liftResearchSlot0PendingUnlockType;
+                state.LiftResearchSlot1PendingUnlockType = data.simulationState.liftResearchSlot1PendingUnlockType;
+                state.LiftResearchSlot2PendingUnlockType = data.simulationState.liftResearchSlot2PendingUnlockType;
+                state.LiftResearchSlot0PaidAmount = data.simulationState.liftResearchSlot0PaidAmount;
+                state.LiftResearchSlot1PaidAmount = data.simulationState.liftResearchSlot1PaidAmount;
+                state.LiftResearchSlot2PaidAmount = data.simulationState.liftResearchSlot2PaidAmount;
+                MigrateLiftResearchIfOldSave(data.simulationState, state);
                 MigratePowderIntroIfOldSave(state);
             }
 
@@ -474,6 +520,28 @@ namespace SkiResortTycoon.Saving
                 skierVisualizer.InvalidateAllSkierGoals();
 
             Debug.Log($"[GameSaveService] Full apply done: lifts, trails, lodges, skiers restored.");
+        }
+
+        /// <summary>
+        /// Saves created before lift research used 0 for "missing" ints; treat idle in-progress slots as -1.
+        /// </summary>
+        private static void MigrateLiftResearchIfOldSave(SimulationStateDto dto, SimulationState state)
+        {
+            if (dto.liftResearchSlot0CompletionDay == 0 && dto.liftResearchSlot0PaidAmount == 0)
+            {
+                state.LiftResearchSlot0CompletionDay = -1;
+                state.LiftResearchSlot0PendingUnlockType = -1;
+            }
+            if (dto.liftResearchSlot1CompletionDay == 0 && dto.liftResearchSlot1PaidAmount == 0)
+            {
+                state.LiftResearchSlot1CompletionDay = -1;
+                state.LiftResearchSlot1PendingUnlockType = -1;
+            }
+            if (dto.liftResearchSlot2CompletionDay == 0 && dto.liftResearchSlot2PaidAmount == 0)
+            {
+                state.LiftResearchSlot2CompletionDay = -1;
+                state.LiftResearchSlot2PendingUnlockType = -1;
+            }
         }
 
         private static void MigratePowderIntroIfOldSave(SimulationState state)

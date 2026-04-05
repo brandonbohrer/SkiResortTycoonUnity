@@ -29,6 +29,14 @@ namespace SkiResortTycoon.UnityBridge
         private LineRenderer _perimeterLine;
         private bool _registered;
 
+        private void OnDisable()
+        {
+            var liftBuilder = FindObjectOfType<LiftBuilder>();
+            if (liftBuilder?.Connectivity?.Registry != null)
+                liftBuilder.Connectivity.Registry.UnregisterByOwner(GetInstanceID());
+            _registered = false;
+        }
+
         void Start()
         {
             Invoke(nameof(TryRegister), 0.1f);
@@ -63,13 +71,16 @@ namespace SkiResortTycoon.UnityBridge
         {
             _registered = true;
             var registry = liftBuilder.Connectivity.Registry;
+            int ownerId = GetInstanceID();
+            // Remove prior points from this lodge (re-runs, EnsureRegistered, duplicate calls)
+            registry.UnregisterByOwner(ownerId);
             Vector3 center = transform.position;
             int count = 0;
 
             registry.Register(new SnapPoint(
                 SnapPointType.BaseSpawn,
                 MountainManager.ToVector3f(center),
-                _baseId,
+                ownerId,
                 _baseName));
             count++;
 
@@ -89,8 +100,8 @@ namespace SkiResortTycoon.UnityBridge
                 Vector3 grounded = GroundToTerrain(c, center.y);
                 Vector3f pos = MountainManager.ToVector3f(grounded);
                 string label = $"{_baseName}_Corner{count}";
-                registry.Register(new SnapPoint(SnapPointType.BaseSpawn, pos, _baseId, label));
-                registry.Register(new SnapPoint(SnapPointType.BuildingEntrance, pos, _baseId, label));
+                registry.Register(new SnapPoint(SnapPointType.BaseSpawn, pos, ownerId, label));
+                registry.Register(new SnapPoint(SnapPointType.BuildingEntrance, pos, ownerId, label));
                 count++;
             }
 
@@ -113,9 +124,9 @@ namespace SkiResortTycoon.UnityBridge
                     string label = $"{_baseName}_Edge{count}";
 
                     registry.Register(new SnapPoint(
-                        SnapPointType.BaseSpawn, pos, _baseId, label));
+                        SnapPointType.BaseSpawn, pos, ownerId, label));
                     registry.Register(new SnapPoint(
-                        SnapPointType.BuildingEntrance, pos, _baseId, label));
+                        SnapPointType.BuildingEntrance, pos, ownerId, label));
                     count++;
                 }
             }

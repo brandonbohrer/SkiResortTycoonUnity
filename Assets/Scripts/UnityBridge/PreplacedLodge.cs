@@ -29,6 +29,16 @@ namespace SkiResortTycoon.UnityBridge
 
         private bool _snapPointsRegistered;
 
+        private void OnDisable()
+        {
+            var liftBuilder = FindObjectOfType<LiftBuilder>();
+            if (liftBuilder?.Connectivity?.Registry == null) return;
+            var facility = GetComponent<LodgeFacility>();
+            int ownerId = facility != null ? facility.GetInstanceID() : GetInstanceID();
+            liftBuilder.Connectivity.Registry.UnregisterByOwner(ownerId);
+            _snapPointsRegistered = false;
+        }
+
         void Start()
         {
             Invoke(nameof(Bootstrap), 0.15f);
@@ -94,6 +104,7 @@ namespace SkiResortTycoon.UnityBridge
             int ownerId = facility != null ? facility.GetInstanceID() : GetInstanceID();
             string ownerName = $"Lodge_{ownerId}";
             var registry = liftBuilder.Connectivity.Registry;
+            registry.UnregisterByOwner(ownerId);
             Vector3 center = transform.position;
             Quaternion rotation = transform.rotation;
 

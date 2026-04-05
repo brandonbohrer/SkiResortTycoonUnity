@@ -93,6 +93,8 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private float _lodgeVisitChance = 0.25f; // 25% chance to visit lodge after trail
         [SerializeField] private float _guaranteedLodgeVisitAfterMinutes = 120f; // If still no lodge visit, force one attempt
         [SerializeField] private float _lodgeVisitPressureStartMinutes = 45f; // Start ramping lodge chance after this many game minutes
+        [Tooltip("Horizontal distance from any registered BaseSpawn (lodge center + perimeter) required to despawn or count as \"at lodge\". Match or exceed BaseSnapPointRegistrar point spacing.")]
+        [SerializeField] private float _lodgeDespawnRadius = 28f;
 
         [Header("AI Config")]
         [SerializeField] private SkierAIConfig _aiConfig; // Assign a SkierAIConfig ScriptableObject asset
@@ -423,7 +425,7 @@ namespace SkiResortTycoon.UnityBridge
                     float closestDist = float.MaxValue;
                     foreach (var lift in allLifts)
                     {
-                        float dist = Vector3f.Distance(new Vector3f(baseSpawnPosition.x, 0, baseSpawnPosition.y), lift.StartPosition);
+                        float dist = Vector3f.Distance(GetEffectiveBasePositionForLiftDistance(), lift.StartPosition);
                         if (dist < closestDist) { closestDist = dist; startLift = lift; }
                     }
                 }
@@ -813,17 +815,12 @@ namespace SkiResortTycoon.UnityBridge
                 effectiveGameMinutes = effectiveDeltaTime * _simRunner.Sim.TimeSystem.SpeedMinutesPerSecond;
             }
 
-            // Cache base position for returning-to-base proximity checks
-            Vector3 cachedBasePos = Vector3.zero;
             bool hasBase = false;
             RefreshActiveLiftIdCache();
             {
                 var baseSpawns = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
                 if (baseSpawns.Count > 0)
-                {
-                    cachedBasePos = new Vector3(baseSpawns[0].Position.X, baseSpawns[0].Position.Y, baseSpawns[0].Position.Z);
                     hasBase = true;
-                }
             }
 
             // Update all active skiers
@@ -884,13 +881,12 @@ namespace SkiResortTycoon.UnityBridge
                         ChooseNewDestination(skier);
                 }
 
-                // Continuous base proximity check: returning skiers despawn when near base (any phase)
+                // Returning skiers despawn only when within the lodge footprint (any BaseSpawn), not the whole base region
                 if (skier.IsReturningToBase && hasBase && skier.Phase != SkierPhase.InLodge)
                 {
-                    float distToBase = Vector3.Distance(skier.GameObject.transform.position, cachedBasePos);
-                    if (distToBase <= 80f) // Generous radius — if they're in the base area, let them leave
+                    if (IsWithinLodgeDespawnZone(skier.GameObject.transform.position))
                     {
-                        if (_enableDebugLogs) Debug.Log($"[Skier {skier.Skier.SkierId}] Near base lodge ({distToBase:F0}m), leaving resort!");
+                        if (_enableDebugLogs) Debug.Log($"[Skier {skier.Skier.SkierId}] At lodge, leaving resort!");
                         skier.IsFinished = true;
                     }
                 }
@@ -903,7 +899,13 @@ namespace SkiResortTycoon.UnityBridge
                     if (skier.ReturningToBaseTimer > 480f && hasBase)
                     {
                         if (_enableDebugLogs) Debug.Log($"[Skier {skier.Skier.SkierId}] Returning-to-base timeout — teleporting to base");
-                        skier.GameObject.transform.position = cachedBasePos;
+                        Vector3 pos = skier.GameObject.transform.position;
+                        var rescue = GetNearestBaseSpawnWorldPosition(pos);
+                        if (rescue.HasValue)
+                        {
+                            skier.Motion?.Teleport(rescue.Value);
+                            skier.GameObject.transform.position = rescue.Value;
+                        }
                         skier.IsFinished = true;
                     }
                 }
@@ -1115,6 +1117,125 @@ namespace SkiResortTycoon.UnityBridge
         //  Spawning
         // ─────────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Reference point (XZ) for choosing which BaseSpawn cluster is the active lodge — nearest snap wins.
+        /// Prefers the centroid of lifts marked base-connected; falls back to serialized baseSpawnPosition.
+        /// </summary>
+        private Vector3 GetReferenceWorldPositionForNearestBaseSpawn()
+        {
+            var refPos = new Vector3(baseSpawnPosition.x, 0f, baseSpawnPosition.y);
+            var conn = _liftBuilder?.Connectivity?.Connections;
+            if (conn == null || _liftBuilder?.LiftSystem == null) return refPos;
+            var baseLiftIds = conn.GetLiftsConnectedToBase();
+            if (baseLiftIds == null || baseLiftIds.Count == 0) return refPos;
+            var allLifts = _liftBuilder.LiftSystem.GetAllLifts();
+            float sx = 0f, sz = 0f;
+            int n = 0;
+            for (int i = 0; i < baseLiftIds.Count; i++)
+            {
+                var lift = allLifts.Find(l => l.LiftId == baseLiftIds[i]);
+                if (lift != null && lift.IsValid)
+                {
+                    sx += lift.StartPosition.X;
+                    sz += lift.StartPosition.Z;
+                    n++;
+                }
+            }
+            if (n > 0)
+                return new Vector3(sx / n, 0f, sz / n);
+            return refPos;
+        }
+
+        /// <summary>
+        /// Nearest registered lodge snap in XZ to the reference (handles multiple maps' points in the registry during editor / load).
+        /// </summary>
+        private Vector3? GetNearestBaseSpawnWorldPosition(Vector3 referenceWorldPos)
+        {
+            var reg = _liftBuilder?.Connectivity?.Registry;
+            if (reg == null) return null;
+            var baseSpawns = reg.GetByType(SnapPointType.BaseSpawn);
+            if (baseSpawns.Count == 0) return null;
+            float rx = referenceWorldPos.x;
+            float rz = referenceWorldPos.z;
+            float bestSq = float.MaxValue;
+            Vector3 best = default;
+            for (int i = 0; i < baseSpawns.Count; i++)
+            {
+                var p = baseSpawns[i].Position;
+                float dx = p.X - rx;
+                float dz = p.Z - rz;
+                float sq = dx * dx + dz * dz;
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    best = new Vector3(p.X, p.Y, p.Z);
+                }
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Base position for lift-distance heuristics. Uses the BaseSpawn nearest to the base-lift cluster (not list index 0).
+        /// </summary>
+        private Vector3f GetEffectiveBasePositionForLiftDistance()
+        {
+            var nearest = GetNearestBaseSpawnWorldPosition(GetReferenceWorldPositionForNearestBaseSpawn());
+            if (nearest.HasValue)
+            {
+                var v = nearest.Value;
+                return new Vector3f(v.x, v.y, v.z);
+            }
+            return new Vector3f(baseSpawnPosition.x, 0, baseSpawnPosition.y);
+        }
+
+        /// <summary>
+        /// World position where new skiers appear at the lodge. Uses the BaseSpawn nearest to the base-lift cluster; otherwise legacy tile height at baseSpawnPosition.
+        /// </summary>
+        private Vector3 GetEffectiveBaseSpawnWorldPosition(GridSystem grid, MountainManager mountainMgr)
+        {
+            var nearest = GetNearestBaseSpawnWorldPosition(GetReferenceWorldPositionForNearestBaseSpawn());
+            if (nearest.HasValue)
+            {
+                var p = nearest.Value;
+                float y = p.y;
+                if (mountainMgr != null)
+                {
+                    var h = mountainMgr.GetHeightAtWorldPos(new Vector3(p.x, 0f, p.z));
+                    if (h.HasValue) y = h.Value;
+                }
+                return new Vector3(p.x, y + SKI_HEIGHT_OFFSET, p.z);
+            }
+
+            var baseCoord = new TileCoord((int)baseSpawnPosition.x, (int)baseSpawnPosition.y);
+            var tile = grid.GetTile(baseCoord);
+            float baseHeight = tile != null ? tile.Height : -35f;
+            return new Vector3(baseSpawnPosition.x, baseHeight + SKI_HEIGHT_OFFSET, baseSpawnPosition.y);
+        }
+
+        /// <summary>
+        /// True when the skier is within <see cref="_lodgeDespawnRadius"/> (horizontal, XZ) of any registered BaseSpawn.
+        /// Uses the full set from <see cref="BaseSnapPointRegistrar"/> (center + perimeter), not a single point or a broad base-area bubble.
+        /// </summary>
+        private bool IsWithinLodgeDespawnZone(Vector3 worldPos)
+        {
+            if (_liftBuilder?.Connectivity?.Registry == null) return false;
+            var baseSpawns = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
+            if (baseSpawns.Count == 0) return false;
+            float px = worldPos.x;
+            float pz = worldPos.z;
+            float r = _lodgeDespawnRadius;
+            float rSq = r * r;
+            for (int i = 0; i < baseSpawns.Count; i++)
+            {
+                var p = baseSpawns[i].Position;
+                float dx = px - p.X;
+                float dz = pz - p.Z;
+                if (dx * dx + dz * dz <= rSq)
+                    return true;
+            }
+            return false;
+        }
+
         private void TrySpawnSkier()
         {
             var terrainData = _trailDrawer.GridRenderer.TerrainData;
@@ -1191,7 +1312,7 @@ namespace SkiResortTycoon.UnityBridge
                     float closestDist = float.MaxValue;
                     foreach (var lift in allLifts)
                     {
-                        Vector3f basePos3D = new Vector3f(baseSpawnPosition.x, 0, baseSpawnPosition.y);
+                        Vector3f basePos3D = GetEffectiveBasePositionForLiftDistance();
                         float dist = Vector3f.Distance(basePos3D, lift.StartPosition);
                         if (dist < closestDist)
                         {
@@ -1294,14 +1415,11 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
 
-            // Set initial position at base
-            var baseCoord = new TileCoord((int)baseSpawnPosition.x, (int)baseSpawnPosition.y);
-            var tile = grid.GetTile(baseCoord);
-            float baseHeight = tile != null ? tile.Height : -35f;
-            var startPos = new Vector3(baseSpawnPosition.x, baseHeight + SKI_HEIGHT_OFFSET, baseSpawnPosition.y);
+            // Set initial position at base (registry BaseSpawn when present — e.g. Summit Ridge lodge)
+            var mountainMgr = _trailDrawer.GridRenderer;
+            var startPos = GetEffectiveBaseSpawnWorldPosition(grid, mountainMgr);
 
             // Create motion controller with terrain height sampler for ground clamping
-            var mountainMgr = _trailDrawer.GridRenderer;
             System.Func<Vector3, float?> heightSampler = mountainMgr != null
                 ? (System.Func<Vector3, float?>)(pos => mountainMgr.GetHeightAtWorldPos(pos))
                 : null;
@@ -2175,17 +2293,11 @@ namespace SkiResortTycoon.UnityBridge
             // flag them as returning so they ski down toward the base lodge.
             if (!vs.Skier.WantsToKeepSkiing() || vs.IsReturningToBase)
             {
-                // Check if near the base lodge — if so, despawn
-                var baseSpawns = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
-                if (baseSpawns.Count > 0)
+                if (IsWithinLodgeDespawnZone(trailEndPos))
                 {
-                    Vector3 basePos = new Vector3(baseSpawns[0].Position.X, baseSpawns[0].Position.Y, baseSpawns[0].Position.Z);
-                    if (Vector3.Distance(trailEndPos, basePos) <= 80f)
-                    {
-                        if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Reached base lodge, leaving resort! (runs: {vs.Skier.RunsCompleted}/{vs.Skier.DesiredRuns})");
-                        vs.IsFinished = true;
-                        return;
-                    }
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Reached lodge, leaving resort! (runs: {vs.Skier.RunsCompleted}/{vs.Skier.DesiredRuns})");
+                    vs.IsFinished = true;
+                    return;
                 }
                 
                 // Not near base yet — mark as returning and fall through to
@@ -2523,25 +2635,19 @@ namespace SkiResortTycoon.UnityBridge
                 }
             }
 
-            // PRIORITY 6: Near base?
+            // PRIORITY 6: At lodge footprint (same tight zone as despawn)?
             {
-                var baseSpawnsP6 = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
-                if (baseSpawnsP6.Count > 0)
+                if (IsWithinLodgeDespawnZone(trailEndPos))
                 {
-                    Vector3 basePos = new Vector3(baseSpawnsP6[0].Position.X, baseSpawnsP6[0].Position.Y, baseSpawnsP6[0].Position.Z);
-                    if (Vector3.Distance(trailEndPos, basePos) <= 80f)
+                    if (vs.IsReturningToBase)
                     {
-                        if (vs.IsReturningToBase)
-                        {
-                            // Returning skier reached base — despawn
-                            if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Reached base lodge, leaving resort!");
-                            vs.IsFinished = true;
-                            return;
-                        }
-                        if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Reached base! Run #{vs.Skier.RunsCompleted}");
-                        ChooseNewDestination(vs);
+                        if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Reached lodge, leaving resort!");
+                        vs.IsFinished = true;
                         return;
                     }
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Reached lodge! Run #{vs.Skier.RunsCompleted}");
+                    ChooseNewDestination(vs);
+                    return;
                 }
             }
 
@@ -2706,18 +2812,12 @@ namespace SkiResortTycoon.UnityBridge
         {
             if (!vs.Skier.WantsToKeepSkiing())
             {
-                // Check if already at the base
-                var baseSpawns = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
-                if (baseSpawns.Count > 0)
+                Vector3 skierPos = vs.GameObject.transform.position;
+                if (IsWithinLodgeDespawnZone(skierPos))
                 {
-                    Vector3 basePos = new Vector3(baseSpawns[0].Position.X, baseSpawns[0].Position.Y, baseSpawns[0].Position.Z);
-                    Vector3 skierPos = vs.GameObject.transform.position;
-                    if (Vector3.Distance(skierPos, basePos) <= 80f)
-                    {
-                        if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] At base and done skiing, leaving resort!");
-                        vs.IsFinished = true;
-                        return;
-                    }
+                    if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] At lodge and done skiing, leaving resort!");
+                    vs.IsFinished = true;
+                    return;
                 }
                 
                 // Not at base — mark as returning; still needs a lift/trail to get down
@@ -3127,7 +3227,15 @@ namespace SkiResortTycoon.UnityBridge
             var baseSpawns = _liftBuilder.Connectivity.Registry.GetByType(SnapPointType.BaseSpawn);
             if (baseSpawns.Count > 0)
             {
-                Vector3 basePos = new Vector3(baseSpawns[0].Position.X, baseSpawns[0].Position.Y, baseSpawns[0].Position.Z);
+                var nearest = GetNearestBaseSpawnWorldPosition(fromPos);
+                Vector3 basePos;
+                if (nearest.HasValue)
+                    basePos = nearest.Value;
+                else
+                {
+                    var p = baseSpawns[0].Position;
+                    basePos = new Vector3(p.X, p.Y, p.Z);
+                }
                 if (_enableDebugLogs) Debug.Log($"[Skier {vs.Skier.SkierId}] Stranded — walking toward base ({Vector3.Distance(fromPos, basePos):F0}m away)");
 
                 vs.CurrentLift = null;

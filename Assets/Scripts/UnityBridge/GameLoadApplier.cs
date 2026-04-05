@@ -75,11 +75,17 @@ namespace SkiResortTycoon.UnityBridge
             // Wait past the longest Invoke delay (PreplacedLodge Bootstrap at 0.15s) + buffer.
             yield return new WaitForSeconds(0.25f);
 
-            foreach (var registrar in FindObjectsOfType<BaseSnapPointRegistrar>())
+            foreach (var registrar in FindObjectsOfType<BaseSnapPointRegistrar>(true))
+            {
+                if (!registrar.gameObject.activeInHierarchy) continue;
                 registrar.EnsureRegistered();
+            }
 
-            foreach (var preplaced in FindObjectsOfType<PreplacedLodge>())
+            foreach (var preplaced in FindObjectsOfType<PreplacedLodge>(true))
+            {
+                if (!preplaced.gameObject.activeInHierarchy) continue;
                 preplaced.EnsureSnapPointsRegistered();
+            }
 
             if (_liftBuilder?.Connectivity != null)
                 _liftBuilder.Connectivity.RebuildConnections();

@@ -6,6 +6,8 @@ namespace SkiResortTycoon.UnityBridge
     /// <summary>
     /// Helper script to clear trees in a radius around a world position.
     /// Used when lifts/trails are built to create clear corridors.
+    /// Uses a spatial grid for O(1) cell lookups so preview clearing scales
+    /// to thousands of trees without frame drops.
     /// </summary>
     public class TreeClearer : MonoBehaviour
     {
@@ -20,6 +22,14 @@ namespace SkiResortTycoon.UnityBridge
         // ── Preview tree management (for interactive placement) ────────
         private readonly HashSet<GameObject> _previewClearedTrees = new HashSet<GameObject>();
         private readonly List<TreeState> _previewTreeStates = new List<TreeState>();
+
+        // ── Spatial grid for fast proximity queries ────────────────────
+        private const float GridCellSize = 16f;
+        private Dictionary<long, List<int>> _grid;
+        private Vector3[] _treePositions;
+        private GameObject[] _treeObjects;
+        private int _treeCount;
+        private bool _gridBuilt;
 
         private void Awake()
         {
@@ -143,6 +153,7 @@ namespace SkiResortTycoon.UnityBridge
         {
             _cachedTreeTransforms = null;
             _cachedTreeTransformCount = -1;
+            _gridBuilt = false;
         }
 
         /// <summary>
@@ -163,28 +174,129 @@ namespace SkiResortTycoon.UnityBridge
         }
 
         // ─────────────────────────────────────────────────────────────
+        // Spatial grid
+        // ─────────────────────────────────────────────────────────────
+
+        private void EnsureGrid()
+        {
+            if (_gridBuilt) return;
+            if (!TryEnsureTreesContainer()) return;
+
+            Transform[] transforms = GetTreeTransforms();
+
+            int count = 0;
+            for (int i = 0; i < transforms.Length; i++)
+            {
+                if (transforms[i] != null && transforms[i] != _treesContainer.transform)
+                    count++;
+            }
+
+            _treePositions = new Vector3[count];
+            _treeObjects = new GameObject[count];
+            _treeCount = count;
+
+            if (_grid == null)
+                _grid = new Dictionary<long, List<int>>(count / 4);
+            else
+                _grid.Clear();
+
+            int idx = 0;
+            for (int i = 0; i < transforms.Length; i++)
+            {
+                Transform t = transforms[i];
+                if (t == null || t == _treesContainer.transform) continue;
+
+                Vector3 pos = t.position;
+                _treePositions[idx] = pos;
+                _treeObjects[idx] = t.gameObject;
+
+                long key = CellKey(pos.x, pos.z);
+                if (!_grid.TryGetValue(key, out var list))
+                {
+                    list = new List<int>(8);
+                    _grid[key] = list;
+                }
+                list.Add(idx);
+                idx++;
+            }
+
+            _gridBuilt = true;
+        }
+
+        private static long CellKey(float x, float z)
+        {
+            int cx = Mathf.FloorToInt(x / GridCellSize);
+            int cz = Mathf.FloorToInt(z / GridCellSize);
+            return ((long)cx << 32) | (uint)cz;
+        }
+
+        /// <summary>
+        /// Collects all grid cell keys that overlap a circle at (cx, cz) with the given radius.
+        /// </summary>
+        private static void GetCellKeysInRadius(float cx, float cz, float radius, List<long> keys)
+        {
+            int minCX = Mathf.FloorToInt((cx - radius) / GridCellSize);
+            int maxCX = Mathf.FloorToInt((cx + radius) / GridCellSize);
+            int minCZ = Mathf.FloorToInt((cz - radius) / GridCellSize);
+            int maxCZ = Mathf.FloorToInt((cz + radius) / GridCellSize);
+
+            for (int gx = minCX; gx <= maxCX; gx++)
+                for (int gz = minCZ; gz <= maxCZ; gz++)
+                    keys.Add(((long)gx << 32) | (uint)gz);
+        }
+
+        // Reusable buffers to avoid per-frame allocations
+        private readonly HashSet<long> _queriedCells = new HashSet<long>();
+        private readonly List<long> _cellKeyBuffer = new List<long>(64);
+
+        /// <summary>
+        /// Collects unique cell keys that cover the corridor around the given path.
+        /// </summary>
+        private void CollectCellsAlongPath(List<Vector3> pathPoints, float corridorWidth)
+        {
+            _queriedCells.Clear();
+            _cellKeyBuffer.Clear();
+
+            for (int s = 0; s < pathPoints.Count; s++)
+            {
+                Vector3 pt = pathPoints[s];
+                GetCellKeysInRadius(pt.x, pt.z, corridorWidth, _cellKeyBuffer);
+            }
+
+            for (int i = 0; i < _cellKeyBuffer.Count; i++)
+                _queriedCells.Add(_cellKeyBuffer[i]);
+        }
+
+        // ─────────────────────────────────────────────────────────────
         // Permanent clearing internals
         // ─────────────────────────────────────────────────────────────
 
         private void ClearTreesAlongPathInternal(List<Vector3> pathPoints, float corridorWidth)
         {
             if (!TryEnsureTreesContainer()) return;
+            EnsureGrid();
 
-            Transform[] trees = GetTreeTransforms();
+            CollectCellsAlongPath(pathPoints, corridorWidth);
+
             int totalCleared = 0;
+            float corridorSq = corridorWidth * corridorWidth;
 
-            for (int i = 0; i < trees.Length; i++)
+            foreach (long key in _queriedCells)
             {
-                Transform tree = trees[i];
-                if (tree == _treesContainer.transform) continue;
+                if (!_grid.TryGetValue(key, out var indices)) continue;
 
-                Vector3 tp = tree.position;
-
-                float minDist = MinDistanceToPathXZ(tp, pathPoints, corridorWidth);
-                if (minDist <= corridorWidth)
+                for (int i = 0; i < indices.Count; i++)
                 {
-                    tree.gameObject.SetActive(false);
-                    totalCleared++;
+                    int idx = indices[i];
+                    GameObject obj = _treeObjects[idx];
+                    if (obj == null || !obj.activeSelf) continue;
+
+                    float minDist = MinDistanceToPathXZ(_treePositions[idx], pathPoints, corridorWidth);
+                    if (minDist <= corridorWidth)
+                    {
+                        obj.SetActive(false);
+                        totalCleared++;
+                    }
                 }
             }
 
@@ -194,19 +306,32 @@ namespace SkiResortTycoon.UnityBridge
         private int ClearTreesInternal(Vector3 worldPosition, float radius)
         {
             if (!TryEnsureTreesContainer()) return 0;
+            EnsureGrid();
 
-            Transform[] trees = GetTreeTransforms();
+            _cellKeyBuffer.Clear();
+            GetCellKeysInRadius(worldPosition.x, worldPosition.z, radius, _cellKeyBuffer);
+
             int clearedCount = 0;
+            float radiusSq = radius * radius;
 
-            foreach (Transform tree in trees)
+            for (int k = 0; k < _cellKeyBuffer.Count; k++)
             {
-                if (tree == _treesContainer.transform) continue;
+                if (!_grid.TryGetValue(_cellKeyBuffer[k], out var indices)) continue;
 
-                float distance = Vector3.Distance(tree.position, worldPosition);
-                if (distance <= radius)
+                for (int i = 0; i < indices.Count; i++)
                 {
-                    Destroy(tree.gameObject);
-                    clearedCount++;
+                    int idx = indices[i];
+                    GameObject obj = _treeObjects[idx];
+                    if (obj == null) continue;
+
+                    float dx = _treePositions[idx].x - worldPosition.x;
+                    float dz = _treePositions[idx].z - worldPosition.z;
+                    if (dx * dx + dz * dz <= radiusSq)
+                    {
+                        Destroy(obj);
+                        _treeObjects[idx] = null;
+                        clearedCount++;
+                    }
                 }
             }
 
@@ -219,28 +344,32 @@ namespace SkiResortTycoon.UnityBridge
 
         private void ClearTreesForPreviewInternal(List<Vector3> pathPoints, float corridorWidth)
         {
-            // First restore any previously cleared preview trees
             RestorePreviewTreesInternal();
 
             if (pathPoints == null || pathPoints.Count < 2) return;
             if (!TryEnsureTreesContainer()) return;
+            EnsureGrid();
 
-            Transform[] allTransforms = GetTreeTransforms();
+            CollectCellsAlongPath(pathPoints, corridorWidth);
 
-            for (int i = 0; i < allTransforms.Length; i++)
+            foreach (long key in _queriedCells)
             {
-                Transform treeTransform = allTransforms[i];
-                if (treeTransform == _treesContainer.transform) continue;
+                if (!_grid.TryGetValue(key, out var indices)) continue;
 
-                GameObject tree = treeTransform.gameObject;
-                if (_previewClearedTrees.Contains(tree)) continue; // already hidden
-
-                float minDist = MinDistanceToPathXZ(treeTransform.position, pathPoints, corridorWidth);
-                if (minDist <= corridorWidth)
+                for (int i = 0; i < indices.Count; i++)
                 {
-                    _previewTreeStates.Add(new TreeState { Tree = tree, WasActive = tree.activeSelf });
-                    tree.SetActive(false);
-                    _previewClearedTrees.Add(tree);
+                    int idx = indices[i];
+                    GameObject obj = _treeObjects[idx];
+                    if (obj == null) continue;
+                    if (_previewClearedTrees.Contains(obj)) continue;
+
+                    float minDist = MinDistanceToPathXZ(_treePositions[idx], pathPoints, corridorWidth);
+                    if (minDist <= corridorWidth)
+                    {
+                        _previewTreeStates.Add(new TreeState { Tree = obj, WasActive = obj.activeSelf });
+                        obj.SetActive(false);
+                        _previewClearedTrees.Add(obj);
+                    }
                 }
             }
         }
@@ -273,7 +402,6 @@ namespace SkiResortTycoon.UnityBridge
                 float d = DistancePointToSegmentXZ(point, pathPoints[s - 1], pathPoints[s]);
                 if (d < minDist) minDist = d;
 
-                // Early out if we already know it's inside the corridor
                 if (minDist <= earlyOutRadius) break;
             }
 
@@ -282,19 +410,24 @@ namespace SkiResortTycoon.UnityBridge
 
         private static float DistancePointToSegmentXZ(Vector3 p, Vector3 a, Vector3 b)
         {
-            Vector2 P = new Vector2(p.x, p.z);
-            Vector2 A = new Vector2(a.x, a.z);
-            Vector2 B = new Vector2(b.x, b.z);
+            float pax = p.x - a.x;
+            float paz = p.z - a.z;
+            float abx = b.x - a.x;
+            float abz = b.z - a.z;
 
-            Vector2 AB = B - A;
-            float ab2 = Vector2.Dot(AB, AB);
-            if (ab2 < 0.0001f) return Vector2.Distance(P, A); // a==b
+            float ab2 = abx * abx + abz * abz;
+            if (ab2 < 0.0001f)
+            {
+                return Mathf.Sqrt(pax * pax + paz * paz);
+            }
 
-            float t = Vector2.Dot(P - A, AB) / ab2;
-            t = Mathf.Clamp01(t);
-            Vector2 closest = A + t * AB;
+            float t = (pax * abx + paz * abz) / ab2;
+            if (t < 0f) t = 0f;
+            else if (t > 1f) t = 1f;
 
-            return Vector2.Distance(P, closest);
+            float cx = a.x + t * abx - p.x;
+            float cz = a.z + t * abz - p.z;
+            return Mathf.Sqrt(cx * cx + cz * cz);
         }
 
         // ─────────────────────────────────────────────────────────────

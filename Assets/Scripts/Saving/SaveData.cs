@@ -374,6 +374,7 @@ namespace SkiResortTycoon.Saving
     public class GameSaveData
     {
         public string resortName;
+        public string mapId;
         public SimulationStateDto simulationState;
         public TimeControllerDto timeController;
         public EconomyDto economy;

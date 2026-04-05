@@ -3,12 +3,13 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 using SkiResortTycoon.Core;
+using SkiResortTycoon.Maps;
 using SkiResortTycoon.UnityBridge;
 
 namespace SkiResortTycoon.Saving
 {
     /// <summary>
-    /// Info for one save slot in the UI (name, day, money, path).
+    /// Info for one save slot in the UI (name, day, money, map, path).
     /// </summary>
     public struct SaveSlotInfo
     {
@@ -16,6 +17,7 @@ namespace SkiResortTycoon.Saving
         public string DisplayName;
         public int Day;
         public int Money;
+        public string MapId;
     }
 
     /// <summary>
@@ -57,7 +59,8 @@ namespace SkiResortTycoon.Saving
                             Path = path,
                             DisplayName = string.IsNullOrEmpty(data.resortName) ? "Unnamed Resort" : data.resortName,
                             Day = data.simulationState.dayIndex,
-                            Money = data.simulationState.money
+                            Money = data.simulationState.money,
+                            MapId = data.mapId
                         });
                     }
                 }
@@ -142,6 +145,17 @@ namespace SkiResortTycoon.Saving
         }
 
         /// <summary>
+        /// Reads the mapId from a save file. Returns LegacyMapId for old saves or on error.
+        /// </summary>
+        public static string GetMapIdFromSave(string path)
+        {
+            var data = Load(path);
+            if (data == null || string.IsNullOrEmpty(data.mapId))
+                return MapRegistry.LegacyMapId;
+            return data.mapId;
+        }
+
+        /// <summary>
         /// Returns the path of the most recently modified save file, or null if none exist.
         /// Use for "Continue" to auto-load last played save.
         /// </summary>
@@ -169,11 +183,12 @@ namespace SkiResortTycoon.Saving
         /// Creates a new empty save (day 1, default money, no lifts/trails/lodges).
         /// Use when user clicks "+ New Game" and Accept on the load menu.
         /// </summary>
-        public static GameSaveData CreateEmptySave(string resortName)
+        public static GameSaveData CreateEmptySave(string resortName, string mapId = null)
         {
             return new GameSaveData
             {
                 resortName = string.IsNullOrEmpty(resortName) ? "Unnamed Resort" : resortName,
+                mapId = string.IsNullOrEmpty(mapId) ? Maps.MapRegistry.LegacyMapId : mapId,
                 simulationState = new SimulationStateDto
                 {
                     dayIndex = 1,
@@ -238,8 +253,10 @@ namespace SkiResortTycoon.Saving
             LodgeManager lodgeManager,
             SkierVisualizer skierVisualizer = null)
         {
+            var mountainMgr = trailDrawer != null ? trailDrawer.GridRenderer : null;
             var data = new GameSaveData
             {
+                mapId = mountainMgr != null ? mountainMgr.ActiveMapId : MapRegistry.LegacyMapId,
                 lifts = new List<LiftDataDto>(),
                 trails = new List<TrailDataDto>(),
                 lodges = new List<LodgeDataDto>(),

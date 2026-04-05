@@ -2,6 +2,7 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
+using SkiResortTycoon.Maps;
 using SkiResortTycoon.Saving;
 
 namespace SkiResortTycoon.UI
@@ -69,6 +70,9 @@ namespace SkiResortTycoon.UI
         {
             string path = GameSaveService.GetMostRecentSavePath();
             GameLoadBootstrap.PendingSavePath = path;
+            GameLoadBootstrap.PendingMapId = !string.IsNullOrEmpty(path)
+                ? GameSaveService.GetMapIdFromSave(path)
+                : MapRegistry.LegacyMapId;
             SceneManager.LoadScene(_gameSceneName);
         }
 

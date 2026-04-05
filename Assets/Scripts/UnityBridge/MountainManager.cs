@@ -1,11 +1,15 @@
 using UnityEngine;
 using SkiResortTycoon.Core;
+using SkiResortTycoon.Maps;
+using SkiResortTycoon.Saving;
 
 namespace SkiResortTycoon.UnityBridge
 {
     /// <summary>
     /// Central manager for the handcrafted mountain and grid system.
-    /// Provides terrain data to all other systems.
+    /// At startup, discovers all <see cref="MapRoot"/> components in the scene,
+    /// enables the one matching the player's map choice, disables the rest,
+    /// and wires up terrain data for all other systems.
     /// </summary>
     public class MountainManager : MonoBehaviour
     {
@@ -14,34 +18,108 @@ namespace SkiResortTycoon.UnityBridge
         [SerializeField] private int _gridHeight = 64;
         [SerializeField] private float _tileSize = 1f;
         
-        [Header("Mountain Reference")]
-        [SerializeField] private GameObject _mountainMesh; // Reference to your handcrafted mountain
+        [Header("Map System")]
+        [SerializeField] private MapRegistry _mapRegistry;
 
-        // Cached layer mask built from the mountain mesh's layer for fast single-hit raycasts
+        [Header("Mountain Reference (auto-populated at runtime from active MapRoot)")]
+        [SerializeField] private GameObject _mountainMesh;
+
         private int _mountainLayerMask = -1;
         private bool _hasDedicatedLayer;
         private readonly RaycastHit[] _mouseRayHits = new RaycastHit[256];
         private readonly RaycastHit[] _heightRayHits = new RaycastHit[128];
         
         private Core.TerrainData _terrainData;
+        private string _activeMapId;
         
         public Core.TerrainData TerrainData => _terrainData;
         public float TileSize => _tileSize;
+
+        /// <summary>
+        /// The map ID currently loaded. Used by the save system to persist which map is active.
+        /// </summary>
+        public string ActiveMapId => _activeMapId;
+
+        /// <summary>
+        /// The mountain mesh GameObject for the active map. Used by CameraController for
+        /// bounds detection and terrain collision instead of reflection.
+        /// </summary>
+        public GameObject MountainMesh => _mountainMesh;
+
+        /// <summary>
+        /// The active MapRoot, exposing per-map camera overrides and other settings.
+        /// </summary>
+        public MapRoot ActiveMapRoot { get; private set; }
         
         void Awake()
         {
             _terrainData = new Core.TerrainData(_gridWidth, _gridHeight, seed: 0);
             
+            ActivateSelectedMap();
+            SetupMountainLayer();
+            
+            Debug.Log($"[MountainManager] Grid initialized: {_gridWidth}x{_gridHeight}, map='{_activeMapId}'" +
+                      (_mountainMesh != null
+                          ? $", mountain layer={_mountainMesh.layer} ({LayerMask.LayerToName(_mountainMesh.layer)}), dedicatedLayer={_hasDedicatedLayer}"
+                          : ", NO mountain mesh assigned"));
+        }
+
+        /// <summary>
+        /// Finds all MapRoot components in the scene, enables the one matching the
+        /// requested map ID, and disables every other one. Falls back to the
+        /// MapRegistry default (or LegacyMapId) when no explicit choice was made.
+        /// </summary>
+        private void ActivateSelectedMap()
+        {
+            string requestedId = GameLoadBootstrap.PendingMapId;
+            GameLoadBootstrap.PendingMapId = null;
+
+            if (_mapRegistry != null)
+            {
+                var mapDef = _mapRegistry.GetById(requestedId);
+                _activeMapId = mapDef != null ? mapDef.mapId : MapRegistry.LegacyMapId;
+            }
+            else
+            {
+                _activeMapId = string.IsNullOrEmpty(requestedId) ? MapRegistry.LegacyMapId : requestedId;
+            }
+
+            // Find every MapRoot in the scene (including inactive ones)
+            var allRoots = FindObjectsOfType<MapRoot>(true);
+            MapRoot activeRoot = null;
+
+            foreach (var root in allRoots)
+            {
+                if (root.mapId == _activeMapId)
+                {
+                    root.gameObject.SetActive(true);
+                    activeRoot = root;
+                }
+                else
+                {
+                    root.gameObject.SetActive(false);
+                }
+            }
+
+            if (activeRoot != null)
+            {
+                _mountainMesh = activeRoot.mountainMesh;
+                ActiveMapRoot = activeRoot;
+                Debug.Log($"[MountainManager] Activated MapRoot '{activeRoot.mapId}' ({activeRoot.gameObject.name})");
+            }
+            else if (allRoots.Length > 0)
+            {
+                Debug.LogWarning($"[MountainManager] No MapRoot found for '{_activeMapId}', falling back to scene-placed mountain mesh.");
+            }
+        }
+
+        private void SetupMountainLayer()
+        {
             if (_mountainMesh != null)
             {
                 _mountainLayerMask = 1 << _mountainMesh.layer;
                 _hasDedicatedLayer = _mountainMesh.layer != 0;
             }
-            
-            Debug.Log($"[MountainManager] Grid initialized: {_gridWidth}x{_gridHeight}" +
-                      (_mountainMesh != null
-                          ? $", mountain layer={_mountainMesh.layer} ({LayerMask.LayerToName(_mountainMesh.layer)}), dedicatedLayer={_hasDedicatedLayer}"
-                          : ", NO mountain mesh assigned"));
         }
         
         /// <summary>
@@ -54,14 +132,12 @@ namespace SkiResortTycoon.UnityBridge
             float z = coord.Y * _tileSize;
             float y = 0f;
             
-            // Get height from terrain data (Y = up)
             if (_terrainData != null)
             {
                 float height = _terrainData.GetHeight(coord);
                 y = height * 0.1f;
             }
             
-            // Try to get accurate height from mountain mesh raycast
             float? meshHeight = GetHeightAtWorldPos(new Vector3(x, 0f, z));
             if (meshHeight.HasValue)
             {
@@ -84,9 +160,6 @@ namespace SkiResortTycoon.UnityBridge
             
             Ray ray = camera.ScreenPointToRay(screenPosition);
 
-            // Fast path: when the mountain has a dedicated layer, a single layer-masked
-            // raycast avoids the buffer-overflow problem that occurs near the base where
-            // many structure colliders share the ray path.
             if (_hasDedicatedLayer)
             {
                 RaycastHit hit;
@@ -95,7 +168,6 @@ namespace SkiResortTycoon.UnityBridge
                 return null;
             }
             
-            // Fallback: multi-hit raycast when mountain is on default layer
             int hitCount = Physics.RaycastNonAlloc(ray, _mouseRayHits, 10000f);
             if (TryGetNearestMountainHit(_mouseRayHits, hitCount, out RaycastHit nearest))
                 return nearest.point;
@@ -116,9 +188,6 @@ namespace SkiResortTycoon.UnityBridge
             
             Ray ray = new Ray(new Vector3(worldPos.x, worldPos.y + 1000f, worldPos.z), Vector3.down);
 
-            // Fast path: single raycast with layer mask when the mountain is on
-            // a dedicated layer (non-default). This is the hot path for per-frame
-            // skier grounding (~50 raycasts/frame).
             if (_mountainLayerMask > 0 && _mountainMesh.layer != 0)
             {
                 RaycastHit hit;
@@ -127,7 +196,6 @@ namespace SkiResortTycoon.UnityBridge
                 return null;
             }
             
-            // Fallback: non-alloc multi-hit raycast when mountain is on default layer
             int hitCount = Physics.RaycastNonAlloc(ray, _heightRayHits, 2000f);
             if (TryGetNearestMountainHit(_heightRayHits, hitCount, out RaycastHit nearest))
                 return nearest.point.y;

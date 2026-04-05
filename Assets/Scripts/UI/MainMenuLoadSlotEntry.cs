@@ -22,10 +22,15 @@ namespace SkiResortTycoon.UI
             SaveSlotInfo slot,
             System.Action<SaveSlotInfo> onPlay,
             System.Action<SaveSlotInfo> onRename,
-            System.Action<SaveSlotInfo> onDelete)
+            System.Action<SaveSlotInfo> onDelete,
+            string mapDisplayName = null)
         {
             if (_nameText != null) _nameText.text = slot.DisplayName;
-            if (_detailsText != null) _detailsText.text = $"Day {slot.Day} - {SaveGameManager.FormatMoney(slot.Money)}";
+
+            string details = $"Day {slot.Day} - {SaveGameManager.FormatMoney(slot.Money)}";
+            if (!string.IsNullOrEmpty(mapDisplayName))
+                details += $" - {mapDisplayName}";
+            if (_detailsText != null) _detailsText.text = details;
 
             if (_playButton != null)
             {

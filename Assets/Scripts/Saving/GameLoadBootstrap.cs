@@ -11,5 +11,11 @@ namespace SkiResortTycoon.Saving
         /// Set from main menu when user picks "Load" on a save slot; cleared after apply.
         /// </summary>
         public static string PendingSavePath { get; set; }
+
+        /// <summary>
+        /// Map ID to load when the game scene starts. Read by MountainManager to
+        /// instantiate the correct mountain prefab. Null = use MapRegistry default.
+        /// </summary>
+        public static string PendingMapId { get; set; }
     }
 }

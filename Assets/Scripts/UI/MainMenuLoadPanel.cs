@@ -3,13 +3,14 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using UnityEngine.SceneManagement;
+using SkiResortTycoon.Maps;
 using SkiResortTycoon.Saving;
 
 namespace SkiResortTycoon.UI
 {
     /// <summary>
     /// Load Game panel on main menu: + New Game (creates empty save), slot list with Play / Rename / Delete.
-    /// Same input-field + Accept/Cancel toggling as save menu. Drag all UI refs into the inspector.
+    /// New Game flow: name resort -> pick map -> create save + launch game.
     /// </summary>
     public class MainMenuLoadPanel : MonoBehaviour
     {
@@ -33,6 +34,10 @@ namespace SkiResortTycoon.UI
         [Tooltip("Slot template with MainMenuLoadSlotEntry (name, details, Play, Rename, Delete).")]
         [SerializeField] private GameObject _slotTemplate;
 
+        [Header("Map Selection")]
+        [Tooltip("Panel that shows available maps after naming a new resort.")]
+        [SerializeField] private MapSelectionPanel _mapSelectionPanel;
+
         [Header("Back")]
         [SerializeField] private Button _backButton;
 
@@ -47,11 +52,13 @@ namespace SkiResortTycoon.UI
         private InputMode _inputMode;
         private SaveSlotInfo? _renameSlot;
         private System.Action _pendingConfirm;
+        private string _pendingNewGameName;
 
         private void Awake()
         {
             HideInputRow();
             if (_confirmDialogPanel != null) _confirmDialogPanel.SetActive(false);
+            if (_mapSelectionPanel != null) _mapSelectionPanel.gameObject.SetActive(false);
 
             if (_newGameButton != null) _newGameButton.onClick.AddListener(OnNewGameClicked);
             if (_acceptButton != null) _acceptButton.onClick.AddListener(OnAcceptClicked);
@@ -68,6 +75,7 @@ namespace SkiResortTycoon.UI
         {
             _inputMode = InputMode.None;
             _renameSlot = null;
+            _pendingNewGameName = null;
             HideInputRow();
             RefreshSlotList();
         }
@@ -87,6 +95,8 @@ namespace SkiResortTycoon.UI
                 Destroy(child.gameObject);
             }
 
+            var registry = _mapSelectionPanel != null ? _mapSelectionPanel.MapRegistry : null;
+
             var saves = GameSaveService.ListSaves();
             foreach (var slot in saves)
             {
@@ -94,9 +104,16 @@ namespace SkiResortTycoon.UI
                 if (slotGo == null) continue;
                 slotGo.SetActive(true);
 
+                string mapName = null;
+                if (registry != null && !string.IsNullOrEmpty(slot.MapId))
+                {
+                    var mapDef = registry.GetById(slot.MapId);
+                    if (mapDef != null) mapName = mapDef.displayName;
+                }
+
                 var entry = slotGo.GetComponent<MainMenuLoadSlotEntry>();
                 if (entry != null)
-                    entry.Setup(slot, OnPlaySlotClicked, OnRenameSlotClicked, OnDeleteSlotClicked);
+                    entry.Setup(slot, OnPlaySlotClicked, OnRenameSlotClicked, OnDeleteSlotClicked, mapName);
             }
 
             ButtonHoverFeedback.ApplyUnder(_slotContent, null);
@@ -152,12 +169,17 @@ namespace SkiResortTycoon.UI
             if (_inputMode == InputMode.NewGame)
             {
                 if (string.IsNullOrEmpty(name)) name = "Unnamed Resort";
-                var data = GameSaveService.CreateEmptySave(name);
-                string safeName = MakeSafeFileName(name);
-                string path = PathWithoutExtension(safeName);
-                GameSaveService.Save(path, data);
+                _pendingNewGameName = name;
                 HideInputRow();
-                RefreshSlotList();
+
+                if (_mapSelectionPanel != null)
+                {
+                    _mapSelectionPanel.Show(OnMapSelectedForNewGame);
+                }
+                else
+                {
+                    OnMapSelectedForNewGame(MapRegistry.LegacyMapId);
+                }
             }
             else if (_inputMode == InputMode.Rename && _renameSlot.HasValue)
             {
@@ -169,15 +191,35 @@ namespace SkiResortTycoon.UI
             }
         }
 
+        private void OnMapSelectedForNewGame(string mapId)
+        {
+            string name = _pendingNewGameName ?? "Unnamed Resort";
+            _pendingNewGameName = null;
+
+            var data = GameSaveService.CreateEmptySave(name, mapId);
+            string safeName = MakeSafeFileName(name);
+            string path = PathWithoutExtension(safeName);
+            GameSaveService.Save(path, data);
+
+            GameLoadBootstrap.PendingSavePath = GameSaveService.GetSaveDirectory()
+                + System.IO.Path.DirectorySeparatorChar + safeName + ".json";
+            GameLoadBootstrap.PendingMapId = mapId;
+            SceneManager.LoadScene(_gameSceneName);
+        }
+
         private void OnCancelClicked()
         {
             HideInputRow();
             _renameSlot = null;
+            _pendingNewGameName = null;
         }
 
         private void OnPlaySlotClicked(SaveSlotInfo slot)
         {
             GameLoadBootstrap.PendingSavePath = slot.Path;
+            GameLoadBootstrap.PendingMapId = string.IsNullOrEmpty(slot.MapId)
+                ? MapRegistry.LegacyMapId
+                : slot.MapId;
             SceneManager.LoadScene(_gameSceneName);
         }
 

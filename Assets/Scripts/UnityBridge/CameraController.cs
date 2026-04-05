@@ -130,12 +130,7 @@ namespace SkiResortTycoon.UnityBridge
                 return;
             }
 
-            var mountainMeshField = typeof(MountainManager).GetField("_mountainMesh",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-            if (mountainMeshField == null) return;
-
-            GameObject mountainMesh = mountainMeshField.GetValue(_mountainManager) as GameObject;
+            GameObject mountainMesh = _mountainManager.MountainMesh;
             if (mountainMesh == null) return;
 
             _mountainMeshObj = mountainMesh;
@@ -147,7 +142,10 @@ namespace SkiResortTycoon.UnityBridge
 
             Bounds bounds = renderer.bounds;
 
-            float padding = 50f;
+            // Per-map overrides from the active MapRoot (0 = use defaults)
+            var mapRoot = _mountainManager.ActiveMapRoot;
+            float padding = (mapRoot != null && mapRoot.boundsPadding > 0f) ? mapRoot.boundsPadding : 50f;
+
             _boundsMinX = bounds.min.x - padding;
             _boundsMaxX = bounds.max.x + padding;
             _boundsMinY = bounds.min.y;
@@ -155,10 +153,31 @@ namespace SkiResortTycoon.UnityBridge
             _boundsMinZ = bounds.min.z - padding;
             _boundsMaxZ = bounds.max.z + padding;
 
+            if (mapRoot != null)
+            {
+                if (mapRoot.maxCameraDistance > 0f)
+                    _maxDistance = mapRoot.maxCameraDistance;
+
+                if (mapRoot.farClipPlane > 0f)
+                {
+                    _farClip = mapRoot.farClipPlane;
+                    _camera.farClipPlane = _farClip;
+                }
+
+                if (mapRoot.defaultCameraDistance > 0f)
+                {
+                    _defaultDistance = mapRoot.defaultCameraDistance;
+                    _distance = _defaultDistance;
+                    _targetDistance = _defaultDistance;
+                    _effectiveDistance = _defaultDistance;
+                }
+            }
+
             _focusPoint = bounds.center;
 
             Debug.Log($"[CameraController] Detected mountain bounds: {bounds.min} to {bounds.max}");
-            Debug.Log($"[CameraController] Camera bounds: X[{_boundsMinX:F0},{_boundsMaxX:F0}] Y[{_boundsMinY:F0},{_boundsMaxY:F0}] Z[{_boundsMinZ:F0},{_boundsMaxZ:F0}]");
+            Debug.Log($"[CameraController] Camera bounds: X[{_boundsMinX:F0},{_boundsMaxX:F0}] Y[{_boundsMinY:F0},{_boundsMaxY:F0}] Z[{_boundsMinZ:F0},{_boundsMaxZ:F0}]" +
+                      $", maxDist={_maxDistance}, farClip={_farClip}, defaultDist={_defaultDistance}");
         }
 
         void Update()
